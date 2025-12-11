@@ -108,7 +108,7 @@ Required capabilities:
 
 ## Command Set
 
-webctl exposes 18 commands across 5 categories:
+webctl exposes 19 commands across 5 categories:
 
 ### Observation Commands
 
@@ -149,7 +149,8 @@ webctl exposes 18 commands across 5 categories:
 
 | Command | Purpose                                        |
 | ------- | ---------------------------------------------- |
-| start   | Launch daemon and browser                      |
+| browser | Launch browser with CDP enabled (no daemon)    |
+| start   | Launch daemon (and browser unless --attach)    |
 | stop    | Clean shutdown of daemon and browser           |
 | status  | Daemon health, current URL, page title         |
 | clear   | Clear event buffers (console, network, or all) |
@@ -290,3 +291,9 @@ webctl network                             # See API calls from this action
 webctl screenshot > debug.png
 webctl stop
 ```
+
+---
+
+## Updates
+
+- 2025-12-11: Added `browser` command and `--attach` flag to `start` command (see DR-002)
