@@ -12,12 +12,13 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-Active Project: docs/projects/p-002-project-definition.md
+Active Project: docs/projects/p-003-cdp-core-library.md
 
 ## Quick Reference
 
 ```bash
-webctl start [--headless] [--timeout <seconds>] [--listen :port] [--token <secret>]
+webctl browser [--headless] [--port 9222]
+webctl start [--headless] [--attach :9222] [--listen :9444]
 webctl stop
 webctl status
 
