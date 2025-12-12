@@ -1,0 +1,421 @@
+package daemon
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strconv"
+	"syscall"
+	"time"
+
+	"github.com/grantcarthew/webctl/internal/browser"
+	"github.com/grantcarthew/webctl/internal/cdp"
+	"github.com/grantcarthew/webctl/internal/ipc"
+)
+
+// DefaultBufferSize is the default capacity for event buffers.
+const DefaultBufferSize = 10000
+
+// Config holds daemon configuration.
+type Config struct {
+	Headless   bool
+	Port       int
+	SocketPath string
+	PIDPath    string
+	BufferSize int
+}
+
+// DefaultConfig returns the default daemon configuration.
+func DefaultConfig() Config {
+	return Config{
+		Headless:   false,
+		Port:       9222,
+		SocketPath: ipc.DefaultSocketPath(),
+		PIDPath:    ipc.DefaultPIDPath(),
+		BufferSize: DefaultBufferSize,
+	}
+}
+
+// Daemon is the persistent webctl daemon process.
+type Daemon struct {
+	config     Config
+	browser    *browser.Browser
+	cdp        *cdp.Client
+	consoleBuf *RingBuffer[ipc.ConsoleEntry]
+	networkBuf *RingBuffer[ipc.NetworkEntry]
+	server     *ipc.Server
+}
+
+// New creates a new daemon with the given configuration.
+func New(cfg Config) *Daemon {
+	if cfg.BufferSize <= 0 {
+		cfg.BufferSize = DefaultBufferSize
+	}
+
+	return &Daemon{
+		config:     cfg,
+		consoleBuf: NewRingBuffer[ipc.ConsoleEntry](cfg.BufferSize),
+		networkBuf: NewRingBuffer[ipc.NetworkEntry](cfg.BufferSize),
+	}
+}
+
+// Run starts the daemon and blocks until shutdown.
+func (d *Daemon) Run(ctx context.Context) error {
+	// Write PID file
+	if err := d.writePIDFile(); err != nil {
+		return fmt.Errorf("failed to write PID file: %w", err)
+	}
+	defer d.removePIDFile()
+
+	// Start browser
+	b, err := browser.Start(browser.LaunchOptions{
+		Port:     d.config.Port,
+		Headless: d.config.Headless,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to start browser: %w", err)
+	}
+	d.browser = b
+	defer d.browser.Close()
+
+	// Connect via CDP
+	wsURL, err := d.browser.WebSocketURL(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get WebSocket URL: %w", err)
+	}
+
+	cdpClient, err := cdp.Dial(ctx, wsURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to CDP: %w", err)
+	}
+	d.cdp = cdpClient
+	defer d.cdp.Close()
+
+	// Enable CDP domains and subscribe to events
+	if err := d.enableDomains(); err != nil {
+		return fmt.Errorf("failed to enable CDP domains: %w", err)
+	}
+	d.subscribeEvents()
+
+	// Start IPC server
+	server, err := ipc.NewServer(d.config.SocketPath, d.handleRequest)
+	if err != nil {
+		return fmt.Errorf("failed to start IPC server: %w", err)
+	}
+	d.server = server
+	defer d.server.Close()
+
+	// Set up signal handling
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	// Run server in goroutine
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- d.server.Serve(ctx)
+	}()
+
+	// Wait for shutdown
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-sigCh:
+		return nil
+	case err := <-errCh:
+		return err
+	}
+}
+
+// enableDomains enables the required CDP domains.
+func (d *Daemon) enableDomains() error {
+	domains := []string{"Runtime.enable", "Network.enable", "Page.enable"}
+	for _, method := range domains {
+		if _, err := d.cdp.Send(method, nil); err != nil {
+			return fmt.Errorf("failed to enable %s: %w", method, err)
+		}
+	}
+	return nil
+}
+
+// subscribeEvents subscribes to CDP events and buffers them.
+func (d *Daemon) subscribeEvents() {
+	// Console events
+	d.cdp.Subscribe("Runtime.consoleAPICalled", func(evt cdp.Event) {
+		entry := d.parseConsoleEvent(evt)
+		d.consoleBuf.Push(entry)
+	})
+
+	d.cdp.Subscribe("Runtime.exceptionThrown", func(evt cdp.Event) {
+		entry := d.parseExceptionEvent(evt)
+		d.consoleBuf.Push(entry)
+	})
+
+	// Network events
+	d.cdp.Subscribe("Network.requestWillBeSent", func(evt cdp.Event) {
+		entry := d.parseRequestEvent(evt)
+		d.networkBuf.Push(entry)
+	})
+
+	d.cdp.Subscribe("Network.responseReceived", func(evt cdp.Event) {
+		d.updateResponseEvent(evt)
+	})
+}
+
+// parseConsoleEvent parses a Runtime.consoleAPICalled event.
+func (d *Daemon) parseConsoleEvent(evt cdp.Event) ipc.ConsoleEntry {
+	var params struct {
+		Type      string `json:"type"`
+		Timestamp float64 `json:"timestamp"`
+		Args      []struct {
+			Type  string `json:"type"`
+			Value any    `json:"value"`
+		} `json:"args"`
+		StackTrace *struct {
+			CallFrames []struct {
+				URL        string `json:"url"`
+				LineNumber int    `json:"lineNumber"`
+				ColumnNumber int  `json:"columnNumber"`
+			} `json:"callFrames"`
+		} `json:"stackTrace"`
+	}
+	json.Unmarshal(evt.Params, &params)
+
+	entry := ipc.ConsoleEntry{
+		Type:      params.Type,
+		Timestamp: int64(params.Timestamp),
+	}
+
+	// Extract text from args
+	var args []string
+	for _, arg := range params.Args {
+		if s, ok := arg.Value.(string); ok {
+			args = append(args, s)
+		} else {
+			data, _ := json.Marshal(arg.Value)
+			args = append(args, string(data))
+		}
+	}
+	if len(args) > 0 {
+		entry.Text = args[0]
+		entry.Args = args
+	}
+
+	// Extract stack trace info
+	if params.StackTrace != nil && len(params.StackTrace.CallFrames) > 0 {
+		frame := params.StackTrace.CallFrames[0]
+		entry.URL = frame.URL
+		entry.Line = frame.LineNumber
+		entry.Column = frame.ColumnNumber
+	}
+
+	return entry
+}
+
+// parseExceptionEvent parses a Runtime.exceptionThrown event.
+func (d *Daemon) parseExceptionEvent(evt cdp.Event) ipc.ConsoleEntry {
+	var params struct {
+		Timestamp float64 `json:"timestamp"`
+		ExceptionDetails struct {
+			Text      string `json:"text"`
+			URL       string `json:"url"`
+			Line      int    `json:"lineNumber"`
+			Column    int    `json:"columnNumber"`
+			Exception *struct {
+				Description string `json:"description"`
+			} `json:"exception"`
+		} `json:"exceptionDetails"`
+	}
+	json.Unmarshal(evt.Params, &params)
+
+	text := params.ExceptionDetails.Text
+	if params.ExceptionDetails.Exception != nil && params.ExceptionDetails.Exception.Description != "" {
+		text = params.ExceptionDetails.Exception.Description
+	}
+
+	return ipc.ConsoleEntry{
+		Type:      "error",
+		Text:      text,
+		Timestamp: int64(params.Timestamp),
+		URL:       params.ExceptionDetails.URL,
+		Line:      params.ExceptionDetails.Line,
+		Column:    params.ExceptionDetails.Column,
+	}
+}
+
+// parseRequestEvent parses a Network.requestWillBeSent event.
+func (d *Daemon) parseRequestEvent(evt cdp.Event) ipc.NetworkEntry {
+	var params struct {
+		RequestID string  `json:"requestId"`
+		Timestamp float64 `json:"timestamp"`
+		Request   struct {
+			URL     string            `json:"url"`
+			Method  string            `json:"method"`
+			Headers map[string]string `json:"headers"`
+		} `json:"request"`
+		Type string `json:"type"`
+	}
+	json.Unmarshal(evt.Params, &params)
+
+	return ipc.NetworkEntry{
+		RequestID:   params.RequestID,
+		URL:         params.Request.URL,
+		Method:      params.Request.Method,
+		Type:        params.Type,
+		RequestTime: int64(params.Timestamp * 1000), // Convert to milliseconds
+		Headers:     params.Request.Headers,
+	}
+}
+
+// updateResponseEvent updates an existing network entry with response data.
+func (d *Daemon) updateResponseEvent(evt cdp.Event) {
+	var params struct {
+		RequestID string  `json:"requestId"`
+		Timestamp float64 `json:"timestamp"`
+		Response  struct {
+			Status     int               `json:"status"`
+			StatusText string            `json:"statusText"`
+			MimeType   string            `json:"mimeType"`
+			Headers    map[string]string `json:"headers"`
+		} `json:"response"`
+	}
+	json.Unmarshal(evt.Params, &params)
+
+	// Find and update the matching entry
+	entries := d.networkBuf.All()
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].RequestID == params.RequestID {
+			entries[i].Status = params.Response.Status
+			entries[i].StatusText = params.Response.StatusText
+			entries[i].MimeType = params.Response.MimeType
+			entries[i].ResponseTime = int64(params.Timestamp * 1000)
+			if entries[i].RequestTime > 0 {
+				entries[i].Duration = float64(entries[i].ResponseTime-entries[i].RequestTime) / 1000.0
+			}
+			break
+		}
+	}
+}
+
+// handleRequest processes an IPC request and returns a response.
+func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
+	switch req.Cmd {
+	case "status":
+		return d.handleStatus()
+	case "console":
+		return d.handleConsole()
+	case "network":
+		return d.handleNetwork()
+	case "clear":
+		return d.handleClear(req.Target)
+	case "cdp":
+		return d.handleCDP(req)
+	default:
+		return ipc.ErrorResponse(fmt.Sprintf("unknown command: %s", req.Cmd))
+	}
+}
+
+// handleStatus returns the daemon status.
+func (d *Daemon) handleStatus() ipc.Response {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	status := ipc.StatusData{
+		Running: true,
+		PID:     os.Getpid(),
+	}
+
+	// Get current page info
+	result, err := d.cdp.SendContext(ctx, "Target.getTargetInfo", nil)
+	if err == nil {
+		var info struct {
+			TargetInfo struct {
+				URL   string `json:"url"`
+				Title string `json:"title"`
+			} `json:"targetInfo"`
+		}
+		if json.Unmarshal(result, &info) == nil {
+			status.URL = info.TargetInfo.URL
+			status.Title = info.TargetInfo.Title
+		}
+	}
+
+	return ipc.SuccessResponse(status)
+}
+
+// handleConsole returns buffered console entries.
+func (d *Daemon) handleConsole() ipc.Response {
+	entries := d.consoleBuf.All()
+	return ipc.SuccessResponse(ipc.ConsoleData{
+		Entries: entries,
+		Count:   len(entries),
+	})
+}
+
+// handleNetwork returns buffered network entries.
+func (d *Daemon) handleNetwork() ipc.Response {
+	entries := d.networkBuf.All()
+	return ipc.SuccessResponse(ipc.NetworkData{
+		Entries: entries,
+		Count:   len(entries),
+	})
+}
+
+// handleClear clears the specified buffer.
+func (d *Daemon) handleClear(target string) ipc.Response {
+	switch target {
+	case "console":
+		d.consoleBuf.Clear()
+	case "network":
+		d.networkBuf.Clear()
+	case "", "all":
+		d.consoleBuf.Clear()
+		d.networkBuf.Clear()
+	default:
+		return ipc.ErrorResponse(fmt.Sprintf("unknown clear target: %s", target))
+	}
+	return ipc.SuccessResponse(nil)
+}
+
+// handleCDP forwards a raw CDP command to the browser.
+// Request format: {"cmd": "cdp", "target": "Method.name", "params": {...}}
+func (d *Daemon) handleCDP(req ipc.Request) ipc.Response {
+	if req.Target == "" {
+		return ipc.ErrorResponse("cdp command requires target (CDP method name)")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var params any
+	if req.Params != nil {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("invalid params: %v", err))
+		}
+	}
+
+	result, err := d.cdp.SendContext(ctx, req.Target, params)
+	if err != nil {
+		return ipc.ErrorResponse(err.Error())
+	}
+
+	return ipc.Response{OK: true, Data: result}
+}
+
+// writePIDFile writes the daemon PID to a file.
+func (d *Daemon) writePIDFile() error {
+	dir := filepath.Dir(d.config.PIDPath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+
+	pid := strconv.Itoa(os.Getpid())
+	return os.WriteFile(d.config.PIDPath, []byte(pid), 0600)
+}
+
+// removePIDFile removes the PID file.
+func (d *Daemon) removePIDFile() {
+	os.Remove(d.config.PIDPath)
+}

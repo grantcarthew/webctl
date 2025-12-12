@@ -1,7 +1,8 @@
 # P-005: Daemon & IPC
 
-- Status: Proposed
-- Started: -
+- Status: Complete
+- Started: 2025-12-12
+- Completed: 2025-12-12
 
 ## Overview
 
@@ -35,14 +36,14 @@ Out of Scope:
 
 ## Success Criteria
 
-- [ ] Daemon starts and runs independently
-- [ ] PID file created at XDG-compliant location
-- [ ] Unix socket accepts connections
-- [ ] Can receive JSON commands and send responses
-- [ ] Buffers CDP console events (up to 10,000)
-- [ ] Buffers CDP network events (up to 10,000)
-- [ ] Clean shutdown on SIGTERM/SIGINT
-- [ ] Cleans up socket and PID file on exit
+- [x] Daemon starts and runs independently
+- [x] PID file created at XDG-compliant location
+- [x] Unix socket accepts connections
+- [x] Can receive JSON commands and send responses
+- [x] Buffers CDP console events (up to 10,000)
+- [x] Buffers CDP network events (up to 10,000)
+- [x] Clean shutdown on SIGTERM/SIGINT
+- [x] Cleans up socket and PID file on exit
 
 ## Deliverables
 
