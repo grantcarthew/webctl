@@ -11,6 +11,9 @@ import (
 	"github.com/grantcarthew/webctl/internal/ipc"
 )
 
+// TestDaemon_Integration runs a full daemon lifecycle test with a real browser.
+// Uses testing.Short() rather than build tags so tests are still compiled and
+// syntax-checked in normal builds. Run with: go test -run Integration ./...
 func TestDaemon_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")

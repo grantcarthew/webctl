@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"os"
 	"runtime"
 	"strings"
 	"testing"
@@ -177,6 +178,7 @@ func TestCreateTempDataDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
 
 	if dir == "" {
 		t.Error("expected non-empty dir")
@@ -185,7 +187,4 @@ func TestCreateTempDataDir(t *testing.T) {
 	if !strings.Contains(dir, "webctl-chrome-") {
 		t.Errorf("expected webctl-chrome- prefix, got %s", dir)
 	}
-
-	// Clean up
-	// os.RemoveAll(dir) - let system clean temp dir
 }
