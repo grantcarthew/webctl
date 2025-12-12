@@ -1,7 +1,8 @@
 # P-004: Browser Launch & Target Management
 
-- Status: Proposed
-- Started: -
+- Status: Completed
+- Started: 2025-12-12
+- Completed: 2025-12-12
 
 ## Overview
 
@@ -18,7 +19,7 @@ Find Chrome on the system, launch it with CDP enabled, discover available target
 
 In Scope:
 
-- Chrome binary detection (macOS, Linux, Windows)
+- Chrome binary detection (macOS, Linux)
 - Process spawning with CDP flags
 - Target discovery via `http://localhost:PORT/json`
 - Page target selection
@@ -33,12 +34,12 @@ Out of Scope:
 
 ## Success Criteria
 
-- [ ] Finds Chrome on macOS (tested)
+- [x] Finds Chrome on macOS (tested)
 - [ ] Finds Chrome on Linux (tested)
-- [ ] Launches Chrome with `--remote-debugging-port`
-- [ ] Discovers page targets from `/json` endpoint
-- [ ] Returns WebSocket URL for CDP connection
-- [ ] Clean process termination on close
+- [x] Launches Chrome with `--remote-debugging-port`
+- [x] Discovers page targets from `/json` endpoint
+- [x] Returns WebSocket URL for CDP connection
+- [x] Clean process termination on close
 
 ## Deliverables
 
@@ -77,32 +78,36 @@ internal/browser/
 /snap/bin/chromium
 ```
 
-**Windows:**
-```
-C:\Program Files\Google\Chrome\Application\chrome.exe
-C:\Program Files (x86)\Google\Chrome\Application\chrome.exe
-%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe
-```
-
 ### Launch Flags
+
+See DR-005 for full details.
 
 Required:
 ```
 --remote-debugging-port=PORT
 --no-first-run
 --no-default-browser-check
+--disable-background-networking
+--disable-sync
+--disable-popup-blocking
+```
+
+Platform-specific:
+```
+--use-mock-keychain          # macOS
+--password-store=basic       # Linux
 ```
 
 Headless:
 ```
---headless=new
+--headless
 ```
 
-Optional (for clean state):
+User data directory:
 ```
---user-data-dir=TEMP_DIR
---disable-extensions
---disable-background-networking
+--user-data-dir=TEMP_DIR     # Default: temp directory
+                              # "default": use user's Chrome profile
+                              # Any path: use that directory
 ```
 
 ### Core Types
@@ -125,8 +130,9 @@ type Target struct {
 }
 
 type LaunchOptions struct {
-    Headless bool
-    Port     int  // 0 = auto-select
+    Headless    bool
+    Port        int     // 0 = default 9222
+    UserDataDir string  // empty = temp, "default" = user profile, path = use path
 }
 ```
 
@@ -146,12 +152,22 @@ func (b *Browser) Close() error
 - If specified port is in use, return error (don't auto-increment)
 - User can specify `--port 0` for auto-selection in future
 
-### Temp User Data Directory
+### User Data Directory
 
-Create temp directory for browser profile:
-- Avoids conflicts with user's Chrome
-- Cleans up on close
-- Location: `os.MkdirTemp("", "webctl-chrome-*")`
+Three modes (see DR-005):
+- Empty (default): Create temp directory, cleaned up on close
+- `default`: Use user's Chrome profile
+- Any path: Use that directory
+
+Temp directory location: `os.MkdirTemp("", "webctl-chrome-*")`
+
+### Startup Timeout
+
+30 seconds to wait for CDP endpoint to respond.
+
+### Graceful Shutdown
+
+Send SIGINT first, fall back to SIGKILL if needed.
 
 ## Dependencies
 
@@ -165,4 +181,4 @@ Create temp directory for browser profile:
 
 ## Notes
 
-Windows support is lower priority but design should accommodate it. Linux and macOS are primary targets for v1.
+Linux and macOS are the supported platforms. Windows is not planned.

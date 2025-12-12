@@ -1,7 +1,8 @@
 # P-003: CDP Core Library
 
-- Status: Proposed
-- Started: -
+- Status: Completed
+- Started: 2025-12-12
+- Completed: 2025-12-12
 
 ## Overview
 
@@ -34,18 +35,21 @@ Out of Scope:
 
 ## Success Criteria
 
-- [ ] Can connect to a running CDP endpoint via WebSocket
-- [ ] Can send commands and receive correlated responses
-- [ ] Can subscribe to events and receive them asynchronously
-- [ ] Thread-safe for concurrent command sends
-- [ ] Handles connection errors gracefully
-- [ ] Unit tests with mock WebSocket
+- [x] Can connect to a running CDP endpoint via WebSocket
+- [x] Can send commands and receive correlated responses
+- [x] Can subscribe to events and receive them asynchronously
+- [x] Thread-safe for concurrent command sends
+- [x] Handles connection errors gracefully
+- [x] Unit tests with mock WebSocket
 
 ## Deliverables
 
+- `internal/cdp/conn.go` - Conn interface for testability
 - `internal/cdp/client.go` - main CDP client
 - `internal/cdp/message.go` - message types and encoding
+- `internal/cdp/main_test.go` - goleak TestMain
 - `internal/cdp/client_test.go` - unit tests
+- `internal/cdp/message_test.go` - message tests and fuzz tests
 
 ## Technical Design
 
@@ -129,7 +133,8 @@ func (c *Client) readLoop() {
 
 ## Dependencies
 
-- `github.com/gorilla/websocket` - WebSocket client
+- `github.com/coder/websocket` - WebSocket client (context-aware, actively maintained)
+- `go.uber.org/goleak` - Goroutine leak detection for tests
 
 ## Testing Strategy
 

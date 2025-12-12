@@ -12,7 +12,9 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-Active Project: docs/projects/p-003-cdp-core-library.md
+Active Project: docs/projects/p-005-daemon-ipc.md
+
+Completed projects are in docs/projects/completed/
 
 ## Quick Reference
 
