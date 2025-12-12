@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/grantcarthew/webctl/internal/daemon"
-	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +27,7 @@ func init() {
 
 func runStart(cmd *cobra.Command, args []string) error {
 	// Check if daemon is already running
-	if ipc.IsDaemonRunning() {
+	if dialer.IsDaemonRunning() {
 		return outputError("daemon is already running")
 	}
 

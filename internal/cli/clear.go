@@ -5,6 +5,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Note: ipc import kept for ipc.Request type
+
 var clearCmd = &cobra.Command{
 	Use:   "clear [console|network]",
 	Short: "Clear event buffers",
@@ -18,11 +20,8 @@ func init() {
 }
 
 func runClear(cmd *cobra.Command, args []string) error {
-	client, err := ipc.Dial()
+	client, err := dialer.Dial()
 	if err != nil {
-		if err == ipc.ErrDaemonNotRunning {
-			return outputError("daemon is not running")
-		}
 		return outputError(err.Error())
 	}
 	defer client.Close()

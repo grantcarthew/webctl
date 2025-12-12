@@ -1,7 +1,8 @@
 # P-006: CLI Framework & Core Commands
 
-- Status: Proposed
-- Started: -
+- Status: Complete
+- Started: 2025-12-12
+- Completed: 2025-12-12
 
 ## Overview
 
@@ -34,23 +35,23 @@ Out of Scope:
 
 ## Success Criteria
 
-- [ ] `webctl start` launches daemon and browser
-- [ ] `webctl start --headless` launches headless
-- [ ] `webctl stop` cleanly shuts down daemon
-- [ ] `webctl status` returns JSON with daemon info
-- [ ] `webctl clear` clears event buffers
-- [ ] Proper exit codes (0 success, 1 error)
-- [ ] All output is valid JSON
+- [x] `webctl start` launches daemon and browser
+- [x] `webctl start --headless` launches headless
+- [x] `webctl stop` cleanly shuts down daemon
+- [x] `webctl status` returns JSON with daemon info
+- [x] `webctl clear` clears event buffers
+- [x] Proper exit codes (0 success, 1 error)
+- [x] All output is valid JSON
 
 ## Deliverables
 
-- `cmd/webctl/main.go` - entry point
-- `cmd/webctl/root.go` - root command
-- `cmd/webctl/start.go` - start command
-- `cmd/webctl/stop.go` - stop command
-- `cmd/webctl/status.go` - status command
-- `cmd/webctl/clear.go` - clear command
-- `internal/cli/client.go` - IPC client wrapper
+- `cmd/webctl/main.go` - entry point (calls cli.Execute())
+- `internal/cli/root.go` - root command and JSON output helpers
+- `internal/cli/start.go` - start command
+- `internal/cli/stop.go` - stop command
+- `internal/cli/status.go` - status command
+- `internal/cli/clear.go` - clear command
+- `internal/daemon/daemon.go` - shutdown handler added
 
 ## Technical Design
 

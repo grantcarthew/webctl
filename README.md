@@ -22,6 +22,17 @@ webctl stop                     # Clean shutdown
 
 Under active development. See `docs/design/design-records/` for design decisions.
 
+### Implemented
+
+- Daemon with CDP event buffering (console, network)
+- IPC via Unix socket
+- CLI framework (Cobra)
+- Lifecycle commands: `start`, `stop`, `status`, `clear`
+
+### In Progress
+
+- Observation commands (P-007): `console`, `network`, `screenshot`, etc.
+
 ## Commands
 
 | Category | Commands |
