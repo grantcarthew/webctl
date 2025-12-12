@@ -139,8 +139,21 @@ func (b *Browser) Close() error {
 		}
 	}
 
-	// Wait for process to exit
-	_ = b.cmd.Wait()
+	// Wait for process to exit with timeout
+	done := make(chan struct{})
+	go func() {
+		_ = b.cmd.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Process exited cleanly
+	case <-time.After(5 * time.Second):
+		// Force kill after timeout
+		_ = b.cmd.Process.Kill()
+		<-done
+	}
 
 	// Clean up temp data directory
 	if b.ownsData && b.dataDir != "" {
