@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Note: ipc import kept for ipc.StatusData type
+
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show daemon status",
@@ -20,13 +22,13 @@ func init() {
 
 func runStatus(cmd *cobra.Command, args []string) error {
 	// Check if daemon is running
-	if !ipc.IsDaemonRunning() {
+	if !dialer.IsDaemonRunning() {
 		return outputSuccess(map[string]any{
 			"running": false,
 		})
 	}
 
-	client, err := ipc.Dial()
+	client, err := dialer.Dial()
 	if err != nil {
 		return outputError(err.Error())
 	}

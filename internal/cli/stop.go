@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
 
@@ -17,11 +16,8 @@ func init() {
 }
 
 func runStop(cmd *cobra.Command, args []string) error {
-	client, err := ipc.Dial()
+	client, err := dialer.Dial()
 	if err != nil {
-		if err == ipc.ErrDaemonNotRunning {
-			return outputError("daemon is not running")
-		}
 		return outputError(err.Error())
 	}
 	defer client.Close()
