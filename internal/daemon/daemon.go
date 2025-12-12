@@ -47,6 +47,7 @@ type Daemon struct {
 	consoleBuf *RingBuffer[ipc.ConsoleEntry]
 	networkBuf *RingBuffer[ipc.NetworkEntry]
 	server     *ipc.Server
+	shutdown   chan struct{}
 }
 
 // New creates a new daemon with the given configuration.
@@ -59,6 +60,7 @@ func New(cfg Config) *Daemon {
 		config:     cfg,
 		consoleBuf: NewRingBuffer[ipc.ConsoleEntry](cfg.BufferSize),
 		networkBuf: NewRingBuffer[ipc.NetworkEntry](cfg.BufferSize),
+		shutdown:   make(chan struct{}),
 	}
 }
 
@@ -123,6 +125,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-sigCh:
+		return nil
+	case <-d.shutdown:
 		return nil
 	case err := <-errCh:
 		return err
@@ -328,9 +332,22 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 		return d.handleClear(req.Target)
 	case "cdp":
 		return d.handleCDP(req)
+	case "shutdown":
+		return d.handleShutdown()
 	default:
 		return ipc.ErrorResponse(fmt.Sprintf("unknown command: %s", req.Cmd))
 	}
+}
+
+// handleShutdown signals the daemon to shut down.
+func (d *Daemon) handleShutdown() ipc.Response {
+	// Signal shutdown in a goroutine so we can return the response first
+	go func() {
+		close(d.shutdown)
+	}()
+	return ipc.SuccessResponse(map[string]string{
+		"message": "shutting down",
+	})
 }
 
 // handleStatus returns the daemon status.
