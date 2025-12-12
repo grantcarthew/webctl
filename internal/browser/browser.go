@@ -150,7 +150,8 @@ func (b *Browser) Close() error {
 	case <-done:
 		// Process exited cleanly
 	case <-time.After(5 * time.Second):
-		// Force kill after timeout
+		// Force kill after timeout. SIGKILL cannot be caught or ignored on POSIX,
+		// so the process will terminate and cmd.Wait() will return.
 		_ = b.cmd.Process.Kill()
 		<-done
 	}

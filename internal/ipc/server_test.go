@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -82,10 +83,10 @@ func TestServer_MultipleClients(t *testing.T) {
 	tmpDir := t.TempDir()
 	socketPath := filepath.Join(tmpDir, "test.sock")
 
-	counter := 0
+	var counter int32
 	handler := func(req Request) Response {
-		counter++
-		return SuccessResponse(map[string]int{"count": counter})
+		count := atomic.AddInt32(&counter, 1)
+		return SuccessResponse(map[string]int{"count": int(count)})
 	}
 
 	server, err := NewServer(socketPath, handler)
@@ -125,8 +126,8 @@ func TestServer_MultipleClients(t *testing.T) {
 		t.Fatalf("client2 send failed: %v", err)
 	}
 
-	if counter != 2 {
-		t.Errorf("expected counter=2, got %d", counter)
+	if atomic.LoadInt32(&counter) != 2 {
+		t.Errorf("expected counter=2, got %d", atomic.LoadInt32(&counter))
 	}
 }
 

@@ -38,6 +38,8 @@ func (b *RingBuffer[T]) Push(item T) {
 }
 
 // All returns all items in the buffer, oldest first.
+// Allocates a new slice on each call. This is acceptable for the current
+// request-response IPC pattern where each query is a discrete operation.
 func (b *RingBuffer[T]) All() []T {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -72,6 +74,26 @@ func (b *RingBuffer[T]) Len() int {
 // Cap returns the buffer capacity.
 func (b *RingBuffer[T]) Cap() int {
 	return b.cap
+}
+
+// Update iterates through buffer items from newest to oldest,
+// calling fn with a pointer to each item. Iteration stops when fn returns true.
+// This allows in-place modification of buffer entries.
+func (b *RingBuffer[T]) Update(fn func(*T) bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.count == 0 {
+		return
+	}
+
+	// Iterate from newest to oldest
+	for i := 0; i < b.count; i++ {
+		idx := (b.head - 1 - i + b.cap) % b.cap
+		if fn(&b.items[idx]) {
+			return
+		}
+	}
 }
 
 // Clear removes all items from the buffer.

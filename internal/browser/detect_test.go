@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"errors"
 	"os"
 	"runtime"
 	"testing"
@@ -53,7 +54,7 @@ func TestFindChrome_EnvVarInvalidPath(t *testing.T) {
 	defer os.Setenv("WEBCTL_CHROME", original)
 
 	_, err := FindChrome()
-	if err != ErrChromeNotFound {
+	if !errors.Is(err, ErrChromeNotFound) {
 		t.Errorf("expected ErrChromeNotFound, got %v", err)
 	}
 }
@@ -72,7 +73,7 @@ func TestFindChrome_SearchesPaths(t *testing.T) {
 			t.Error("found chrome but path is empty")
 		}
 		t.Logf("Found Chrome at: %s", path)
-	} else if err != ErrChromeNotFound {
+	} else if !errors.Is(err, ErrChromeNotFound) {
 		t.Errorf("unexpected error type: %v", err)
 	}
 }

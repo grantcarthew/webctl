@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -94,7 +96,12 @@ func (s *Server) handleConn(conn net.Conn) {
 		// Read newline-delimited JSON
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
-			return // Connection closed or error
+			// EOF means client closed connection normally.
+			// net.ErrClosed occurs during server shutdown.
+			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
+				log.Printf("ipc: unexpected read error: %v", err)
+			}
+			return
 		}
 
 		var req Request

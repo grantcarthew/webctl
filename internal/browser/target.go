@@ -29,6 +29,8 @@ type VersionInfo struct {
 }
 
 // FetchTargets retrieves the list of available targets from the CDP endpoint.
+// Uses http.DefaultClient which has no timeout; callers must provide a context
+// with timeout. This is acceptable for local CDP calls where network issues are rare.
 func FetchTargets(ctx context.Context, host string, port int) ([]Target, error) {
 	url := fmt.Sprintf("http://%s:%d/json", host, port)
 
@@ -61,6 +63,8 @@ func FetchTargets(ctx context.Context, host string, port int) ([]Target, error) 
 }
 
 // FetchVersion retrieves browser version info from the CDP endpoint.
+// Uses http.DefaultClient which has no timeout; callers must provide a context
+// with timeout. This is acceptable for local CDP calls where network issues are rare.
 func FetchVersion(ctx context.Context, host string, port int) (*VersionInfo, error) {
 	url := fmt.Sprintf("http://%s:%d/json/version", host, port)
 

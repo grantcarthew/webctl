@@ -3,6 +3,7 @@ package browser
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
@@ -51,8 +52,7 @@ func FindChrome() (string, error) {
 		if _, err := os.Stat(envPath); err == nil {
 			return envPath, nil
 		}
-		// Env var set but path invalid - still return error with context
-		return "", ErrChromeNotFound
+		return "", fmt.Errorf("WEBCTL_CHROME=%s: %w", envPath, ErrChromeNotFound)
 	}
 
 	// Search common paths

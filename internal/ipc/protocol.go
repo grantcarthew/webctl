@@ -1,6 +1,9 @@
 package ipc
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"log"
+)
 
 // Request represents a command sent from the CLI to the daemon.
 type Request struct {
@@ -69,7 +72,12 @@ type NetworkData struct {
 func SuccessResponse(data any) Response {
 	var raw json.RawMessage
 	if data != nil {
-		raw, _ = json.Marshal(data)
+		var err error
+		raw, err = json.Marshal(data)
+		if err != nil {
+			log.Printf("ipc: failed to marshal response data: %v", err)
+			return ErrorResponse("internal error: failed to marshal response")
+		}
 	}
 	return Response{OK: true, Data: raw}
 }

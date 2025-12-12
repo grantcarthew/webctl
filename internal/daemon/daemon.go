@@ -144,19 +144,22 @@ func (d *Daemon) enableDomains() error {
 func (d *Daemon) subscribeEvents() {
 	// Console events
 	d.cdp.Subscribe("Runtime.consoleAPICalled", func(evt cdp.Event) {
-		entry := d.parseConsoleEvent(evt)
-		d.consoleBuf.Push(entry)
+		if entry, ok := d.parseConsoleEvent(evt); ok {
+			d.consoleBuf.Push(entry)
+		}
 	})
 
 	d.cdp.Subscribe("Runtime.exceptionThrown", func(evt cdp.Event) {
-		entry := d.parseExceptionEvent(evt)
-		d.consoleBuf.Push(entry)
+		if entry, ok := d.parseExceptionEvent(evt); ok {
+			d.consoleBuf.Push(entry)
+		}
 	})
 
 	// Network events
 	d.cdp.Subscribe("Network.requestWillBeSent", func(evt cdp.Event) {
-		entry := d.parseRequestEvent(evt)
-		d.networkBuf.Push(entry)
+		if entry, ok := d.parseRequestEvent(evt); ok {
+			d.networkBuf.Push(entry)
+		}
 	})
 
 	d.cdp.Subscribe("Network.responseReceived", func(evt cdp.Event) {
@@ -165,7 +168,8 @@ func (d *Daemon) subscribeEvents() {
 }
 
 // parseConsoleEvent parses a Runtime.consoleAPICalled event.
-func (d *Daemon) parseConsoleEvent(evt cdp.Event) ipc.ConsoleEntry {
+// Returns the entry and true on success, or zero value and false on parse error.
+func (d *Daemon) parseConsoleEvent(evt cdp.Event) (ipc.ConsoleEntry, bool) {
 	var params struct {
 		Type      string `json:"type"`
 		Timestamp float64 `json:"timestamp"`
@@ -181,7 +185,9 @@ func (d *Daemon) parseConsoleEvent(evt cdp.Event) ipc.ConsoleEntry {
 			} `json:"callFrames"`
 		} `json:"stackTrace"`
 	}
-	json.Unmarshal(evt.Params, &params)
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return ipc.ConsoleEntry{}, false
+	}
 
 	entry := ipc.ConsoleEntry{
 		Type:      params.Type,
@@ -211,11 +217,12 @@ func (d *Daemon) parseConsoleEvent(evt cdp.Event) ipc.ConsoleEntry {
 		entry.Column = frame.ColumnNumber
 	}
 
-	return entry
+	return entry, true
 }
 
 // parseExceptionEvent parses a Runtime.exceptionThrown event.
-func (d *Daemon) parseExceptionEvent(evt cdp.Event) ipc.ConsoleEntry {
+// Returns the entry and true on success, or zero value and false on parse error.
+func (d *Daemon) parseExceptionEvent(evt cdp.Event) (ipc.ConsoleEntry, bool) {
 	var params struct {
 		Timestamp float64 `json:"timestamp"`
 		ExceptionDetails struct {
@@ -228,7 +235,9 @@ func (d *Daemon) parseExceptionEvent(evt cdp.Event) ipc.ConsoleEntry {
 			} `json:"exception"`
 		} `json:"exceptionDetails"`
 	}
-	json.Unmarshal(evt.Params, &params)
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return ipc.ConsoleEntry{}, false
+	}
 
 	text := params.ExceptionDetails.Text
 	if params.ExceptionDetails.Exception != nil && params.ExceptionDetails.Exception.Description != "" {
@@ -242,11 +251,12 @@ func (d *Daemon) parseExceptionEvent(evt cdp.Event) ipc.ConsoleEntry {
 		URL:       params.ExceptionDetails.URL,
 		Line:      params.ExceptionDetails.Line,
 		Column:    params.ExceptionDetails.Column,
-	}
+	}, true
 }
 
 // parseRequestEvent parses a Network.requestWillBeSent event.
-func (d *Daemon) parseRequestEvent(evt cdp.Event) ipc.NetworkEntry {
+// Returns the entry and true on success, or zero value and false on parse error.
+func (d *Daemon) parseRequestEvent(evt cdp.Event) (ipc.NetworkEntry, bool) {
 	var params struct {
 		RequestID string  `json:"requestId"`
 		Timestamp float64 `json:"timestamp"`
@@ -257,7 +267,9 @@ func (d *Daemon) parseRequestEvent(evt cdp.Event) ipc.NetworkEntry {
 		} `json:"request"`
 		Type string `json:"type"`
 	}
-	json.Unmarshal(evt.Params, &params)
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return ipc.NetworkEntry{}, false
+	}
 
 	return ipc.NetworkEntry{
 		RequestID:   params.RequestID,
@@ -266,7 +278,7 @@ func (d *Daemon) parseRequestEvent(evt cdp.Event) ipc.NetworkEntry {
 		Type:        params.Type,
 		RequestTime: int64(params.Timestamp * 1000), // Convert to milliseconds
 		Headers:     params.Request.Headers,
-	}
+	}, true
 }
 
 // updateResponseEvent updates an existing network entry with response data.
@@ -281,22 +293,26 @@ func (d *Daemon) updateResponseEvent(evt cdp.Event) {
 			Headers    map[string]string `json:"headers"`
 		} `json:"response"`
 	}
-	json.Unmarshal(evt.Params, &params)
-
-	// Find and update the matching entry
-	entries := d.networkBuf.All()
-	for i := len(entries) - 1; i >= 0; i-- {
-		if entries[i].RequestID == params.RequestID {
-			entries[i].Status = params.Response.Status
-			entries[i].StatusText = params.Response.StatusText
-			entries[i].MimeType = params.Response.MimeType
-			entries[i].ResponseTime = int64(params.Timestamp * 1000)
-			if entries[i].RequestTime > 0 {
-				entries[i].Duration = float64(entries[i].ResponseTime-entries[i].RequestTime) / 1000.0
-			}
-			break
-		}
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return
 	}
+
+	// Find and update the matching entry in-place.
+	// Iterates newest-to-oldest; responses typically arrive shortly after requests,
+	// so the match is usually found within the first few items despite O(n) worst case.
+	d.networkBuf.Update(func(entry *ipc.NetworkEntry) bool {
+		if entry.RequestID == params.RequestID {
+			entry.Status = params.Response.Status
+			entry.StatusText = params.Response.StatusText
+			entry.MimeType = params.Response.MimeType
+			entry.ResponseTime = int64(params.Timestamp * 1000)
+			if entry.RequestTime > 0 {
+				entry.Duration = float64(entry.ResponseTime-entry.RequestTime) / 1000.0
+			}
+			return true // stop iteration
+		}
+		return false
+	})
 }
 
 // handleRequest processes an IPC request and returns a response.
