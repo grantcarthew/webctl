@@ -91,14 +91,9 @@ func (m *mockConn) queueResponse(data []byte) {
 func TestClient_Send_CorrelatesResponseByID(t *testing.T) {
 	t.Parallel()
 
-	// Prepare a response that will be returned
-	resp := Response{
-		ID:     1,
-		Result: json.RawMessage(`{"frameId":"ABC123"}`),
-	}
-	respData, _ := json.Marshal(resp)
-
-	conn := newMockConn(respData)
+	// Use echo mock that responds after each write to avoid race condition
+	// where the read loop consumes the response before Send registers its channel
+	conn := newEchoMockConnWithResult(`{"frameId":"ABC123"}`)
 
 	client := NewClient(conn)
 	defer client.Close()
@@ -135,17 +130,8 @@ func TestClient_Send_CorrelatesResponseByID(t *testing.T) {
 func TestClient_Send_ReturnsErrorOnCDPError(t *testing.T) {
 	t.Parallel()
 
-	// Prepare an error response
-	resp := Response{
-		ID: 1,
-		Error: &Error{
-			Code:    -32000,
-			Message: "Target closed",
-		},
-	}
-	respData, _ := json.Marshal(resp)
-
-	conn := newMockConn(respData)
+	// Use echo mock that returns error response after each write
+	conn := newEchoMockConnWithError(-32000, "Target closed")
 
 	client := NewClient(conn)
 	defer client.Close()
@@ -340,15 +326,87 @@ func TestClient_ConcurrentSends(t *testing.T) {
 type echoMockConn struct {
 	mu        sync.Mutex
 	responses chan []byte
+	written   [][]byte
 	closed    bool
 	closeCh   chan struct{}
+	result    json.RawMessage // Custom result to return
 }
 
 func newEchoMockConn() *echoMockConn {
 	return &echoMockConn{
 		responses: make(chan []byte, 100),
 		closeCh:   make(chan struct{}),
+		result:    json.RawMessage(`{"ok":true}`),
 	}
+}
+
+func newEchoMockConnWithResult(result string) *echoMockConn {
+	return &echoMockConn{
+		responses: make(chan []byte, 100),
+		closeCh:   make(chan struct{}),
+		result:    json.RawMessage(result),
+	}
+}
+
+// echoMockConnWithError returns an error response for each request.
+type echoMockConnWithError struct {
+	mu        sync.Mutex
+	responses chan []byte
+	closed    bool
+	closeCh   chan struct{}
+	cdpError  *Error
+}
+
+func newEchoMockConnWithError(code int, message string) *echoMockConnWithError {
+	return &echoMockConnWithError{
+		responses: make(chan []byte, 100),
+		closeCh:   make(chan struct{}),
+		cdpError:  &Error{Code: code, Message: message},
+	}
+}
+
+func (m *echoMockConnWithError) Read(ctx context.Context) (websocket.MessageType, []byte, error) {
+	select {
+	case resp := <-m.responses:
+		return websocket.MessageText, resp, nil
+	case <-m.closeCh:
+		return 0, nil, errors.New("connection closed")
+	case <-ctx.Done():
+		return 0, nil, ctx.Err()
+	}
+}
+
+func (m *echoMockConnWithError) Write(ctx context.Context, typ websocket.MessageType, data []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.closed {
+		return errors.New("connection closed")
+	}
+
+	var req Request
+	if err := json.Unmarshal(data, &req); err != nil {
+		return err
+	}
+
+	resp := Response{
+		ID:    req.ID,
+		Error: m.cdpError,
+	}
+	respData, _ := json.Marshal(resp)
+	m.responses <- respData
+
+	return nil
+}
+
+func (m *echoMockConnWithError) Close(code websocket.StatusCode, reason string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.closed {
+		m.closed = true
+		close(m.closeCh)
+	}
+	return nil
 }
 
 func (m *echoMockConn) Read(ctx context.Context) (websocket.MessageType, []byte, error) {
@@ -370,21 +428,32 @@ func (m *echoMockConn) Write(ctx context.Context, typ websocket.MessageType, dat
 		return errors.New("connection closed")
 	}
 
+	// Track written data
+	m.written = append(m.written, data)
+
 	// Parse the request to get the ID
 	var req Request
 	if err := json.Unmarshal(data, &req); err != nil {
 		return err
 	}
 
-	// Generate a matching response
+	// Generate a matching response with the configured result
 	resp := Response{
 		ID:     req.ID,
-		Result: json.RawMessage(`{"ok":true}`),
+		Result: m.result,
 	}
 	respData, _ := json.Marshal(resp)
 	m.responses <- respData
 
 	return nil
+}
+
+func (m *echoMockConn) getWritten() [][]byte {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([][]byte, len(m.written))
+	copy(result, m.written)
+	return result
 }
 
 func (m *echoMockConn) Close(code websocket.StatusCode, reason string) error {
@@ -419,26 +488,13 @@ func TestClient_Send_ConnectionClosedMidRequest(t *testing.T) {
 func TestClient_ReadLoop_HandlesUnknownMessageID(t *testing.T) {
 	t.Parallel()
 
-	// Response with ID that nobody is waiting for
-	unknownResp := Response{
-		ID:     9999,
-		Result: json.RawMessage(`{}`),
-	}
-	unknownData, _ := json.Marshal(unknownResp)
-
-	// Valid response for our request
-	validResp := Response{
-		ID:     1,
-		Result: json.RawMessage(`{"success":true}`),
-	}
-	validData, _ := json.Marshal(validResp)
-
-	conn := newMockConn(unknownData, validData)
+	// Use a custom mock that sends an unknown ID first, then the correct response
+	conn := newUnknownIDMockConn()
 
 	client := NewClient(conn)
 	defer client.Close()
 
-	// Should still work despite unknown message
+	// Should still work despite unknown message being sent first
 	result, err := client.Send("Test.method", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -447,4 +503,72 @@ func TestClient_ReadLoop_HandlesUnknownMessageID(t *testing.T) {
 	if string(result) != `{"success":true}` {
 		t.Errorf("expected success result, got %s", string(result))
 	}
+}
+
+// unknownIDMockConn sends an unknown ID response first, then the correct response.
+type unknownIDMockConn struct {
+	mu        sync.Mutex
+	responses chan []byte
+	closed    bool
+	closeCh   chan struct{}
+}
+
+func newUnknownIDMockConn() *unknownIDMockConn {
+	return &unknownIDMockConn{
+		responses: make(chan []byte, 100),
+		closeCh:   make(chan struct{}),
+	}
+}
+
+func (m *unknownIDMockConn) Read(ctx context.Context) (websocket.MessageType, []byte, error) {
+	select {
+	case resp := <-m.responses:
+		return websocket.MessageText, resp, nil
+	case <-m.closeCh:
+		return 0, nil, errors.New("connection closed")
+	case <-ctx.Done():
+		return 0, nil, ctx.Err()
+	}
+}
+
+func (m *unknownIDMockConn) Write(ctx context.Context, typ websocket.MessageType, data []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.closed {
+		return errors.New("connection closed")
+	}
+
+	var req Request
+	if err := json.Unmarshal(data, &req); err != nil {
+		return err
+	}
+
+	// First send an unknown ID response
+	unknownResp := Response{
+		ID:     9999,
+		Result: json.RawMessage(`{}`),
+	}
+	unknownData, _ := json.Marshal(unknownResp)
+	m.responses <- unknownData
+
+	// Then send the correct response
+	validResp := Response{
+		ID:     req.ID,
+		Result: json.RawMessage(`{"success":true}`),
+	}
+	validData, _ := json.Marshal(validResp)
+	m.responses <- validData
+
+	return nil
+}
+
+func (m *unknownIDMockConn) Close(code websocket.StatusCode, reason string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.closed {
+		m.closed = true
+		close(m.closeCh)
+	}
+	return nil
 }

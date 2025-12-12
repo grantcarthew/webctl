@@ -15,7 +15,7 @@ context/docs/*
 !context/docs/README.md
 
 # Go Binary Output
-webctl
+/webctl
 *.exe
 *.exe~
 *.dll
