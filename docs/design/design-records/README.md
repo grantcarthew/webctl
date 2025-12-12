@@ -9,5 +9,7 @@ Design Records (DRs) document significant technical decisions made during develo
 | DR-001 | [Core Architecture](dr-001-core-architecture.md) | Accepted | 2025-12-11 |
 | DR-002 | [CLI Browser Commands](dr-002-cli-browser-commands.md) | Accepted | 2025-12-11 |
 | DR-003 | [CDP Eager Data Capture](dr-003-cdp-eager-data-capture.md) | Accepted | 2025-12-11 |
+| DR-004 | [Testing Strategy](dr-004-testing-strategy.md) | Accepted | 2025-12-12 |
+| DR-005 | [Browser Launch Configuration](dr-005-browser-launch.md) | Accepted | 2025-12-12 |
 
 Note: Superseded design records are in `superseded/`

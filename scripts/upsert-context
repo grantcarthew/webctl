@@ -85,6 +85,7 @@ fi
 # Repository Definitions
 # -----------------------------------------------------------------------------
 declare -A REPOS=(
+  ["websocket"]="https://github.com/coder/websocket.git"
   ["rod"]="https://github.com/go-rod/rod.git"
   ["devtools-protocol"]="https://github.com/ChromeDevTools/devtools-protocol.git"
 )
