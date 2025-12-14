@@ -11,5 +11,7 @@ Design Records (DRs) document significant technical decisions made during develo
 | DR-003 | [CDP Eager Data Capture](dr-003-cdp-eager-data-capture.md) | Accepted | 2025-12-11 |
 | DR-004 | [Testing Strategy](dr-004-testing-strategy.md) | Accepted | 2025-12-12 |
 | DR-005 | [Browser Launch Configuration](dr-005-browser-launch.md) | Accepted | 2025-12-12 |
+| DR-006 | [Action Command Flags](dr-006-action-command-flags.md) | Accepted | 2025-12-14 |
+| DR-007 | [Console Command Interface](dr-007-console-command.md) | Accepted | 2025-12-14 |
 
 Note: Superseded design records are in `superseded/`
