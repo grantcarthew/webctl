@@ -35,7 +35,19 @@ func runStart(cmd *cobra.Command, args []string) error {
 	cfg.Headless = startHeadless
 	cfg.Port = startPort
 
-	d := daemon.New(cfg)
+	// Declare d first so the closure can capture it.
+	// The closure is only called when REPL executes commands, by which time d is set.
+	var d *daemon.Daemon
+
+	// Create command executor for REPL that uses Cobra with direct execution.
+	cfg.CommandExecutor = func(args []string) (bool, error) {
+		factory := NewDirectExecutorFactory(d.Handler())
+		SetExecutorFactory(factory)
+		defer ResetExecutorFactory()
+		return ExecuteArgs(args)
+	}
+
+	d = daemon.New(cfg)
 
 	// Output startup message
 	outputSuccess(map[string]any{

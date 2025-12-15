@@ -6,11 +6,97 @@ import (
 	"github.com/grantcarthew/webctl/internal/ipc"
 )
 
-func TestREPL_parseCommand(t *testing.T) {
+func TestREPL_handleSpecialCommand(t *testing.T) {
 	shutdownCalled := false
 	r := NewREPL(func(req ipc.Request) ipc.Response {
 		return ipc.SuccessResponse(nil)
-	}, func() { shutdownCalled = true })
+	}, nil, func() { shutdownCalled = true })
+
+	tests := []struct {
+		name         string
+		line         string
+		wantHandled  bool
+		wantShutdown bool
+	}{
+		{"exit", "exit", true, true},
+		{"quit", "quit", true, true},
+		{"stop", "stop", true, true},
+		{"help", "help", true, false},
+		{"question mark", "?", true, false},
+		{"history", "history", true, false},
+		{"regular command", "status", false, false},
+		{"clear command", "clear console", false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			shutdownCalled = false
+			handled := r.handleSpecialCommand(tt.line)
+
+			if handled != tt.wantHandled {
+				t.Errorf("handleSpecialCommand() = %v, want %v", handled, tt.wantHandled)
+			}
+
+			if tt.wantShutdown && !shutdownCalled {
+				t.Error("expected shutdown to be called")
+			}
+		})
+	}
+}
+
+func TestNewREPL(t *testing.T) {
+	handlerCalled := false
+	handler := func(req ipc.Request) ipc.Response {
+		handlerCalled = true
+		return ipc.SuccessResponse(nil)
+	}
+
+	shutdownCalled := false
+	shutdown := func() {
+		shutdownCalled = true
+	}
+
+	cmdExecCalled := false
+	cmdExec := func(args []string) (bool, error) {
+		cmdExecCalled = true
+		return true, nil
+	}
+
+	r := NewREPL(handler, cmdExec, shutdown)
+
+	if r == nil {
+		t.Fatal("NewREPL() returned nil")
+	}
+
+	// Verify shutdown callback
+	r.shutdown()
+	if !shutdownCalled {
+		t.Error("shutdown callback was not called")
+	}
+
+	// Verify command executor is set
+	if r.cmdExec == nil {
+		t.Error("cmdExec should not be nil")
+	}
+
+	// Call cmdExec to verify it works
+	r.cmdExec([]string{"test"})
+	if !cmdExecCalled {
+		t.Error("cmdExec was not called")
+	}
+
+	// Verify handler is set (test basic fallback)
+	r2 := NewREPL(handler, nil, shutdown)
+	r2.executeBasic([]string{"status"})
+	if !handlerCalled {
+		t.Error("handler was not called through executeBasic")
+	}
+}
+
+func TestREPL_parseBasicCommand(t *testing.T) {
+	r := NewREPL(func(req ipc.Request) ipc.Response {
+		return ipc.SuccessResponse(nil)
+	}, nil, func() {})
 
 	tests := []struct {
 		name       string
@@ -60,12 +146,6 @@ func TestREPL_parseCommand(t *testing.T) {
 			wantTarget: "network",
 		},
 		{
-			name:    "stop maps to shutdown",
-			cmd:     "stop",
-			args:    nil,
-			wantCmd: "shutdown",
-		},
-		{
 			name:    "unknown command",
 			cmd:     "unknown",
 			args:    nil,
@@ -75,96 +155,76 @@ func TestREPL_parseCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := r.parseCommand(tt.cmd, tt.args)
+			req := r.parseBasicCommand(tt.cmd, tt.args)
 
 			if tt.wantNil {
 				if req != nil {
-					t.Errorf("parseCommand() = %v, want nil", req)
+					t.Errorf("parseBasicCommand() = %v, want nil", req)
 				}
 				return
 			}
 
 			if req == nil {
-				t.Fatal("parseCommand() = nil, want non-nil")
+				t.Fatal("parseBasicCommand() = nil, want non-nil")
 			}
 			if req.Cmd != tt.wantCmd {
-				t.Errorf("parseCommand().Cmd = %q, want %q", req.Cmd, tt.wantCmd)
+				t.Errorf("parseBasicCommand().Cmd = %q, want %q", req.Cmd, tt.wantCmd)
 			}
 			if req.Target != tt.wantTarget {
-				t.Errorf("parseCommand().Target = %q, want %q", req.Target, tt.wantTarget)
+				t.Errorf("parseBasicCommand().Target = %q, want %q", req.Target, tt.wantTarget)
 			}
 		})
 	}
-
-	_ = shutdownCalled
 }
 
-func TestREPL_handleSpecialCommand(t *testing.T) {
-	shutdownCalled := false
+func TestREPL_executeCommand_withCommandExecutor(t *testing.T) {
+	executedArgs := []string{}
+	cmdExec := func(args []string) (bool, error) {
+		executedArgs = args
+		return true, nil
+	}
+
 	r := NewREPL(func(req ipc.Request) ipc.Response {
 		return ipc.SuccessResponse(nil)
-	}, func() { shutdownCalled = true })
+	}, cmdExec, func() {})
 
-	tests := []struct {
-		name            string
-		line            string
-		wantHandled     bool
-		wantShutdown    bool
-	}{
-		{"exit", "exit", true, true},
-		{"quit", "quit", true, true},
-		{"help", "help", true, false},
-		{"question mark", "?", true, false},
-		{"history", "history", true, false},
-		{"regular command", "status", false, false},
-		{"clear command", "clear console", false, false},
+	// Test that command executor is called with correct args
+	r.executeCommand("console --tail 5")
+
+	if len(executedArgs) != 3 {
+		t.Fatalf("expected 3 args, got %d: %v", len(executedArgs), executedArgs)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			shutdownCalled = false
-			handled := r.handleSpecialCommand(tt.line)
-
-			if handled != tt.wantHandled {
-				t.Errorf("handleSpecialCommand() = %v, want %v", handled, tt.wantHandled)
-			}
-
-			// Only check shutdown for first occurrence (exit/quit reset state)
-			if tt.wantShutdown && !shutdownCalled {
-				t.Error("expected shutdown to be called")
-			}
-		})
+	if executedArgs[0] != "console" {
+		t.Errorf("expected first arg 'console', got %q", executedArgs[0])
+	}
+	if executedArgs[1] != "--tail" {
+		t.Errorf("expected second arg '--tail', got %q", executedArgs[1])
+	}
+	if executedArgs[2] != "5" {
+		t.Errorf("expected third arg '5', got %q", executedArgs[2])
 	}
 }
 
-func TestNewREPL(t *testing.T) {
+func TestREPL_executeCommand_fallbackToBasic(t *testing.T) {
 	handlerCalled := false
+	receivedCmd := ""
+
 	handler := func(req ipc.Request) ipc.Response {
 		handlerCalled = true
+		receivedCmd = req.Cmd
 		return ipc.SuccessResponse(nil)
 	}
 
-	shutdownCalled := false
-	shutdown := func() {
-		shutdownCalled = true
-	}
+	// No command executor - should fall back to basic
+	r := NewREPL(handler, nil, func() {})
 
-	r := NewREPL(handler, shutdown)
+	r.executeCommand("status")
 
-	if r == nil {
-		t.Fatal("NewREPL() returned nil")
-	}
-
-	// Verify executor works
-	r.executor.Execute(ipc.Request{Cmd: "test"})
 	if !handlerCalled {
-		t.Error("handler was not called through executor")
+		t.Error("handler was not called in fallback mode")
 	}
-
-	// Verify shutdown callback
-	r.shutdown()
-	if !shutdownCalled {
-		t.Error("shutdown callback was not called")
+	if receivedCmd != "status" {
+		t.Errorf("expected cmd 'status', got %q", receivedCmd)
 	}
 }
 

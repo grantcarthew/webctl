@@ -705,3 +705,177 @@ func TestApplyConsoleLimiting(t *testing.T) {
 		})
 	}
 }
+
+func TestExecuteArgs_recognizedCommand(t *testing.T) {
+	// Set up mock factory with proper status response
+	statusData := ipc.StatusData{
+		Running: true,
+		URL:     "https://example.com",
+		Title:   "Test",
+		PID:     12345,
+	}
+	statusJSON, _ := json.Marshal(statusData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true, Data: statusJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	// Capture stdout
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	recognized, err := ExecuteArgs([]string{"status"})
+
+	w.Close()
+	os.Stdout = old
+
+	if !recognized {
+		t.Error("ExecuteArgs should recognize 'status' command")
+	}
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestExecuteArgs_unrecognizedCommand(t *testing.T) {
+	recognized, err := ExecuteArgs([]string{"nonexistent-command"})
+
+	if recognized {
+		t.Error("ExecuteArgs should not recognize 'nonexistent-command'")
+	}
+	if err != nil {
+		t.Errorf("unexpected error for unrecognized command: %v", err)
+	}
+}
+
+func TestExecuteArgs_emptyArgs(t *testing.T) {
+	recognized, err := ExecuteArgs([]string{})
+
+	if recognized {
+		t.Error("ExecuteArgs should not recognize empty args")
+	}
+	if err != nil {
+		t.Errorf("unexpected error for empty args: %v", err)
+	}
+}
+
+func TestDirectExecutorFactory(t *testing.T) {
+	handlerCalled := false
+	receivedCmd := ""
+
+	handler := func(req ipc.Request) ipc.Response {
+		handlerCalled = true
+		receivedCmd = req.Cmd
+		return ipc.SuccessResponse(map[string]string{"result": "ok"})
+	}
+
+	factory := NewDirectExecutorFactory(handler)
+
+	// Test IsDaemonRunning always returns true
+	if !factory.IsDaemonRunning() {
+		t.Error("DirectExecutorFactory.IsDaemonRunning() should always return true")
+	}
+
+	// Test NewExecutor returns working executor
+	exec, err := factory.NewExecutor()
+	if err != nil {
+		t.Fatalf("NewExecutor() error: %v", err)
+	}
+
+	resp, err := exec.Execute(ipc.Request{Cmd: "test"})
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	if !handlerCalled {
+		t.Error("handler was not called")
+	}
+	if receivedCmd != "test" {
+		t.Errorf("received cmd = %q, want %q", receivedCmd, "test")
+	}
+	if !resp.OK {
+		t.Error("response.OK should be true")
+	}
+
+	// Test Close is a no-op
+	if err := exec.Close(); err != nil {
+		t.Errorf("Close() error: %v", err)
+	}
+}
+
+func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
+	// This test verifies that flags are reset between REPL command executions
+	consoleData := ipc.ConsoleData{
+		Entries: []ipc.ConsoleEntry{
+			{Type: "log", Text: "1", Timestamp: 1},
+			{Type: "log", Text: "2", Timestamp: 2},
+			{Type: "log", Text: "3", Timestamp: 3},
+			{Type: "log", Text: "4", Timestamp: 4},
+			{Type: "log", Text: "5", Timestamp: 5},
+		},
+		Count: 5,
+	}
+	consoleJSON, _ := json.Marshal(consoleData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true, Data: consoleJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	// First call with --tail 2
+	old := os.Stdout
+	r1, w1, _ := os.Pipe()
+	os.Stdout = w1
+
+	ExecuteArgs([]string{"console", "--tail", "2"})
+
+	w1.Close()
+	os.Stdout = old
+
+	var buf1 bytes.Buffer
+	buf1.ReadFrom(r1)
+
+	var result1 map[string]any
+	json.Unmarshal(buf1.Bytes(), &result1)
+
+	count1 := result1["count"].(float64)
+	if count1 != 2 {
+		t.Errorf("first call with --tail 2: count = %v, want 2", count1)
+	}
+
+	// Second call without flags - should show all 5
+	r2, w2, _ := os.Pipe()
+	os.Stdout = w2
+
+	ExecuteArgs([]string{"console"})
+
+	w2.Close()
+	os.Stdout = old
+
+	var buf2 bytes.Buffer
+	buf2.ReadFrom(r2)
+
+	var result2 map[string]any
+	json.Unmarshal(buf2.Bytes(), &result2)
+
+	count2 := result2["count"].(float64)
+	if count2 != 5 {
+		t.Errorf("second call without flags: count = %v, want 5 (flags should be reset)", count2)
+	}
+}

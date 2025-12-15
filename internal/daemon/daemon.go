@@ -26,6 +26,9 @@ type Config struct {
 	SocketPath string
 	PIDPath    string
 	BufferSize int
+	// CommandExecutor is called by REPL for CLI command execution with flags.
+	// If nil, REPL falls back to basic IPC-only execution.
+	CommandExecutor ipc.CommandExecutor
 }
 
 // DefaultConfig returns the default daemon configuration.
@@ -62,6 +65,12 @@ func New(cfg Config) *Daemon {
 		networkBuf: NewRingBuffer[ipc.NetworkEntry](cfg.BufferSize),
 		shutdown:   make(chan struct{}),
 	}
+}
+
+// Handler returns the IPC request handler function.
+// Used by the CLI to create a direct executor for REPL command execution.
+func (d *Daemon) Handler() ipc.Handler {
+	return d.handleRequest
 }
 
 // Run starts the daemon and blocks until shutdown.
@@ -123,7 +132,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 	// Start REPL if stdin is a TTY
 	replDone := make(chan struct{})
 	if IsStdinTTY() {
-		repl := NewREPL(d.handleRequest, func() { close(d.shutdown) })
+		repl := NewREPL(d.handleRequest, d.config.CommandExecutor, func() { close(d.shutdown) })
 		go func() {
 			defer close(replDone)
 			repl.Run()
@@ -278,7 +287,7 @@ func (d *Daemon) parseExceptionEvent(evt cdp.Event) (ipc.ConsoleEntry, bool) {
 func (d *Daemon) parseRequestEvent(evt cdp.Event) (ipc.NetworkEntry, bool) {
 	var params struct {
 		RequestID string  `json:"requestId"`
-		Timestamp float64 `json:"timestamp"`
+		WallTime  float64 `json:"wallTime"` // Unix epoch in seconds
 		Request   struct {
 			URL     string            `json:"url"`
 			Method  string            `json:"method"`
@@ -295,7 +304,7 @@ func (d *Daemon) parseRequestEvent(evt cdp.Event) (ipc.NetworkEntry, bool) {
 		URL:         params.Request.URL,
 		Method:      params.Request.Method,
 		Type:        params.Type,
-		RequestTime: int64(params.Timestamp * 1000), // Convert to milliseconds
+		RequestTime: int64(params.WallTime * 1000), // Convert seconds to milliseconds
 		Headers:     params.Request.Headers,
 	}, true
 }
@@ -303,8 +312,7 @@ func (d *Daemon) parseRequestEvent(evt cdp.Event) (ipc.NetworkEntry, bool) {
 // updateResponseEvent updates an existing network entry with response data.
 func (d *Daemon) updateResponseEvent(evt cdp.Event) {
 	var params struct {
-		RequestID string  `json:"requestId"`
-		Timestamp float64 `json:"timestamp"`
+		RequestID string `json:"requestId"`
 		Response  struct {
 			Status     int               `json:"status"`
 			StatusText string            `json:"statusText"`
@@ -316,6 +324,11 @@ func (d *Daemon) updateResponseEvent(evt cdp.Event) {
 		return
 	}
 
+	// Use current wall time for response timestamp since CDP's Network.responseReceived
+	// only provides monotonic timestamp, not wallTime. This is accurate because events
+	// are processed in real-time.
+	responseTime := time.Now().UnixMilli()
+
 	// Find and update the matching entry in-place.
 	// Iterates newest-to-oldest; responses typically arrive shortly after requests,
 	// so the match is usually found within the first few items despite O(n) worst case.
@@ -324,7 +337,7 @@ func (d *Daemon) updateResponseEvent(evt cdp.Event) {
 			entry.Status = params.Response.Status
 			entry.StatusText = params.Response.StatusText
 			entry.MimeType = params.Response.MimeType
-			entry.ResponseTime = int64(params.Timestamp * 1000)
+			entry.ResponseTime = responseTime
 			if entry.RequestTime > 0 {
 				entry.Duration = float64(entry.ResponseTime-entry.RequestTime) / 1000.0
 			}
