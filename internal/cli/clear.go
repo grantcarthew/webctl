@@ -20,11 +20,11 @@ func init() {
 }
 
 func runClear(cmd *cobra.Command, args []string) error {
-	client, err := dialer.Dial()
+	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer client.Close()
+	defer exec.Close()
 
 	target := ""
 	if len(args) > 0 {
@@ -35,7 +35,7 @@ func runClear(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	resp, err := client.Send(ipc.Request{
+	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "clear",
 		Target: target,
 	})

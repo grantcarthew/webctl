@@ -27,7 +27,7 @@ func init() {
 
 func runStart(cmd *cobra.Command, args []string) error {
 	// Check if daemon is already running
-	if dialer.IsDaemonRunning() {
+	if execFactory.IsDaemonRunning() {
 		return outputError("daemon is already running")
 	}
 

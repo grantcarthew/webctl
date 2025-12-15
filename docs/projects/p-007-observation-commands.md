@@ -47,44 +47,45 @@ Console Command:
 - [x] `webctl console` returns buffered logs as JSON
 - [x] Console command has unit and integration tests
 
+Daemon REPL:
+
+- [x] DR-008 written documenting daemon REPL interface
+- [x] `webctl start` accepts interactive commands via stdin when TTY
+- [x] REPL supports: status, console, network, clear, stop
+- [x] REPL has readline support with command history
+
 Network Command:
 
-- [ ] DR-008 written documenting network command interface
+- [ ] DR-009 written documenting network command interface
 - [ ] `webctl network` returns buffered requests with bodies
 - [ ] Network command has unit and integration tests
 
 Screenshot Command:
 
-- [ ] DR-009 written documenting screenshot command interface
+- [ ] DR-010 written documenting screenshot command interface
 - [ ] `webctl screenshot` outputs PNG to stdout or JSON with base64
 - [ ] `webctl screenshot --full-page` captures entire scrollable page
 - [ ] Screenshot command has unit and integration tests
 
 HTML Command:
 
-- [ ] DR-010 written documenting html command interface
+- [ ] DR-011 written documenting html command interface
 - [ ] `webctl html` returns full page HTML
 - [ ] `webctl html ".selector"` returns element HTML
 - [ ] HTML command has unit and integration tests
 
 Eval Command:
 
-- [ ] DR-011 written documenting eval command interface
+- [ ] DR-012 written documenting eval command interface
 - [ ] `webctl eval "1+1"` returns `2`
 - [ ] `webctl eval "Promise.resolve(42)"` handles async expressions
 - [ ] Eval command has unit and integration tests
 
 Cookies Command:
 
-- [ ] DR-012 written documenting cookies command interface
+- [ ] DR-013 written documenting cookies command interface
 - [ ] `webctl cookies` returns all cookies as JSON
 - [ ] Cookies command has unit and integration tests
-
-Daemon REPL:
-
-- [ ] `webctl start` accepts interactive commands via stdin
-- [ ] REPL supports: status, console, network, clear
-- [ ] REPL parses command flags (e.g., `console --head 5`)
 
 ## Deliverables
 
@@ -92,20 +93,23 @@ Design Records:
 
 - DR-006: Action Command Flags (--clear for action commands)
 - DR-007: Console Command Interface
-- DR-008: Network Command Interface
-- DR-009: Screenshot Command Interface
-- DR-010: HTML Command Interface
-- DR-011: Eval Command Interface
-- DR-012: Cookies Command Interface
+- DR-008: Daemon REPL Interface
+- DR-009: Network Command Interface
+- DR-010: Screenshot Command Interface
+- DR-011: HTML Command Interface
+- DR-012: Eval Command Interface
+- DR-013: Cookies Command Interface
 
 Implementation Files:
 
-- `internal/cli/console.go`
+- `internal/cli/console.go` - COMPLETE
 - `internal/cli/network.go`
 - `internal/cli/screenshot.go`
 - `internal/cli/html.go`
 - `internal/cli/eval.go`
 - `internal/cli/cookies.go`
+- `internal/executor/` - Executor interface for CLI/REPL command execution - COMPLETE
+- `internal/daemon/repl.go` - REPL implementation - COMPLETE
 - Daemon-side handlers for each command (internal/daemon/)
 - Test files for each command (internal/cli/cli_test.go)
 
@@ -259,28 +263,34 @@ Console Command Design (DR-007): COMPLETE
 - docs/design/design-records/dr-006-action-command-flags.md - --clear flag behavior
 - internal/daemon/daemon.go - Existing console buffer code
 
-Network Command Design (DR-008):
+Daemon REPL Design (DR-008): COMPLETE
+
+- docs/design/design-records/dr-008-daemon-repl.md - REPL interface and Executor pattern
+- internal/executor/ - Executor interface implementation
+- internal/daemon/repl.go - REPL implementation
+
+Network Command Design (DR-009):
 
 - docs/design/design-records/dr-003-cdp-eager-data-capture.md - Network buffer and response body fetching
 - docs/design/design-records/dr-006-action-command-flags.md - --clear flag behavior
 - internal/daemon/daemon.go - Existing network buffer code
 
-Screenshot Command Design (DR-009):
+Screenshot Command Design (DR-010):
 
 - docs/design/design-records/dr-006-action-command-flags.md - --clear flag behavior (if applicable)
 - No additional prerequisites
 
-HTML Command Design (DR-010):
+HTML Command Design (DR-011):
 
 - docs/design/design-records/dr-006-action-command-flags.md - --clear flag behavior (if applicable)
 - No additional prerequisites
 
-Eval Command Design (DR-011):
+Eval Command Design (DR-012):
 
 - docs/design/design-records/dr-006-action-command-flags.md - --clear flag behavior (if applicable)
 - No additional prerequisites
 
-Cookies Command Design (DR-012):
+Cookies Command Design (DR-013):
 
 - docs/design/design-records/dr-006-action-command-flags.md - --clear flag behavior (if applicable)
 - No additional prerequisites
@@ -291,6 +301,7 @@ Before starting any implementation phase:
 - The corresponding DR written in the design phase
 - internal/cli/root.go - Command registration patterns
 - internal/daemon/daemon.go - Daemon handler patterns
+- internal/executor/ - Executor interface for command execution
 
 ## Testing Strategy
 
@@ -322,12 +333,15 @@ Phase 2 - Implementation:
 Recommended order (prioritize console and network):
 
 1. Console (DR-007 + implementation) - COMPLETE
-2. Network (DR-008 + implementation)
-3. Screenshot (DR-009 + implementation)
-4. HTML (DR-010 + implementation)
-5. Eval (DR-011 + implementation)
-6. Cookies (DR-012 + implementation)
+2. Daemon REPL (DR-008 + implementation) - COMPLETE
+3. Network (DR-009 + implementation)
+4. Screenshot (DR-010 + implementation)
+5. HTML (DR-011 + implementation)
+6. Eval (DR-012 + implementation)
+7. Cookies (DR-013 + implementation)
 
 ## Notes
 
 Console and network commands are the most valuable for AI agents debugging web apps. They were the original motivation for webctl and should be prioritized.
+
+The Daemon REPL was prioritized because it changed the command execution architecture (Executor interface), which should be in place before implementing additional commands.

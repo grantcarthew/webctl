@@ -7,58 +7,51 @@ import (
 	"os"
 	"testing"
 
+	"github.com/grantcarthew/webctl/internal/executor"
 	"github.com/grantcarthew/webctl/internal/ipc"
 )
 
-// mockClient implements IPCClient for testing.
-type mockClient struct {
-	sendFunc    func(req ipc.Request) (ipc.Response, error)
-	sendCmdFunc func(cmd string) (ipc.Response, error)
+// mockExecutor implements executor.Executor for testing.
+type mockExecutor struct {
+	executeFunc func(req ipc.Request) (ipc.Response, error)
 	closed      bool
 }
 
-func (m *mockClient) Send(req ipc.Request) (ipc.Response, error) {
-	if m.sendFunc != nil {
-		return m.sendFunc(req)
+func (m *mockExecutor) Execute(req ipc.Request) (ipc.Response, error) {
+	if m.executeFunc != nil {
+		return m.executeFunc(req)
 	}
 	return ipc.Response{OK: true}, nil
 }
 
-func (m *mockClient) SendCmd(cmd string) (ipc.Response, error) {
-	if m.sendCmdFunc != nil {
-		return m.sendCmdFunc(cmd)
-	}
-	return ipc.Response{OK: true}, nil
-}
-
-func (m *mockClient) Close() error {
+func (m *mockExecutor) Close() error {
 	m.closed = true
 	return nil
 }
 
-// mockDialer implements Dialer for testing.
-type mockDialer struct {
-	client          IPCClient
-	dialErr         error
-	daemonRunning   bool
+// mockFactory implements ExecutorFactory for testing.
+type mockFactory struct {
+	executor      executor.Executor
+	newErr        error
+	daemonRunning bool
 }
 
-func (m *mockDialer) Dial() (IPCClient, error) {
-	if m.dialErr != nil {
-		return nil, m.dialErr
+func (m *mockFactory) NewExecutor() (executor.Executor, error) {
+	if m.newErr != nil {
+		return nil, m.newErr
 	}
-	return m.client, nil
+	return m.executor, nil
 }
 
-func (m *mockDialer) IsDaemonRunning() bool {
+func (m *mockFactory) IsDaemonRunning() bool {
 	return m.daemonRunning
 }
 
-// setMockDialer replaces the package dialer and returns a restore function.
-func setMockDialer(d Dialer) func() {
-	old := dialer
-	dialer = d
-	return func() { dialer = old }
+// setMockFactory replaces the package execFactory and returns a restore function.
+func setMockFactory(f ExecutorFactory) func() {
+	old := execFactory
+	execFactory = f
+	return func() { execFactory = old }
 }
 
 func TestOutputSuccess(t *testing.T) {
@@ -139,7 +132,7 @@ func TestOutputError(t *testing.T) {
 
 func TestRunStatus_DaemonNotRunning(t *testing.T) {
 
-	restore := setMockDialer(&mockDialer{daemonRunning: false})
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
 	// Capture stdout
@@ -188,18 +181,18 @@ func TestRunStatus_DaemonRunning(t *testing.T) {
 	}
 	statusJSON, _ := json.Marshal(statusData)
 
-	client := &mockClient{
-		sendCmdFunc: func(cmd string) (ipc.Response, error) {
-			if cmd != "status" {
-				t.Errorf("expected cmd=status, got %s", cmd)
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "status" {
+				t.Errorf("expected cmd=status, got %s", req.Cmd)
 			}
 			return ipc.Response{OK: true, Data: statusJSON}, nil
 		},
 	}
 
-	restore := setMockDialer(&mockDialer{
+	restore := setMockFactory(&mockFactory{
 		daemonRunning: true,
-		client:        client,
+		executor:      exec,
 	})
 	defer restore()
 
@@ -237,25 +230,25 @@ func TestRunStatus_DaemonRunning(t *testing.T) {
 		t.Errorf("expected url=https://example.com, got %v", data["url"])
 	}
 
-	if !client.closed {
-		t.Error("expected client to be closed")
+	if !exec.closed {
+		t.Error("expected executor to be closed")
 	}
 }
 
 func TestRunStop_Success(t *testing.T) {
 
-	client := &mockClient{
-		sendCmdFunc: func(cmd string) (ipc.Response, error) {
-			if cmd != "shutdown" {
-				t.Errorf("expected cmd=shutdown, got %s", cmd)
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "shutdown" {
+				t.Errorf("expected cmd=shutdown, got %s", req.Cmd)
 			}
 			return ipc.Response{OK: true}, nil
 		},
 	}
 
-	restore := setMockDialer(&mockDialer{
+	restore := setMockFactory(&mockFactory{
 		daemonRunning: true,
-		client:        client,
+		executor:      exec,
 	})
 	defer restore()
 
@@ -285,15 +278,15 @@ func TestRunStop_Success(t *testing.T) {
 		t.Errorf("expected ok=true, got %v", result["ok"])
 	}
 
-	if !client.closed {
-		t.Error("expected client to be closed")
+	if !exec.closed {
+		t.Error("expected executor to be closed")
 	}
 }
 
-func TestRunStop_DialError(t *testing.T) {
+func TestRunStop_NewExecutorError(t *testing.T) {
 
-	restore := setMockDialer(&mockDialer{
-		dialErr: errors.New("daemon is not running"),
+	restore := setMockFactory(&mockFactory{
+		newErr: errors.New("daemon is not running"),
 	})
 	defer restore()
 
@@ -326,8 +319,8 @@ func TestRunStop_DialError(t *testing.T) {
 
 func TestRunClear_AllBuffers(t *testing.T) {
 
-	client := &mockClient{
-		sendFunc: func(req ipc.Request) (ipc.Response, error) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd != "clear" {
 				t.Errorf("expected cmd=clear, got %s", req.Cmd)
 			}
@@ -338,9 +331,9 @@ func TestRunClear_AllBuffers(t *testing.T) {
 		},
 	}
 
-	restore := setMockDialer(&mockDialer{
+	restore := setMockFactory(&mockFactory{
 		daemonRunning: true,
-		client:        client,
+		executor:      exec,
 	})
 	defer restore()
 
@@ -374,8 +367,8 @@ func TestRunClear_AllBuffers(t *testing.T) {
 
 func TestRunClear_ConsoleOnly(t *testing.T) {
 
-	client := &mockClient{
-		sendFunc: func(req ipc.Request) (ipc.Response, error) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Target != "console" {
 				t.Errorf("expected target=console, got %s", req.Target)
 			}
@@ -383,9 +376,9 @@ func TestRunClear_ConsoleOnly(t *testing.T) {
 		},
 	}
 
-	restore := setMockDialer(&mockDialer{
+	restore := setMockFactory(&mockFactory{
 		daemonRunning: true,
-		client:        client,
+		executor:      exec,
 	})
 	defer restore()
 
@@ -419,11 +412,11 @@ func TestRunClear_ConsoleOnly(t *testing.T) {
 
 func TestRunClear_InvalidTarget(t *testing.T) {
 
-	client := &mockClient{}
+	exec := &mockExecutor{}
 
-	restore := setMockDialer(&mockDialer{
+	restore := setMockFactory(&mockFactory{
 		daemonRunning: true,
-		client:        client,
+		executor:      exec,
 	})
 	defer restore()
 
@@ -448,7 +441,7 @@ func TestRunClear_InvalidTarget(t *testing.T) {
 
 func TestRunStart_DaemonAlreadyRunning(t *testing.T) {
 
-	restore := setMockDialer(&mockDialer{daemonRunning: true})
+	restore := setMockFactory(&mockFactory{daemonRunning: true})
 	defer restore()
 
 	// Capture stderr
@@ -472,7 +465,7 @@ func TestRunStart_DaemonAlreadyRunning(t *testing.T) {
 
 func TestRunConsole_DaemonNotRunning(t *testing.T) {
 
-	restore := setMockDialer(&mockDialer{daemonRunning: false})
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
 	// Capture stderr
@@ -505,18 +498,18 @@ func TestRunConsole_Success(t *testing.T) {
 	}
 	consoleJSON, _ := json.Marshal(consoleData)
 
-	client := &mockClient{
-		sendCmdFunc: func(cmd string) (ipc.Response, error) {
-			if cmd != "console" {
-				t.Errorf("expected cmd=console, got %s", cmd)
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "console" {
+				t.Errorf("expected cmd=console, got %s", req.Cmd)
 			}
 			return ipc.Response{OK: true, Data: consoleJSON}, nil
 		},
 	}
 
-	restore := setMockDialer(&mockDialer{
+	restore := setMockFactory(&mockFactory{
 		daemonRunning: true,
-		client:        client,
+		executor:      exec,
 	})
 	defer restore()
 
@@ -566,8 +559,8 @@ func TestRunConsole_Success(t *testing.T) {
 		t.Errorf("expected 2 entries, got %d", len(entries))
 	}
 
-	if !client.closed {
-		t.Error("expected client to be closed")
+	if !exec.closed {
+		t.Error("expected executor to be closed")
 	}
 }
 
@@ -579,15 +572,15 @@ func TestRunConsole_EmptyBuffer(t *testing.T) {
 	}
 	consoleJSON, _ := json.Marshal(consoleData)
 
-	client := &mockClient{
-		sendCmdFunc: func(cmd string) (ipc.Response, error) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: true, Data: consoleJSON}, nil
 		},
 	}
 
-	restore := setMockDialer(&mockDialer{
+	restore := setMockFactory(&mockFactory{
 		daemonRunning: true,
-		client:        client,
+		executor:      exec,
 	})
 	defer restore()
 

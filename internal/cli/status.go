@@ -22,19 +22,19 @@ func init() {
 
 func runStatus(cmd *cobra.Command, args []string) error {
 	// Check if daemon is running
-	if !dialer.IsDaemonRunning() {
+	if !execFactory.IsDaemonRunning() {
 		return outputSuccess(map[string]any{
 			"running": false,
 		})
 	}
 
-	client, err := dialer.Dial()
+	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer client.Close()
+	defer exec.Close()
 
-	resp, err := client.SendCmd("status")
+	resp, err := exec.Execute(ipc.Request{Cmd: "status"})
 	if err != nil {
 		return outputError(err.Error())
 	}
