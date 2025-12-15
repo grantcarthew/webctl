@@ -120,6 +120,18 @@ func (d *Daemon) Run(ctx context.Context) error {
 		errCh <- d.server.Serve(ctx)
 	}()
 
+	// Start REPL if stdin is a TTY
+	replDone := make(chan struct{})
+	if IsStdinTTY() {
+		repl := NewREPL(d.handleRequest, func() { close(d.shutdown) })
+		go func() {
+			defer close(replDone)
+			repl.Run()
+		}()
+	} else {
+		close(replDone)
+	}
+
 	// Wait for shutdown
 	select {
 	case <-ctx.Done():
@@ -130,6 +142,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return nil
 	case err := <-errCh:
 		return err
+	case <-replDone:
+		// REPL exited (EOF or error)
+		return nil
 	}
 }
 

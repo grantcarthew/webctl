@@ -40,17 +40,17 @@ func init() {
 }
 
 func runConsole(cmd *cobra.Command, args []string) error {
-	if !dialer.IsDaemonRunning() {
+	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
 
-	client, err := dialer.Dial()
+	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer client.Close()
+	defer exec.Close()
 
-	resp, err := client.SendCmd("console")
+	resp, err := exec.Execute(ipc.Request{Cmd: "console"})
 	if err != nil {
 		return outputError(err.Error())
 	}

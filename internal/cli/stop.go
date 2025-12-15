@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
 
@@ -16,13 +17,13 @@ func init() {
 }
 
 func runStop(cmd *cobra.Command, args []string) error {
-	client, err := dialer.Dial()
+	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer client.Close()
+	defer exec.Close()
 
-	resp, err := client.SendCmd("shutdown")
+	resp, err := exec.Execute(ipc.Request{Cmd: "shutdown"})
 	if err != nil {
 		return outputError(err.Error())
 	}

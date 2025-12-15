@@ -1,7 +1,7 @@
 # DR-008: Daemon REPL Interface
 
 - Date: 2025-12-15
-- Status: Proposed
+- Status: Accepted
 - Category: CLI
 
 ## Problem
