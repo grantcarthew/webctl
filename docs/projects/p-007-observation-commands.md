@@ -1,7 +1,7 @@
 # P-007: Observation Commands
 
-- Status: Proposed
-- Started: -
+- Status: In Progress
+- Started: 2025-12-15
 
 ## Overview
 
@@ -31,6 +31,7 @@ In Scope:
 - Response body fetching for network entries
 - Design records for each command interface
 - Unit and integration tests for each command
+- Daemon REPL interface (interactive commands via stdin)
 
 Out of Scope:
 
@@ -43,8 +44,8 @@ Out of Scope:
 Console Command:
 
 - [x] DR-007 written documenting console command interface
-- [ ] `webctl console` returns buffered logs as JSON
-- [ ] Console command has unit and integration tests
+- [x] `webctl console` returns buffered logs as JSON
+- [x] Console command has unit and integration tests
 
 Network Command:
 
@@ -79,6 +80,12 @@ Cookies Command:
 - [ ] `webctl cookies` returns all cookies as JSON
 - [ ] Cookies command has unit and integration tests
 
+Daemon REPL:
+
+- [ ] `webctl start` accepts interactive commands via stdin
+- [ ] REPL supports: status, console, network, clear
+- [ ] REPL parses command flags (e.g., `console --head 5`)
+
 ## Deliverables
 
 Design Records:
@@ -93,14 +100,14 @@ Design Records:
 
 Implementation Files:
 
-- `cmd/webctl/console.go`
-- `cmd/webctl/network.go`
-- `cmd/webctl/screenshot.go`
-- `cmd/webctl/html.go`
-- `cmd/webctl/eval.go`
-- `cmd/webctl/cookies.go`
-- Daemon-side handlers for each command
-- Test files for each command
+- `internal/cli/console.go`
+- `internal/cli/network.go`
+- `internal/cli/screenshot.go`
+- `internal/cli/html.go`
+- `internal/cli/eval.go`
+- `internal/cli/cookies.go`
+- Daemon-side handlers for each command (internal/daemon/)
+- Test files for each command (internal/cli/cli_test.go)
 
 ## Technical Design
 
@@ -282,7 +289,7 @@ Before starting any implementation phase:
 
 - docs/design/design-records/dr-004-testing-strategy.md - Testing approach
 - The corresponding DR written in the design phase
-- cmd/webctl/root.go - Command registration patterns
+- internal/cli/root.go - Command registration patterns
 - internal/daemon/daemon.go - Daemon handler patterns
 
 ## Testing Strategy
@@ -314,7 +321,7 @@ Phase 2 - Implementation:
 
 Recommended order (prioritize console and network):
 
-1. Console (DR-007 + implementation) - DESIGN COMPLETE
+1. Console (DR-007 + implementation) - COMPLETE
 2. Network (DR-008 + implementation)
 3. Screenshot (DR-009 + implementation)
 4. HTML (DR-010 + implementation)
