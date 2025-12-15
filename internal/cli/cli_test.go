@@ -879,3 +879,234 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 		t.Errorf("second call without flags: count = %v, want 5 (flags should be reset)", count2)
 	}
 }
+
+// Network command tests
+
+func TestParseStatusPatterns(t *testing.T) {
+	tests := []struct {
+		name     string
+		patterns []string
+		status   int
+		want     bool
+		wantErr  bool
+	}{
+		{"exact match", []string{"200"}, 200, true, false},
+		{"exact no match", []string{"200"}, 404, false, false},
+		{"wildcard 4xx match", []string{"4xx"}, 404, true, false},
+		{"wildcard 4xx no match", []string{"4xx"}, 500, false, false},
+		{"wildcard 5xx match", []string{"5xx"}, 503, true, false},
+		{"wildcard 2xx match", []string{"2xx"}, 201, true, false},
+		{"range match", []string{"200-299"}, 250, true, false},
+		{"range no match", []string{"200-299"}, 300, false, false},
+		{"multiple patterns", []string{"4xx", "5xx"}, 500, true, false},
+		{"invalid pattern", []string{"abc"}, 200, false, true},
+		{"invalid wildcard", []string{"6xx"}, 200, false, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matchers, err := parseStatusPatterns(tt.patterns)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseStatusPatterns() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				return
+			}
+
+			matched := false
+			for _, m := range matchers {
+				if m.matches(tt.status) {
+					matched = true
+					break
+				}
+			}
+			if matched != tt.want {
+				t.Errorf("status %d match = %v, want %v", tt.status, matched, tt.want)
+			}
+		})
+	}
+}
+
+func TestMatchesStringSlice(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		slice []string
+		want  bool
+	}{
+		{"exact match", "GET", []string{"GET", "POST"}, true},
+		{"case insensitive", "get", []string{"GET", "POST"}, true},
+		{"no match", "DELETE", []string{"GET", "POST"}, false},
+		{"empty slice", "GET", []string{}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matchesStringSlice(tt.value, tt.slice); got != tt.want {
+				t.Errorf("matchesStringSlice(%q, %v) = %v, want %v", tt.value, tt.slice, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplyNetworkLimiting(t *testing.T) {
+	entries := []ipc.NetworkEntry{
+		{RequestID: "1", URL: "https://example.com/1"},
+		{RequestID: "2", URL: "https://example.com/2"},
+		{RequestID: "3", URL: "https://example.com/3"},
+		{RequestID: "4", URL: "https://example.com/4"},
+		{RequestID: "5", URL: "https://example.com/5"},
+	}
+
+	tests := []struct {
+		name      string
+		head      int
+		tail      int
+		rangeStr  string
+		wantCount int
+		wantFirst string
+		wantLast  string
+		wantErr   bool
+	}{
+		{"no limit", 0, 0, "", 5, "1", "5", false},
+		{"head 2", 2, 0, "", 2, "1", "2", false},
+		{"head exceeds length", 10, 0, "", 5, "1", "5", false},
+		{"tail 2", 0, 2, "", 2, "4", "5", false},
+		{"tail exceeds length", 0, 10, "", 5, "1", "5", false},
+		{"range 1-3", 0, 0, "1-3", 2, "2", "3", false},
+		{"range 0-5", 0, 0, "0-5", 5, "1", "5", false},
+		{"range start >= end", 0, 0, "3-2", 0, "", "", false},
+		{"invalid range format", 0, 0, "abc", 0, "", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := applyNetworkLimiting(entries, tt.head, tt.tail, tt.rangeStr)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("applyNetworkLimiting() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				return
+			}
+			if len(result) != tt.wantCount {
+				t.Errorf("got %d entries, want %d", len(result), tt.wantCount)
+				return
+			}
+			if tt.wantCount > 0 {
+				if result[0].RequestID != tt.wantFirst {
+					t.Errorf("first entry = %s, want %s", result[0].RequestID, tt.wantFirst)
+				}
+				if result[len(result)-1].RequestID != tt.wantLast {
+					t.Errorf("last entry = %s, want %s", result[len(result)-1].RequestID, tt.wantLast)
+				}
+			}
+		})
+	}
+}
+
+func TestRunNetwork_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: false,
+	})
+	defer restore()
+
+	// Capture stderr for error output
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runNetwork(networkCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	var resp map[string]any
+	if err := json.Unmarshal([]byte(output), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunNetwork_Success(t *testing.T) {
+	networkData := ipc.NetworkData{
+		Entries: []ipc.NetworkEntry{
+			{
+				RequestID:   "1",
+				URL:         "https://api.example.com/users",
+				Method:      "GET",
+				Status:      200,
+				MimeType:    "application/json",
+				RequestTime: 1734151712450,
+				Duration:    0.234,
+			},
+			{
+				RequestID:   "2",
+				URL:         "https://api.example.com/posts",
+				Method:      "POST",
+				Status:      201,
+				MimeType:    "application/json",
+				RequestTime: 1734151712789,
+				Duration:    0.567,
+			},
+		},
+		Count: 2,
+	}
+	networkJSON, _ := json.Marshal(networkData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "network" {
+				t.Errorf("expected cmd=network, got %s", req.Cmd)
+			}
+			return ipc.Response{OK: true, Data: networkJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runNetwork(networkCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+	if result["count"].(float64) != 2 {
+		t.Errorf("expected count=2, got %v", result["count"])
+	}
+}

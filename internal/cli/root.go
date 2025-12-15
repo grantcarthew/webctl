@@ -64,7 +64,22 @@ func resetCommandFlags() {
 	consoleTail = 0
 	consoleRange = ""
 
-	// TODO: Add flag resets for: network, screenshot, html, eval, cookies
+	// Network command flags
+	networkFormat = ""
+	networkTypes = nil
+	networkMethods = nil
+	networkStatuses = nil
+	networkURL = ""
+	networkMimes = nil
+	networkMinDuration = 0
+	networkMinSize = 0
+	networkFailed = false
+	networkMaxBodySize = 102400
+	networkHead = 0
+	networkTail = 0
+	networkRange = ""
+
+	// TODO: Add flag resets for: screenshot, html, eval, cookies
 }
 
 // outputJSON writes a JSON response to the given writer.

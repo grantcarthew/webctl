@@ -56,9 +56,11 @@ Daemon REPL:
 
 Network Command:
 
-- [ ] DR-009 written documenting network command interface
-- [ ] `webctl network` returns buffered requests with bodies
-- [ ] Network command has unit and integration tests
+- [x] DR-009 written documenting network command interface
+- [x] `webctl network` returns buffered requests with bodies
+- [x] Network command has unit tests
+- [ ] Network command has integration tests
+- [ ] BUG: Network events not captured after cross-origin navigation (see Known Issues)
 
 Screenshot Command:
 
@@ -103,7 +105,7 @@ Design Records:
 Implementation Files:
 
 - `internal/cli/console.go` - COMPLETE
-- `internal/cli/network.go`
+- `internal/cli/network.go` - COMPLETE (unit tests pass, integration blocked by BUG-001)
 - `internal/cli/screenshot.go`
 - `internal/cli/html.go`
 - `internal/cli/eval.go`
@@ -334,7 +336,7 @@ Recommended order (prioritize console and network):
 
 1. Console (DR-007 + implementation) - COMPLETE
 2. Daemon REPL (DR-008 + implementation) - COMPLETE
-3. Network (DR-009 + implementation)
+3. Network (DR-009 + implementation) - IN PROGRESS (blocked by BUG-001)
 4. Screenshot (DR-010 + implementation)
 5. HTML (DR-011 + implementation)
 6. Eval (DR-012 + implementation)
@@ -345,3 +347,30 @@ Recommended order (prioritize console and network):
 Console and network commands are the most valuable for AI agents debugging web apps. They were the original motivation for webctl and should be prioritized.
 
 The Daemon REPL was prioritized because it changed the command execution architecture (Executor interface), which should be in place before implementing additional commands.
+
+## Known Issues
+
+BUG-001: Network events not captured after cross-origin navigation
+
+Symptom: After navigating to a second URL (different origin), `webctl network` shows no new requests. Only requests from the initial page load are captured.
+
+Steps to reproduce:
+1. `./webctl start`
+2. Navigate to https://reqres.in (requests appear in `webctl network`)
+3. `./webctl clear network`
+4. Navigate to https://jsonplaceholder.typicode.com/posts
+5. `./webctl network` returns empty or stale data
+
+Suspected cause: The CDP WebSocket connection is to a page-level target. Cross-origin navigation with Chrome's Site Isolation may create a new renderer process, potentially invalidating the connection or requiring re-enabling of CDP domains.
+
+Investigation needed:
+- Check if `webctl status` still shows correct URL after navigation
+- Check if CDP connection is still alive (no error in daemon)
+- Test if same-origin navigation works (e.g., navigate within reqres.in)
+- Consider subscribing to Page.frameNavigated and re-enabling Network domain
+- Consider using Target.setAutoAttach for automatic target attachment
+
+Files involved:
+- internal/browser/browser.go (WebSocketURL connects to page target)
+- internal/daemon/daemon.go (enableDomains, subscribeEvents)
+- internal/cdp/client.go (WebSocket connection handling)
