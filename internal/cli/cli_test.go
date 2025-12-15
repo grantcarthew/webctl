@@ -469,3 +469,246 @@ func TestRunStart_DaemonAlreadyRunning(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+func TestRunConsole_DaemonNotRunning(t *testing.T) {
+
+	restore := setMockDialer(&mockDialer{daemonRunning: false})
+	defer restore()
+
+	// Capture stderr
+	old := os.Stderr
+	_, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runConsole(nil, nil)
+
+	w.Close()
+	os.Stderr = old
+
+	if err == nil {
+		t.Fatal("expected error when daemon not running")
+	}
+
+	if err.Error() != "daemon not running. Start with: webctl start" {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRunConsole_Success(t *testing.T) {
+
+	consoleData := ipc.ConsoleData{
+		Entries: []ipc.ConsoleEntry{
+			{Type: "log", Text: "hello", Timestamp: 1702000000000},
+			{Type: "error", Text: "oops", Timestamp: 1702000001000, URL: "https://example.com/app.js", Line: 42},
+		},
+		Count: 2,
+	}
+	consoleJSON, _ := json.Marshal(consoleData)
+
+	client := &mockClient{
+		sendCmdFunc: func(cmd string) (ipc.Response, error) {
+			if cmd != "console" {
+				t.Errorf("expected cmd=console, got %s", cmd)
+			}
+			return ipc.Response{OK: true, Data: consoleJSON}, nil
+		},
+	}
+
+	restore := setMockDialer(&mockDialer{
+		daemonRunning: true,
+		client:        client,
+	})
+	defer restore()
+
+	// Reset flags to defaults
+	consoleFormat = ""
+	consoleTypes = nil
+	consoleHead = 0
+	consoleTail = 0
+	consoleRange = ""
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runConsole(nil, nil)
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Errorf("expected ok=true, got %v", result["ok"])
+	}
+
+	if result["count"] != float64(2) {
+		t.Errorf("expected count=2, got %v", result["count"])
+	}
+
+	entries, ok := result["entries"].([]any)
+	if !ok {
+		t.Fatalf("expected entries to be array, got %T", result["entries"])
+	}
+
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(entries))
+	}
+
+	if !client.closed {
+		t.Error("expected client to be closed")
+	}
+}
+
+func TestRunConsole_EmptyBuffer(t *testing.T) {
+
+	consoleData := ipc.ConsoleData{
+		Entries: []ipc.ConsoleEntry{},
+		Count:   0,
+	}
+	consoleJSON, _ := json.Marshal(consoleData)
+
+	client := &mockClient{
+		sendCmdFunc: func(cmd string) (ipc.Response, error) {
+			return ipc.Response{OK: true, Data: consoleJSON}, nil
+		},
+	}
+
+	restore := setMockDialer(&mockDialer{
+		daemonRunning: true,
+		client:        client,
+	})
+	defer restore()
+
+	// Reset flags
+	consoleFormat = ""
+	consoleTypes = nil
+	consoleHead = 0
+	consoleTail = 0
+	consoleRange = ""
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runConsole(nil, nil)
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+
+	if result["count"] != float64(0) {
+		t.Errorf("expected count=0, got %v", result["count"])
+	}
+}
+
+func TestFilterConsoleByType(t *testing.T) {
+	entries := []ipc.ConsoleEntry{
+		{Type: "log", Text: "log1"},
+		{Type: "error", Text: "error1"},
+		{Type: "warn", Text: "warn1"},
+		{Type: "error", Text: "error2"},
+		{Type: "log", Text: "log2"},
+	}
+
+	tests := []struct {
+		name     string
+		types    []string
+		expected int
+	}{
+		{"single type", []string{"error"}, 2},
+		{"multiple types", []string{"error", "warn"}, 3},
+		{"case insensitive", []string{"ERROR"}, 2},
+		{"no match", []string{"info"}, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filtered := filterConsoleByType(entries, tt.types)
+			if len(filtered) != tt.expected {
+				t.Errorf("expected %d entries, got %d", tt.expected, len(filtered))
+			}
+		})
+	}
+}
+
+func TestApplyConsoleLimiting(t *testing.T) {
+	entries := []ipc.ConsoleEntry{
+		{Type: "log", Text: "0"},
+		{Type: "log", Text: "1"},
+		{Type: "log", Text: "2"},
+		{Type: "log", Text: "3"},
+		{Type: "log", Text: "4"},
+	}
+
+	tests := []struct {
+		name        string
+		head        int
+		tail        int
+		rangeStr    string
+		expected    int
+		firstText   string
+		lastText    string
+		expectError bool
+	}{
+		{"no limit", 0, 0, "", 5, "0", "4", false},
+		{"head 2", 2, 0, "", 2, "0", "1", false},
+		{"head exceeds length", 10, 0, "", 5, "0", "4", false},
+		{"tail 2", 0, 2, "", 2, "3", "4", false},
+		{"tail exceeds length", 0, 10, "", 5, "0", "4", false},
+		{"range 1-3", 0, 0, "1-3", 2, "1", "2", false},
+		{"range 0-5", 0, 0, "0-5", 5, "0", "4", false},
+		{"range start >= end", 0, 0, "3-2", 0, "", "", false},
+		{"invalid range format", 0, 0, "abc", 0, "", "", true},
+		{"invalid range no dash", 0, 0, "12", 0, "", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := applyConsoleLimiting(entries, tt.head, tt.tail, tt.rangeStr)
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(result) != tt.expected {
+				t.Errorf("expected %d entries, got %d", tt.expected, len(result))
+			}
+			if tt.expected > 0 {
+				if result[0].Text != tt.firstText {
+					t.Errorf("expected first text=%s, got %s", tt.firstText, result[0].Text)
+				}
+				if result[len(result)-1].Text != tt.lastText {
+					t.Errorf("expected last text=%s, got %s", tt.lastText, result[len(result)-1].Text)
+				}
+			}
+		})
+	}
+}
