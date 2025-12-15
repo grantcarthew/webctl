@@ -136,7 +136,7 @@ func TestNetworkEntry_JSON(t *testing.T) {
 		ResponseTime: 1500,
 		Duration:     0.5,
 		Size:         1024,
-		Headers:      map[string]string{"Content-Type": "application/json"},
+		RequestHeaders: map[string]string{"Content-Type": "application/json"},
 	}
 
 	data, err := json.Marshal(entry)

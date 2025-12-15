@@ -110,3 +110,99 @@ func TestDaemon_Handler(t *testing.T) {
 		t.Errorf("handler returned OK=false for clear command: %s", resp.Error)
 	}
 }
+
+func TestIsBinaryMimeType(t *testing.T) {
+	tests := []struct {
+		mimeType string
+		want     bool
+	}{
+		{"image/png", true},
+		{"image/jpeg", true},
+		{"image/gif", true},
+		{"image/webp", true},
+		{"image/svg+xml", true},
+		{"audio/mpeg", true},
+		{"audio/ogg", true},
+		{"video/mp4", true},
+		{"video/webm", true},
+		{"font/woff", true},
+		{"font/woff2", true},
+		{"application/octet-stream", true},
+		{"application/pdf", true},
+		{"application/zip", true},
+		{"application/wasm", true},
+		{"text/html", false},
+		{"text/plain", false},
+		{"text/css", false},
+		{"text/javascript", false},
+		{"application/json", false},
+		{"application/javascript", false},
+		{"application/xml", false},
+		{"", false},
+		{"IMAGE/PNG", true}, // case insensitive
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.mimeType, func(t *testing.T) {
+			if got := isBinaryMimeType(tt.mimeType); got != tt.want {
+				t.Errorf("isBinaryMimeType(%q) = %v, want %v", tt.mimeType, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtensionFromMimeType(t *testing.T) {
+	tests := []struct {
+		mimeType string
+		want     string
+	}{
+		{"image/png", ".png"},
+		{"image/jpeg", ".jpg"},
+		{"image/gif", ".gif"},
+		{"image/webp", ".webp"},
+		{"image/svg+xml", ".svg"},
+		{"font/woff", ".woff"},
+		{"font/woff2", ".woff2"},
+		{"audio/mpeg", ".mp3"},
+		{"video/mp4", ".mp4"},
+		{"application/pdf", ".pdf"},
+		{"application/zip", ".zip"},
+		{"text/html", ""},
+		{"application/json", ""},
+		{"unknown/type", ""},
+		{"image/png; charset=utf-8", ".png"}, // handles parameters
+		{"IMAGE/PNG", ".png"},                 // case insensitive
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.mimeType, func(t *testing.T) {
+			if got := extensionFromMimeType(tt.mimeType); got != tt.want {
+				t.Errorf("extensionFromMimeType(%q) = %q, want %q", tt.mimeType, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetBodiesDir(t *testing.T) {
+	dir := getBodiesDir()
+	if dir == "" {
+		t.Error("getBodiesDir() returned empty string")
+	}
+	// Should end with webctl/bodies
+	if !contains(dir, "webctl") || !contains(dir, "bodies") {
+		t.Errorf("getBodiesDir() = %q, expected to contain 'webctl' and 'bodies'", dir)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

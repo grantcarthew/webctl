@@ -45,20 +45,24 @@ type ConsoleEntry struct {
 
 // NetworkEntry represents a network request/response entry.
 type NetworkEntry struct {
-	RequestID    string            `json:"requestId"`
-	URL          string            `json:"url"`
-	Method       string            `json:"method"`
-	Status       int               `json:"status,omitempty"`
-	StatusText   string            `json:"statusText,omitempty"`
-	Type         string            `json:"type,omitempty"`
-	MimeType     string            `json:"mimeType,omitempty"`
-	RequestTime  int64             `json:"requestTime"`
-	ResponseTime int64             `json:"responseTime,omitempty"`
-	Duration     float64           `json:"duration,omitempty"`
-	Size         int64             `json:"size,omitempty"`
-	Headers      map[string]string `json:"headers,omitempty"`
-	Body         string            `json:"body,omitempty"`
-	Error        string            `json:"error,omitempty"`
+	RequestID       string            `json:"requestId"`
+	URL             string            `json:"url"`
+	Method          string            `json:"method"`
+	Type            string            `json:"type,omitempty"`
+	Status          int               `json:"status,omitempty"`
+	StatusText      string            `json:"statusText,omitempty"`
+	MimeType        string            `json:"mimeType,omitempty"`
+	RequestTime     int64             `json:"requestTime"`
+	ResponseTime    int64             `json:"responseTime,omitempty"`
+	Duration        float64           `json:"duration,omitempty"`
+	Size            int64             `json:"size,omitempty"`
+	RequestHeaders  map[string]string `json:"requestHeaders,omitempty"`
+	ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
+	Body            string            `json:"body,omitempty"`
+	BodyTruncated   bool              `json:"bodyTruncated,omitempty"`
+	BodyPath        string            `json:"bodyPath,omitempty"`
+	Failed          bool              `json:"failed"`
+	Error           string            `json:"error,omitempty"`
 }
 
 // ConsoleData is the response data for the "console" command.

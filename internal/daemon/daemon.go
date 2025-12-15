@@ -2,12 +2,14 @@ package daemon
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -193,6 +195,14 @@ func (d *Daemon) subscribeEvents() {
 	d.cdp.Subscribe("Network.responseReceived", func(evt cdp.Event) {
 		d.updateResponseEvent(evt)
 	})
+
+	d.cdp.Subscribe("Network.loadingFinished", func(evt cdp.Event) {
+		d.handleLoadingFinished(evt)
+	})
+
+	d.cdp.Subscribe("Network.loadingFailed", func(evt cdp.Event) {
+		d.handleLoadingFailed(evt)
+	})
 }
 
 // parseConsoleEvent parses a Runtime.consoleAPICalled event.
@@ -300,12 +310,12 @@ func (d *Daemon) parseRequestEvent(evt cdp.Event) (ipc.NetworkEntry, bool) {
 	}
 
 	return ipc.NetworkEntry{
-		RequestID:   params.RequestID,
-		URL:         params.Request.URL,
-		Method:      params.Request.Method,
-		Type:        params.Type,
-		RequestTime: int64(params.WallTime * 1000), // Convert seconds to milliseconds
-		Headers:     params.Request.Headers,
+		RequestID:      params.RequestID,
+		URL:            params.Request.URL,
+		Method:         params.Request.Method,
+		Type:           params.Type,
+		RequestTime:    int64(params.WallTime * 1000), // Convert seconds to milliseconds
+		RequestHeaders: params.Request.Headers,
 	}, true
 }
 
@@ -337,6 +347,7 @@ func (d *Daemon) updateResponseEvent(evt cdp.Event) {
 			entry.Status = params.Response.Status
 			entry.StatusText = params.Response.StatusText
 			entry.MimeType = params.Response.MimeType
+			entry.ResponseHeaders = params.Response.Headers
 			entry.ResponseTime = responseTime
 			if entry.RequestTime > 0 {
 				entry.Duration = float64(entry.ResponseTime-entry.RequestTime) / 1000.0
@@ -345,6 +356,261 @@ func (d *Daemon) updateResponseEvent(evt cdp.Event) {
 		}
 		return false
 	})
+}
+
+// handleLoadingFinished handles the Network.loadingFinished event.
+// Fetches response body and stores it (as text or file for binary).
+func (d *Daemon) handleLoadingFinished(evt cdp.Event) {
+	var params struct {
+		RequestID         string  `json:"requestId"`
+		EncodedDataLength int64   `json:"encodedDataLength"`
+	}
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return
+	}
+
+	// Find the entry to get MIME type
+	var mimeType string
+	var entryURL string
+	d.networkBuf.Update(func(entry *ipc.NetworkEntry) bool {
+		if entry.RequestID == params.RequestID {
+			mimeType = entry.MimeType
+			entryURL = entry.URL
+			entry.Size = params.EncodedDataLength
+			return true
+		}
+		return false
+	})
+
+	// Fetch the response body
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := d.cdp.SendContext(ctx, "Network.getResponseBody", map[string]any{
+		"requestId": params.RequestID,
+	})
+	if err != nil {
+		// Body may not be available (e.g., redirects, cached responses)
+		return
+	}
+
+	var bodyResp struct {
+		Body          string `json:"body"`
+		Base64Encoded bool   `json:"base64Encoded"`
+	}
+	if err := json.Unmarshal(result, &bodyResp); err != nil {
+		return
+	}
+
+	// Update the entry with body data
+	d.networkBuf.Update(func(entry *ipc.NetworkEntry) bool {
+		if entry.RequestID == params.RequestID {
+			if isBinaryMimeType(mimeType) {
+				// Save binary to file
+				bodyPath, err := saveBinaryBody(params.RequestID, entryURL, mimeType, bodyResp.Body, bodyResp.Base64Encoded)
+				if err == nil {
+					entry.BodyPath = bodyPath
+				}
+			} else {
+				// Store text body directly
+				if bodyResp.Base64Encoded {
+					// Decode base64 for text content
+					decoded, err := base64.StdEncoding.DecodeString(bodyResp.Body)
+					if err == nil {
+						entry.Body = string(decoded)
+					}
+				} else {
+					entry.Body = bodyResp.Body
+				}
+			}
+			return true
+		}
+		return false
+	})
+}
+
+// handleLoadingFailed handles the Network.loadingFailed event.
+// Marks the request as failed with error details.
+func (d *Daemon) handleLoadingFailed(evt cdp.Event) {
+	var params struct {
+		RequestID    string  `json:"requestId"`
+		ErrorText    string  `json:"errorText"`
+		Canceled     bool    `json:"canceled"`
+	}
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return
+	}
+
+	failTime := time.Now().UnixMilli()
+
+	d.networkBuf.Update(func(entry *ipc.NetworkEntry) bool {
+		if entry.RequestID == params.RequestID {
+			entry.Failed = true
+			if params.Canceled {
+				entry.Error = "canceled"
+			} else {
+				entry.Error = params.ErrorText
+			}
+			entry.ResponseTime = failTime
+			if entry.RequestTime > 0 {
+				entry.Duration = float64(entry.ResponseTime-entry.RequestTime) / 1000.0
+			}
+			return true
+		}
+		return false
+	})
+}
+
+// isBinaryMimeType returns true if the MIME type represents binary content.
+func isBinaryMimeType(mimeType string) bool {
+	mimeType = strings.ToLower(mimeType)
+
+	// Check for binary prefixes
+	binaryPrefixes := []string{
+		"image/",
+		"audio/",
+		"video/",
+		"font/",
+	}
+	for _, prefix := range binaryPrefixes {
+		if strings.HasPrefix(mimeType, prefix) {
+			return true
+		}
+	}
+
+	// Check for specific binary types
+	binaryTypes := []string{
+		"application/octet-stream",
+		"application/pdf",
+		"application/zip",
+		"application/gzip",
+		"application/x-tar",
+		"application/x-rar-compressed",
+		"application/x-7z-compressed",
+		"application/wasm",
+	}
+	for _, t := range binaryTypes {
+		if mimeType == t {
+			return true
+		}
+	}
+
+	return false
+}
+
+// getBodiesDir returns the path to the bodies storage directory.
+func getBodiesDir() string {
+	stateHome := os.Getenv("XDG_STATE_HOME")
+	if stateHome == "" {
+		home, _ := os.UserHomeDir()
+		stateHome = filepath.Join(home, ".local", "state")
+	}
+	return filepath.Join(stateHome, "webctl", "bodies")
+}
+
+// saveBinaryBody saves binary body content to a file and returns the path.
+func saveBinaryBody(requestID, url, mimeType, body string, isBase64 bool) (string, error) {
+	// Create bodies directory
+	bodiesDir := getBodiesDir()
+	if err := os.MkdirAll(bodiesDir, 0700); err != nil {
+		return "", err
+	}
+
+	// Generate filename
+	ts := time.Now().Format("2006-01-02-150405")
+
+	// Extract basename from URL
+	basename := filepath.Base(url)
+	if idx := strings.Index(basename, "?"); idx != -1 {
+		basename = basename[:idx]
+	}
+	if basename == "" || basename == "/" {
+		basename = "body"
+	}
+
+	// Ensure filename has extension based on MIME type
+	ext := extensionFromMimeType(mimeType)
+	if ext != "" && !strings.HasSuffix(basename, ext) {
+		basename = basename + ext
+	}
+
+	// Sanitize request ID for filename (replace dots with dashes)
+	safeRequestID := strings.ReplaceAll(requestID, ".", "-")
+
+	filename := fmt.Sprintf("%s-%s-%s", ts, safeRequestID, basename)
+	filePath := filepath.Join(bodiesDir, filename)
+
+	// Decode body if base64
+	var data []byte
+	if isBase64 {
+		var err error
+		data, err = base64.StdEncoding.DecodeString(body)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		data = []byte(body)
+	}
+
+	// Write file
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
+		return "", err
+	}
+
+	return filePath, nil
+}
+
+// extensionFromMimeType returns a file extension for the given MIME type.
+func extensionFromMimeType(mimeType string) string {
+	mimeType = strings.ToLower(mimeType)
+
+	// Remove parameters (e.g., "text/html; charset=utf-8" -> "text/html")
+	if idx := strings.Index(mimeType, ";"); idx != -1 {
+		mimeType = strings.TrimSpace(mimeType[:idx])
+	}
+
+	extensions := map[string]string{
+		"image/png":       ".png",
+		"image/jpeg":      ".jpg",
+		"image/gif":       ".gif",
+		"image/webp":      ".webp",
+		"image/svg+xml":   ".svg",
+		"image/x-icon":    ".ico",
+		"font/woff":       ".woff",
+		"font/woff2":      ".woff2",
+		"font/ttf":        ".ttf",
+		"font/otf":        ".otf",
+		"audio/mpeg":      ".mp3",
+		"audio/ogg":       ".ogg",
+		"audio/wav":       ".wav",
+		"video/mp4":       ".mp4",
+		"video/webm":      ".webm",
+		"application/pdf": ".pdf",
+		"application/zip": ".zip",
+	}
+
+	if ext, ok := extensions[mimeType]; ok {
+		return ext
+	}
+	return ""
+}
+
+// clearBodiesDir removes all files in the bodies directory.
+func clearBodiesDir() error {
+	bodiesDir := getBodiesDir()
+	entries, err := os.ReadDir(bodiesDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			os.Remove(filepath.Join(bodiesDir, entry.Name()))
+		}
+	}
+	return nil
 }
 
 // handleRequest processes an IPC request and returns a response.
@@ -431,9 +697,11 @@ func (d *Daemon) handleClear(target string) ipc.Response {
 		d.consoleBuf.Clear()
 	case "network":
 		d.networkBuf.Clear()
+		clearBodiesDir()
 	case "", "all":
 		d.consoleBuf.Clear()
 		d.networkBuf.Clear()
+		clearBodiesDir()
 	default:
 		return ipc.ErrorResponse(fmt.Sprintf("unknown clear target: %s", target))
 	}
