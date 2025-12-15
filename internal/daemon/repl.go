@@ -1,13 +1,11 @@
 package daemon
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 
-	"github.com/grantcarthew/webctl/internal/executor"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/peterh/liner"
 	"golang.org/x/term"
@@ -15,16 +13,20 @@ import (
 
 // REPL provides an interactive command interface for the daemon.
 type REPL struct {
-	executor executor.Executor
-	liner    *liner.State
-	history  []string
-	shutdown func()
+	handler   ipc.Handler
+	cmdExec   ipc.CommandExecutor
+	liner     *liner.State
+	history   []string
+	shutdown  func()
 }
 
-// NewREPL creates a new REPL with the given handler and shutdown callback.
-func NewREPL(handler ipc.Handler, shutdown func()) *REPL {
+// NewREPL creates a new REPL with the given handler, command executor, and shutdown callback.
+// The cmdExec function executes CLI commands with full flag support.
+// If cmdExec is nil, REPL falls back to basic IPC-only command execution.
+func NewREPL(handler ipc.Handler, cmdExec ipc.CommandExecutor, shutdown func()) *REPL {
 	return &REPL{
-		executor: executor.NewDirectExecutor(handler),
+		handler:  handler,
+		cmdExec:  cmdExec,
 		shutdown: shutdown,
 	}
 }
@@ -69,7 +71,11 @@ func (r *REPL) Run() error {
 // handleSpecialCommand handles REPL-specific commands.
 // Returns true if the command was handled, false otherwise.
 func (r *REPL) handleSpecialCommand(line string) bool {
-	cmd := strings.ToLower(strings.Fields(line)[0])
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return false
+	}
+	cmd := strings.ToLower(parts[0])
 
 	switch cmd {
 	case "exit", "quit":
@@ -83,6 +89,11 @@ func (r *REPL) handleSpecialCommand(line string) bool {
 	case "history":
 		r.printHistory()
 		return true
+
+	case "stop":
+		// Map "stop" to shutdown (REPL-specific behavior)
+		r.shutdown()
+		return true
 	}
 
 	return false
@@ -90,49 +101,59 @@ func (r *REPL) handleSpecialCommand(line string) bool {
 
 // executeCommand parses and executes a webctl command.
 func (r *REPL) executeCommand(line string) {
-	parts := strings.Fields(line)
-	if len(parts) == 0 {
+	args := strings.Fields(line)
+	if len(args) == 0 {
 		return
 	}
 
-	cmd := parts[0]
-	req := r.parseCommand(cmd, parts[1:])
+	// Use command executor if available (provides full Cobra flag support)
+	if r.cmdExec != nil {
+		recognized, err := r.cmdExec(args)
+		if !recognized {
+			fmt.Printf("{\"ok\":false,\"error\":\"unknown command: %s\"}\n", args[0])
+			return
+		}
+		// Errors are already output by the command, but Cobra may return an error
+		// for flag parsing issues that aren't output
+		if err != nil && !strings.Contains(err.Error(), "daemon") {
+			fmt.Printf("{\"ok\":false,\"error\":\"%s\"}\n", err.Error())
+		}
+		return
+	}
+
+	// Fallback: basic IPC-only execution (no flag support)
+	r.executeBasic(args)
+}
+
+// executeBasic provides basic command execution without Cobra flag support.
+// This is a fallback when no CommandExecutor is provided.
+func (r *REPL) executeBasic(args []string) {
+	cmd := args[0]
+	req := r.parseBasicCommand(cmd, args[1:])
 	if req == nil {
 		fmt.Printf("{\"ok\":false,\"error\":\"unknown command: %s\"}\n", cmd)
 		return
 	}
 
-	resp, err := r.executor.Execute(*req)
-	if err != nil {
-		fmt.Printf("{\"ok\":false,\"error\":\"%s\"}\n", err.Error())
-		return
-	}
-
+	resp := r.handler(*req)
 	r.outputResponse(resp)
 }
 
-// parseCommand converts command and args to an IPC request.
-func (r *REPL) parseCommand(cmd string, args []string) *ipc.Request {
+// parseBasicCommand converts command and args to an IPC request (basic mode only).
+func (r *REPL) parseBasicCommand(cmd string, args []string) *ipc.Request {
 	switch cmd {
 	case "status":
 		return &ipc.Request{Cmd: "status"}
-
 	case "console":
 		return &ipc.Request{Cmd: "console"}
-
 	case "network":
 		return &ipc.Request{Cmd: "network"}
-
 	case "clear":
 		target := ""
 		if len(args) > 0 {
 			target = args[0]
 		}
 		return &ipc.Request{Cmd: "clear", Target: target}
-
-	case "stop":
-		return &ipc.Request{Cmd: "shutdown"}
-
 	default:
 		return nil
 	}
@@ -140,19 +161,29 @@ func (r *REPL) parseCommand(cmd string, args []string) *ipc.Request {
 
 // outputResponse writes the response as JSON to stdout.
 func (r *REPL) outputResponse(resp ipc.Response) {
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	enc.Encode(resp)
+	fmt.Printf("{\"ok\":%t", resp.OK)
+	if resp.Error != "" {
+		fmt.Printf(",\"error\":\"%s\"", resp.Error)
+	}
+	if resp.Data != nil {
+		fmt.Printf(",\"data\":%s", string(resp.Data))
+	}
+	fmt.Println("}")
 }
 
 // printHelp displays available commands.
 func (r *REPL) printHelp() {
 	help := `
 Commands:
-  status      Show daemon status
-  console     Show console log entries
-  network     Show network requests
-  clear       Clear event buffers
+  status              Show daemon status
+  console [flags]     Show console log entries
+    --format text|json  Output format (default: json)
+    --type <type>       Filter by entry type (repeatable)
+    --head <n>          Return first N entries
+    --tail <n>          Return last N entries
+    --range <start-end> Return entries in range
+  network             Show network requests
+  clear [target]      Clear event buffers (console, network, or all)
 
 REPL:
   help, ?     Show this help

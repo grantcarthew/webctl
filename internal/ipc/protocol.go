@@ -5,6 +5,11 @@ import (
 	"log"
 )
 
+// CommandExecutor executes CLI commands with arguments.
+// Returns true if the command was recognized, false otherwise.
+// Used by the REPL to execute commands via Cobra.
+type CommandExecutor func(args []string) (recognized bool, err error)
+
 // Request represents a command sent from the CLI to the daemon.
 type Request struct {
 	Cmd    string          `json:"cmd"`

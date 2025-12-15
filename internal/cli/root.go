@@ -26,6 +26,47 @@ func Execute() error {
 	return rootCmd.Execute()
 }
 
+// ExecuteArgs runs a command with the given arguments.
+// Used by the REPL to execute commands parsed from user input.
+// Returns true if the command was recognized (even if it failed), false if unknown.
+func ExecuteArgs(args []string) (recognized bool, err error) {
+	if len(args) == 0 {
+		return false, nil
+	}
+
+	// Check if command exists before executing
+	cmd, _, findErr := rootCmd.Find(args)
+	if findErr != nil || cmd == rootCmd {
+		return false, nil
+	}
+
+	// Reset flags to defaults before each REPL command execution.
+	// Cobra persists flag values between calls, so we must reset them.
+	resetCommandFlags()
+
+	rootCmd.SetArgs(args)
+	err = rootCmd.Execute()
+	return true, err
+}
+
+// resetCommandFlags resets all command flags to their default values.
+// This is necessary for REPL usage where commands are executed repeatedly.
+//
+// TODO: Consider a registration pattern where each command registers its own
+// reset function, rather than maintaining this central list.
+//
+// IMPORTANT: When adding new commands with flags, add their reset logic here.
+func resetCommandFlags() {
+	// Console command flags
+	consoleFormat = ""
+	consoleTypes = nil
+	consoleHead = 0
+	consoleTail = 0
+	consoleRange = ""
+
+	// TODO: Add flag resets for: network, screenshot, html, eval, cookies
+}
+
 // outputJSON writes a JSON response to the given writer.
 func outputJSON(w io.Writer, data any) error {
 	enc := json.NewEncoder(w)
