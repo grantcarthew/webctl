@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -199,14 +200,12 @@ func (r *REPL) parseBasicCommand(cmd string, args []string) *ipc.Request {
 
 // outputResponse writes the response as JSON to stdout.
 func (r *REPL) outputResponse(resp ipc.Response) {
-	fmt.Printf("{\"ok\":%t", resp.OK)
-	if resp.Error != "" {
-		fmt.Printf(",\"error\":\"%s\"", resp.Error)
+	data, err := json.Marshal(resp)
+	if err != nil {
+		fmt.Println(`{"ok":false,"error":"failed to marshal response"}`)
+		return
 	}
-	if resp.Data != nil {
-		fmt.Printf(",\"data\":%s", string(resp.Data))
-	}
-	fmt.Println("}")
+	fmt.Println(string(data))
 }
 
 // printHelp displays available commands.

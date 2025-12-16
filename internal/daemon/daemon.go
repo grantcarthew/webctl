@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -46,14 +47,15 @@ func DefaultConfig() Config {
 
 // Daemon is the persistent webctl daemon process.
 type Daemon struct {
-	config     Config
-	browser    *browser.Browser
-	cdp        *cdp.Client
-	sessions   *SessionManager
-	consoleBuf *RingBuffer[ipc.ConsoleEntry]
-	networkBuf *RingBuffer[ipc.NetworkEntry]
-	server     *ipc.Server
-	shutdown   chan struct{}
+	config       Config
+	browser      *browser.Browser
+	cdp          *cdp.Client
+	sessions     *SessionManager
+	consoleBuf   *RingBuffer[ipc.ConsoleEntry]
+	networkBuf   *RingBuffer[ipc.NetworkEntry]
+	server       *ipc.Server
+	shutdown     chan struct{}
+	shutdownOnce sync.Once
 }
 
 // New creates a new daemon with the given configuration.
@@ -640,7 +642,11 @@ func isBinaryMimeType(mimeType string) bool {
 func getBodiesDir() string {
 	stateHome := os.Getenv("XDG_STATE_HOME")
 	if stateHome == "" {
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			// Fallback to temp directory if home cannot be determined
+			return filepath.Join(os.TempDir(), "webctl-bodies")
+		}
 		stateHome = filepath.Join(home, ".local", "state")
 	}
 	return filepath.Join(stateHome, "webctl", "bodies")
@@ -775,9 +781,12 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 
 // handleShutdown signals the daemon to shut down.
 func (d *Daemon) handleShutdown() ipc.Response {
-	// Signal shutdown in a goroutine so we can return the response first
+	// Signal shutdown in a goroutine so we can return the response first.
+	// Use sync.Once to prevent panic from closing an already-closed channel.
 	go func() {
-		close(d.shutdown)
+		d.shutdownOnce.Do(func() {
+			close(d.shutdown)
+		})
 	}()
 	return ipc.SuccessResponse(map[string]string{
 		"message": "shutting down",
