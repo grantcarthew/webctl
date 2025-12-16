@@ -66,12 +66,12 @@ Network Command:
 Browser-Level CDP Sessions (fixes BUG-001):
 
 - [x] DR-010 written documenting browser-level CDP with session management
-- [ ] Daemon connects to browser WebSocket (not page target)
-- [ ] Target.setAutoAttach enables automatic session tracking
-- [ ] Session management with active session concept
-- [ ] `webctl target` command for listing/switching sessions
-- [ ] REPL prompt shows active session context
-- [ ] Entries tagged with sessionId and filtered to active session
+- [x] Daemon connects to browser WebSocket (not page target)
+- [x] Target.setAutoAttach enables automatic session tracking
+- [x] Session management with active session concept
+- [x] `webctl target` command for listing/switching sessions
+- [x] REPL prompt shows active session context
+- [x] Entries tagged with sessionId and filtered to active session
 
 Screenshot Command:
 
@@ -362,7 +362,7 @@ Recommended order (prioritize console and network):
 1. Console (DR-007 + implementation) - COMPLETE
 2. Daemon REPL (DR-008 + implementation) - COMPLETE
 3. Network (DR-009 + implementation) - COMPLETE (unit tests pass)
-4. Browser-Level CDP Sessions (DR-010 + implementation) - IN PROGRESS (design complete)
+4. Browser-Level CDP Sessions (DR-010 + implementation) - COMPLETE
 5. Screenshot (DR-011 + implementation)
 6. HTML (DR-012 + implementation)
 7. Eval (DR-013 + implementation)
@@ -376,7 +376,7 @@ The Daemon REPL was prioritized because it changed the command execution archite
 
 ## Known Issues
 
-BUG-001: Network events not captured after cross-origin navigation - SOLUTION DESIGNED
+BUG-001: Network events not captured after cross-origin navigation - FIXED
 
 Symptom: After navigating to a second URL (different origin), `webctl network` shows no new requests. Only requests from the initial page load are captured.
 
@@ -388,4 +388,4 @@ Solution: DR-010 (Browser-Level CDP Sessions) addresses this by:
 3. Tracking sessions and automatically handling target attach/detach
 4. Implementing session-based command routing
 
-Status: Design complete, implementation pending.
+Status: Implementation complete.

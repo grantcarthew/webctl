@@ -49,6 +49,7 @@ type Daemon struct {
 	config     Config
 	browser    *browser.Browser
 	cdp        *cdp.Client
+	sessions   *SessionManager
 	consoleBuf *RingBuffer[ipc.ConsoleEntry]
 	networkBuf *RingBuffer[ipc.NetworkEntry]
 	server     *ipc.Server
@@ -63,6 +64,7 @@ func New(cfg Config) *Daemon {
 
 	return &Daemon{
 		config:     cfg,
+		sessions:   NewSessionManager(),
 		consoleBuf: NewRingBuffer[ipc.ConsoleEntry](cfg.BufferSize),
 		networkBuf: NewRingBuffer[ipc.NetworkEntry](cfg.BufferSize),
 		shutdown:   make(chan struct{}),
@@ -94,24 +96,27 @@ func (d *Daemon) Run(ctx context.Context) error {
 	d.browser = b
 	defer d.browser.Close()
 
-	// Connect via CDP
-	wsURL, err := d.browser.WebSocketURL(ctx)
+	// Connect to browser-level CDP WebSocket (not page target)
+	// This allows us to use Target.setAutoAttach for session management
+	version, err := d.browser.Version(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get WebSocket URL: %w", err)
+		return fmt.Errorf("failed to get browser version: %w", err)
 	}
 
-	cdpClient, err := cdp.Dial(ctx, wsURL)
+	cdpClient, err := cdp.Dial(ctx, version.WebSocketURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to CDP: %w", err)
 	}
 	d.cdp = cdpClient
 	defer d.cdp.Close()
 
-	// Enable CDP domains and subscribe to events
-	if err := d.enableDomains(); err != nil {
-		return fmt.Errorf("failed to enable CDP domains: %w", err)
-	}
+	// Subscribe to events before enabling domains
 	d.subscribeEvents()
+
+	// Enable auto-attach for session tracking
+	if err := d.enableAutoAttach(); err != nil {
+		return fmt.Errorf("failed to enable auto-attach: %w", err)
+	}
 
 	// Start IPC server
 	server, err := ipc.NewServer(d.config.SocketPath, d.handleRequest)
@@ -135,6 +140,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 	replDone := make(chan struct{})
 	if IsStdinTTY() {
 		repl := NewREPL(d.handleRequest, d.config.CommandExecutor, func() { close(d.shutdown) })
+		repl.SetSessionProvider(func() (*ipc.PageSession, int) {
+			return d.sessions.Active(), d.sessions.Count()
+		})
 		go func() {
 			defer close(replDone)
 			repl.Run()
@@ -159,35 +167,72 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 }
 
-// enableDomains enables the required CDP domains.
-func (d *Daemon) enableDomains() error {
+// enableAutoAttach enables Target.setAutoAttach for session tracking.
+// This is called on the browser-level connection and automatically attaches
+// to all page targets, enabling domains for each.
+func (d *Daemon) enableAutoAttach() error {
+	_, err := d.cdp.Send("Target.setAutoAttach", map[string]any{
+		"autoAttach":             true,
+		"flatten":                true,
+		"waitForDebuggerOnStart": true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to set auto-attach: %w", err)
+	}
+	return nil
+}
+
+// enableDomainsForSession enables CDP domains for a specific session.
+func (d *Daemon) enableDomainsForSession(sessionID string) error {
 	domains := []string{"Runtime.enable", "Network.enable", "Page.enable"}
 	for _, method := range domains {
-		if _, err := d.cdp.Send(method, nil); err != nil {
+		if _, err := d.cdp.SendToSession(context.Background(), sessionID, method, nil); err != nil {
 			return fmt.Errorf("failed to enable %s: %w", method, err)
 		}
 	}
+
+	// Resume the target (it's paused due to waitForDebuggerOnStart)
+	if _, err := d.cdp.SendToSession(context.Background(), sessionID, "Runtime.runIfWaitingForDebugger", nil); err != nil {
+		return fmt.Errorf("failed to resume debugger: %w", err)
+	}
+
 	return nil
 }
 
 // subscribeEvents subscribes to CDP events and buffers them.
 func (d *Daemon) subscribeEvents() {
-	// Console events
+	// Target events (browser-level, no sessionId)
+	d.cdp.Subscribe("Target.attachedToTarget", func(evt cdp.Event) {
+		d.handleTargetAttached(evt)
+	})
+
+	d.cdp.Subscribe("Target.detachedFromTarget", func(evt cdp.Event) {
+		d.handleTargetDetached(evt)
+	})
+
+	d.cdp.Subscribe("Target.targetInfoChanged", func(evt cdp.Event) {
+		d.handleTargetInfoChanged(evt)
+	})
+
+	// Console events (include sessionId)
 	d.cdp.Subscribe("Runtime.consoleAPICalled", func(evt cdp.Event) {
 		if entry, ok := d.parseConsoleEvent(evt); ok {
+			entry.SessionID = evt.SessionID
 			d.consoleBuf.Push(entry)
 		}
 	})
 
 	d.cdp.Subscribe("Runtime.exceptionThrown", func(evt cdp.Event) {
 		if entry, ok := d.parseExceptionEvent(evt); ok {
+			entry.SessionID = evt.SessionID
 			d.consoleBuf.Push(entry)
 		}
 	})
 
-	// Network events
+	// Network events (include sessionId)
 	d.cdp.Subscribe("Network.requestWillBeSent", func(evt cdp.Event) {
 		if entry, ok := d.parseRequestEvent(evt); ok {
+			entry.SessionID = evt.SessionID
 			d.networkBuf.Push(entry)
 		}
 	})
@@ -461,6 +506,99 @@ func (d *Daemon) handleLoadingFailed(evt cdp.Event) {
 	})
 }
 
+// handleTargetAttached handles Target.attachedToTarget event.
+// Adds the new session to tracking and enables CDP domains.
+func (d *Daemon) handleTargetAttached(evt cdp.Event) {
+	var params struct {
+		SessionID  string `json:"sessionId"`
+		TargetInfo struct {
+			TargetID string `json:"targetId"`
+			Type     string `json:"type"`
+			Title    string `json:"title"`
+			URL      string `json:"url"`
+		} `json:"targetInfo"`
+	}
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return
+	}
+
+	// Only track page targets
+	if params.TargetInfo.Type != "page" {
+		return
+	}
+
+	// Add to session manager
+	d.sessions.Add(
+		params.SessionID,
+		params.TargetInfo.TargetID,
+		params.TargetInfo.URL,
+		params.TargetInfo.Title,
+	)
+
+	// Enable domains for this session (async to not block event loop)
+	go func() {
+		if err := d.enableDomainsForSession(params.SessionID); err != nil {
+			// Log error but don't fail - session is still tracked
+			fmt.Fprintf(os.Stderr, "warning: failed to enable domains for session: %v\n", err)
+		}
+	}()
+}
+
+// handleTargetDetached handles Target.detachedFromTarget event.
+// Removes the session and purges its buffer entries.
+func (d *Daemon) handleTargetDetached(evt cdp.Event) {
+	var params struct {
+		SessionID string `json:"sessionId"`
+	}
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return
+	}
+
+	// Remove from session manager
+	_, _ = d.sessions.Remove(params.SessionID)
+
+	// Purge entries for this session
+	d.purgeSessionEntries(params.SessionID)
+}
+
+// handleTargetInfoChanged handles Target.targetInfoChanged event.
+// Updates session URL and title when page navigates.
+func (d *Daemon) handleTargetInfoChanged(evt cdp.Event) {
+	var params struct {
+		TargetInfo struct {
+			TargetID string `json:"targetId"`
+			Type     string `json:"type"`
+			Title    string `json:"title"`
+			URL      string `json:"url"`
+		} `json:"targetInfo"`
+	}
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return
+	}
+
+	// Only track page targets
+	if params.TargetInfo.Type != "page" {
+		return
+	}
+
+	// Update session by target ID
+	d.sessions.UpdateByTargetID(
+		params.TargetInfo.TargetID,
+		params.TargetInfo.URL,
+		params.TargetInfo.Title,
+	)
+}
+
+// purgeSessionEntries removes all buffer entries for a session.
+func (d *Daemon) purgeSessionEntries(sessionID string) {
+	d.consoleBuf.RemoveIf(func(entry *ipc.ConsoleEntry) bool {
+		return entry.SessionID == sessionID
+	})
+	d.networkBuf.RemoveIf(func(entry *ipc.NetworkEntry) bool {
+		return entry.SessionID == sessionID
+	})
+}
+
 // isBinaryMimeType returns true if the MIME type represents binary content.
 func isBinaryMimeType(mimeType string) bool {
 	mimeType = strings.ToLower(mimeType)
@@ -622,6 +760,8 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 		return d.handleConsole()
 	case "network":
 		return d.handleNetwork()
+	case "target":
+		return d.handleTarget(req.Target)
 	case "clear":
 		return d.handleClear(req.Target)
 	case "cdp":
@@ -646,47 +786,124 @@ func (d *Daemon) handleShutdown() ipc.Response {
 
 // handleStatus returns the daemon status.
 func (d *Daemon) handleStatus() ipc.Response {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	status := ipc.StatusData{
-		Running: true,
-		PID:     os.Getpid(),
+		Running:  true,
+		PID:      os.Getpid(),
+		Sessions: d.sessions.All(),
 	}
 
-	// Get current page info
-	result, err := d.cdp.SendContext(ctx, "Target.getTargetInfo", nil)
-	if err == nil {
-		var info struct {
-			TargetInfo struct {
-				URL   string `json:"url"`
-				Title string `json:"title"`
-			} `json:"targetInfo"`
-		}
-		if json.Unmarshal(result, &info) == nil {
-			status.URL = info.TargetInfo.URL
-			status.Title = info.TargetInfo.Title
-		}
+	// Get active session info
+	active := d.sessions.Active()
+	if active != nil {
+		status.ActiveSession = active
+		// Populate deprecated fields for backwards compatibility
+		status.URL = active.URL
+		status.Title = active.Title
 	}
 
 	return ipc.SuccessResponse(status)
 }
 
-// handleConsole returns buffered console entries.
+// handleConsole returns buffered console entries filtered to active session.
 func (d *Daemon) handleConsole() ipc.Response {
-	entries := d.consoleBuf.All()
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	allEntries := d.consoleBuf.All()
+	var filtered []ipc.ConsoleEntry
+	for _, e := range allEntries {
+		if e.SessionID == activeID {
+			filtered = append(filtered, e)
+		}
+	}
+
 	return ipc.SuccessResponse(ipc.ConsoleData{
-		Entries: entries,
-		Count:   len(entries),
+		Entries: filtered,
+		Count:   len(filtered),
 	})
 }
 
-// handleNetwork returns buffered network entries.
+// handleNetwork returns buffered network entries filtered to active session.
 func (d *Daemon) handleNetwork() ipc.Response {
-	entries := d.networkBuf.All()
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	allEntries := d.networkBuf.All()
+	var filtered []ipc.NetworkEntry
+	for _, e := range allEntries {
+		if e.SessionID == activeID {
+			filtered = append(filtered, e)
+		}
+	}
+
 	return ipc.SuccessResponse(ipc.NetworkData{
-		Entries: entries,
-		Count:   len(entries),
+		Entries: filtered,
+		Count:   len(filtered),
+	})
+}
+
+// noActiveSessionError returns an error response with available sessions.
+func (d *Daemon) noActiveSessionError() ipc.Response {
+	sessions := d.sessions.All()
+	if len(sessions) == 0 {
+		return ipc.ErrorResponse("no active session - no pages available")
+	}
+
+	// Return error with session list so user can select
+	data := struct {
+		Error    string            `json:"error"`
+		Sessions []ipc.PageSession `json:"sessions"`
+	}{
+		Error:    "no active session - use 'webctl target <id>' to select",
+		Sessions: sessions,
+	}
+
+	raw, _ := json.Marshal(data)
+	return ipc.Response{OK: false, Error: data.Error, Data: raw}
+}
+
+// handleTarget lists sessions or switches to a specific session.
+func (d *Daemon) handleTarget(query string) ipc.Response {
+	// If no query, list all sessions
+	if query == "" {
+		return ipc.SuccessResponse(ipc.TargetData{
+			ActiveSession: d.sessions.ActiveID(),
+			Sessions:      d.sessions.All(),
+		})
+	}
+
+	// Try to find matching session
+	matches := d.sessions.FindByQuery(query)
+
+	if len(matches) == 0 {
+		return ipc.ErrorResponse(fmt.Sprintf("no session matches query: %s", query))
+	}
+
+	if len(matches) > 1 {
+		// Ambiguous match
+		data := struct {
+			Error   string            `json:"error"`
+			Matches []ipc.PageSession `json:"matches"`
+		}{
+			Error:   fmt.Sprintf("ambiguous query '%s', matches multiple sessions", query),
+			Matches: matches,
+		}
+		raw, _ := json.Marshal(data)
+		return ipc.Response{OK: false, Error: data.Error, Data: raw}
+	}
+
+	// Single match - switch to it
+	if !d.sessions.SetActive(matches[0].ID) {
+		return ipc.ErrorResponse("failed to set active session")
+	}
+
+	return ipc.SuccessResponse(ipc.TargetData{
+		ActiveSession: matches[0].ID,
+		Sessions:      d.sessions.All(),
 	})
 }
 
@@ -710,6 +927,7 @@ func (d *Daemon) handleClear(target string) ipc.Response {
 
 // handleCDP forwards a raw CDP command to the browser.
 // Request format: {"cmd": "cdp", "target": "Method.name", "params": {...}}
+// Commands are sent to the active session. Use Target.* methods for browser-level commands.
 func (d *Daemon) handleCDP(req ipc.Request) ipc.Response {
 	if req.Target == "" {
 		return ipc.ErrorResponse("cdp command requires target (CDP method name)")
@@ -725,7 +943,21 @@ func (d *Daemon) handleCDP(req ipc.Request) ipc.Response {
 		}
 	}
 
-	result, err := d.cdp.SendContext(ctx, req.Target, params)
+	// Target.* methods are browser-level, send without session ID
+	// All other methods go to the active session
+	var result json.RawMessage
+	var err error
+
+	if strings.HasPrefix(req.Target, "Target.") {
+		result, err = d.cdp.SendContext(ctx, req.Target, params)
+	} else {
+		activeID := d.sessions.ActiveID()
+		if activeID == "" {
+			return d.noActiveSessionError()
+		}
+		result, err = d.cdp.SendToSession(ctx, activeID, req.Target, params)
+	}
+
 	if err != nil {
 		return ipc.ErrorResponse(err.Error())
 	}

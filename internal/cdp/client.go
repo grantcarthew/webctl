@@ -65,15 +65,22 @@ func (c *Client) Send(method string, params interface{}) (json.RawMessage, error
 
 // SendContext sends a CDP command with a context for cancellation.
 func (c *Client) SendContext(ctx context.Context, method string, params interface{}) (json.RawMessage, error) {
+	return c.SendToSession(ctx, "", method, params)
+}
+
+// SendToSession sends a CDP command to a specific session.
+// If sessionID is empty, the command is sent to the browser-level target.
+func (c *Client) SendToSession(ctx context.Context, sessionID string, method string, params interface{}) (json.RawMessage, error) {
 	if c.closed.Load() {
 		return nil, errors.New("client is closed")
 	}
 
 	id := c.msgID.Add(1)
 	req := Request{
-		ID:     id,
-		Method: method,
-		Params: params,
+		ID:        id,
+		Method:    method,
+		Params:    params,
+		SessionID: sessionID,
 	}
 
 	data, err := json.Marshal(req)

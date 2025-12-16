@@ -7,9 +7,10 @@ import (
 
 // Request represents a CDP command request.
 type Request struct {
-	ID     int64       `json:"id"`
-	Method string      `json:"method"`
-	Params interface{} `json:"params,omitempty"`
+	ID        int64       `json:"id"`
+	Method    string      `json:"method"`
+	Params    interface{} `json:"params,omitempty"`
+	SessionID string      `json:"sessionId,omitempty"`
 }
 
 // Response represents a CDP command response.
@@ -21,8 +22,9 @@ type Response struct {
 
 // Event represents a CDP event notification.
 type Event struct {
-	Method string          `json:"method"`
-	Params json.RawMessage `json:"params"`
+	Method    string          `json:"method"`
+	Params    json.RawMessage `json:"params"`
+	SessionID string          `json:"sessionId,omitempty"`
 }
 
 // Error represents a CDP protocol error.
@@ -42,11 +44,12 @@ func (e *Error) Error() string {
 
 // message is used internally to determine message type during parsing.
 type message struct {
-	ID     int64           `json:"id,omitempty"`
-	Method string          `json:"method,omitempty"`
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  *Error          `json:"error,omitempty"`
-	Params json.RawMessage `json:"params,omitempty"`
+	ID        int64           `json:"id,omitempty"`
+	Method    string          `json:"method,omitempty"`
+	Result    json.RawMessage `json:"result,omitempty"`
+	Error     *Error          `json:"error,omitempty"`
+	Params    json.RawMessage `json:"params,omitempty"`
+	SessionID string          `json:"sessionId,omitempty"`
 }
 
 // parseMessage parses a raw CDP message and returns either a Response or Event.
@@ -71,8 +74,9 @@ func parseMessage(data []byte) (*Response, *Event, error) {
 	// Messages with a method but no ID are events
 	if msg.Method != "" {
 		return nil, &Event{
-			Method: msg.Method,
-			Params: msg.Params,
+			Method:    msg.Method,
+			Params:    msg.Params,
+			SessionID: msg.SessionID,
 		}, nil
 	}
 

@@ -165,6 +165,72 @@ func TestRingBuffer_ExactCapacity(t *testing.T) {
 	}
 }
 
+func TestRingBuffer_RemoveIf(t *testing.T) {
+	buf := NewRingBuffer[int](10)
+
+	for i := 1; i <= 5; i++ {
+		buf.Push(i)
+	}
+
+	// Remove even numbers
+	buf.RemoveIf(func(v *int) bool {
+		return *v%2 == 0
+	})
+
+	items := buf.All()
+	expected := []int{1, 3, 5}
+	if !slicesEqual(items, expected) {
+		t.Errorf("expected %v, got %v", expected, items)
+	}
+}
+
+func TestRingBuffer_RemoveIfAll(t *testing.T) {
+	buf := NewRingBuffer[int](10)
+
+	for i := 1; i <= 5; i++ {
+		buf.Push(i)
+	}
+
+	// Remove all
+	buf.RemoveIf(func(v *int) bool {
+		return true
+	})
+
+	if buf.Len() != 0 {
+		t.Errorf("expected len 0, got %d", buf.Len())
+	}
+}
+
+func TestRingBuffer_RemoveIfNone(t *testing.T) {
+	buf := NewRingBuffer[int](10)
+
+	for i := 1; i <= 5; i++ {
+		buf.Push(i)
+	}
+
+	// Remove none
+	buf.RemoveIf(func(v *int) bool {
+		return false
+	})
+
+	if buf.Len() != 5 {
+		t.Errorf("expected len 5, got %d", buf.Len())
+	}
+}
+
+func TestRingBuffer_RemoveIfEmpty(t *testing.T) {
+	buf := NewRingBuffer[int](10)
+
+	// Should not panic on empty buffer
+	buf.RemoveIf(func(v *int) bool {
+		return true
+	})
+
+	if buf.Len() != 0 {
+		t.Errorf("expected len 0, got %d", buf.Len())
+	}
+}
+
 func slicesEqual[T comparable](a, b []T) bool {
 	if len(a) != len(b) {
 		return false
