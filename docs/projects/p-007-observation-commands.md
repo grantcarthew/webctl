@@ -28,10 +28,12 @@ In Scope:
 - `html` command
 - `eval` command
 - `cookies` command
+- `target` command (session listing and switching)
 - Response body fetching for network entries
 - Design records for each command interface
 - Unit and integration tests for each command
 - Daemon REPL interface (interactive commands via stdin)
+- Browser-level CDP connection with session management (fixes BUG-001)
 
 Out of Scope:
 
@@ -60,32 +62,41 @@ Network Command:
 - [x] `webctl network` returns buffered requests with bodies
 - [x] Network command has unit tests
 - [ ] Network command has integration tests
-- [ ] BUG: Network events not captured after cross-origin navigation (see Known Issues)
+
+Browser-Level CDP Sessions (fixes BUG-001):
+
+- [x] DR-010 written documenting browser-level CDP with session management
+- [ ] Daemon connects to browser WebSocket (not page target)
+- [ ] Target.setAutoAttach enables automatic session tracking
+- [ ] Session management with active session concept
+- [ ] `webctl target` command for listing/switching sessions
+- [ ] REPL prompt shows active session context
+- [ ] Entries tagged with sessionId and filtered to active session
 
 Screenshot Command:
 
-- [ ] DR-010 written documenting screenshot command interface
+- [ ] DR-011 written documenting screenshot command interface
 - [ ] `webctl screenshot` outputs PNG to stdout or JSON with base64
 - [ ] `webctl screenshot --full-page` captures entire scrollable page
 - [ ] Screenshot command has unit and integration tests
 
 HTML Command:
 
-- [ ] DR-011 written documenting html command interface
+- [ ] DR-012 written documenting html command interface
 - [ ] `webctl html` returns full page HTML
 - [ ] `webctl html ".selector"` returns element HTML
 - [ ] HTML command has unit and integration tests
 
 Eval Command:
 
-- [ ] DR-012 written documenting eval command interface
+- [ ] DR-013 written documenting eval command interface
 - [ ] `webctl eval "1+1"` returns `2`
 - [ ] `webctl eval "Promise.resolve(42)"` handles async expressions
 - [ ] Eval command has unit and integration tests
 
 Cookies Command:
 
-- [ ] DR-013 written documenting cookies command interface
+- [ ] DR-014 written documenting cookies command interface
 - [ ] `webctl cookies` returns all cookies as JSON
 - [ ] Cookies command has unit and integration tests
 
@@ -97,21 +108,26 @@ Design Records:
 - DR-007: Console Command Interface
 - DR-008: Daemon REPL Interface
 - DR-009: Network Command Interface
-- DR-010: Screenshot Command Interface
-- DR-011: HTML Command Interface
-- DR-012: Eval Command Interface
-- DR-013: Cookies Command Interface
+- DR-010: Browser-Level CDP Sessions (session management, fixes BUG-001)
+- DR-011: Screenshot Command Interface
+- DR-012: HTML Command Interface
+- DR-013: Eval Command Interface
+- DR-014: Cookies Command Interface
 
 Implementation Files:
 
 - `internal/cli/console.go` - COMPLETE
-- `internal/cli/network.go` - COMPLETE (unit tests pass, integration blocked by BUG-001)
+- `internal/cli/network.go` - COMPLETE (unit tests pass)
+- `internal/cli/target.go` - Session listing and switching
 - `internal/cli/screenshot.go`
 - `internal/cli/html.go`
 - `internal/cli/eval.go`
 - `internal/cli/cookies.go`
 - `internal/executor/` - Executor interface for CLI/REPL command execution - COMPLETE
-- `internal/daemon/repl.go` - REPL implementation - COMPLETE
+- `internal/daemon/repl.go` - REPL implementation - COMPLETE (needs session prompt update)
+- `internal/daemon/daemon.go` - Needs browser-level connection and session management
+- `internal/cdp/client.go` - Needs session ID support in messages
+- `internal/cdp/message.go` - Needs sessionId field
 - Daemon-side handlers for each command (internal/daemon/)
 - Test files for each command (internal/cli/cli_test.go)
 
@@ -277,24 +293,33 @@ Network Command Design (DR-009):
 - docs/design/design-records/dr-006-action-command-flags.md - --clear flag behavior
 - internal/daemon/daemon.go - Existing network buffer code
 
-Screenshot Command Design (DR-010):
+Browser-Level CDP Sessions (DR-010): COMPLETE
+
+- docs/design/design-records/dr-010-browser-level-cdp-sessions.md - Session management architecture
+- Fixes BUG-001 (cross-origin navigation issue)
+
+Screenshot Command Design (DR-011):
 
 - docs/design/design-records/dr-006-action-command-flags.md - --clear flag behavior (if applicable)
+- docs/design/design-records/dr-010-browser-level-cdp-sessions.md - Session context for commands
 - No additional prerequisites
 
-HTML Command Design (DR-011):
+HTML Command Design (DR-012):
 
 - docs/design/design-records/dr-006-action-command-flags.md - --clear flag behavior (if applicable)
+- docs/design/design-records/dr-010-browser-level-cdp-sessions.md - Session context for commands
 - No additional prerequisites
 
-Eval Command Design (DR-012):
+Eval Command Design (DR-013):
 
 - docs/design/design-records/dr-006-action-command-flags.md - --clear flag behavior (if applicable)
+- docs/design/design-records/dr-010-browser-level-cdp-sessions.md - Session context for commands
 - No additional prerequisites
 
-Cookies Command Design (DR-013):
+Cookies Command Design (DR-014):
 
 - docs/design/design-records/dr-006-action-command-flags.md - --clear flag behavior (if applicable)
+- docs/design/design-records/dr-010-browser-level-cdp-sessions.md - Session context for commands
 - No additional prerequisites
 
 Before starting any implementation phase:
@@ -336,11 +361,12 @@ Recommended order (prioritize console and network):
 
 1. Console (DR-007 + implementation) - COMPLETE
 2. Daemon REPL (DR-008 + implementation) - COMPLETE
-3. Network (DR-009 + implementation) - IN PROGRESS (blocked by BUG-001)
-4. Screenshot (DR-010 + implementation)
-5. HTML (DR-011 + implementation)
-6. Eval (DR-012 + implementation)
-7. Cookies (DR-013 + implementation)
+3. Network (DR-009 + implementation) - COMPLETE (unit tests pass)
+4. Browser-Level CDP Sessions (DR-010 + implementation) - IN PROGRESS (design complete)
+5. Screenshot (DR-011 + implementation)
+6. HTML (DR-012 + implementation)
+7. Eval (DR-013 + implementation)
+8. Cookies (DR-014 + implementation)
 
 ## Notes
 
@@ -350,27 +376,16 @@ The Daemon REPL was prioritized because it changed the command execution archite
 
 ## Known Issues
 
-BUG-001: Network events not captured after cross-origin navigation
+BUG-001: Network events not captured after cross-origin navigation - SOLUTION DESIGNED
 
 Symptom: After navigating to a second URL (different origin), `webctl network` shows no new requests. Only requests from the initial page load are captured.
 
-Steps to reproduce:
-1. `./webctl start`
-2. Navigate to https://reqres.in (requests appear in `webctl network`)
-3. `./webctl clear network`
-4. Navigate to https://jsonplaceholder.typicode.com/posts
-5. `./webctl network` returns empty or stale data
+Root cause: The CDP WebSocket connection is to a page-level target. Cross-origin navigation with Chrome's Site Isolation creates a new renderer process and target, leaving the daemon connected to a stale target.
 
-Suspected cause: The CDP WebSocket connection is to a page-level target. Cross-origin navigation with Chrome's Site Isolation may create a new renderer process, potentially invalidating the connection or requiring re-enabling of CDP domains.
+Solution: DR-010 (Browser-Level CDP Sessions) addresses this by:
+1. Connecting to the browser-level WebSocket instead of page target
+2. Using Target.setAutoAttach with flatten: true for automatic session tracking
+3. Tracking sessions and automatically handling target attach/detach
+4. Implementing session-based command routing
 
-Investigation needed:
-- Check if `webctl status` still shows correct URL after navigation
-- Check if CDP connection is still alive (no error in daemon)
-- Test if same-origin navigation works (e.g., navigate within reqres.in)
-- Consider subscribing to Page.frameNavigated and re-enabling Network domain
-- Consider using Target.setAutoAttach for automatic target attachment
-
-Files involved:
-- internal/browser/browser.go (WebSocketURL connects to page target)
-- internal/daemon/daemon.go (enableDomains, subscribeEvents)
-- internal/cdp/client.go (WebSocket connection handling)
+Status: Design complete, implementation pending.

@@ -15,5 +15,6 @@ Design Records (DRs) document significant technical decisions made during develo
 | DR-007 | [Console Command Interface](dr-007-console-command.md) | Accepted | 2025-12-14 |
 | DR-008 | [Daemon REPL Interface](dr-008-daemon-repl.md) | Accepted | 2025-12-15 |
 | DR-009 | [Network Command Interface](dr-009-network-command.md) | Accepted | 2025-12-15 |
+| DR-010 | [Browser-Level CDP Sessions](dr-010-browser-level-cdp-sessions.md) | Accepted | 2025-12-16 |
 
 Note: Superseded design records are in `superseded/`

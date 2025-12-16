@@ -152,6 +152,7 @@ NetworkEntry Schema:
 
 ```json
 {
+  "sessionId": "9A3E8D71...",
   "requestId": "123.45",
   "url": "https://api.example.com/users",
   "method": "POST",
@@ -212,6 +213,10 @@ Failed Request Entry:
 ```
 
 Field Descriptions:
+
+sessionId (string, required):
+- CDP session identifier
+- Identifies which page session produced this entry
 
 requestId (string, required):
 - CDP request identifier
@@ -475,3 +480,14 @@ Integration tests:
 - Verify clear command deletes body files
 - Verify empty buffer returns count: 0
 - Verify error when daemon not running
+
+## Session Filtering
+
+Network entries are filtered to the active session by default. Each entry includes a sessionId field identifying which page session produced it. When multiple browser tabs are open, only entries from the active session are returned.
+
+Entries from a session are discarded when that session detaches (tab closed or cross-origin navigation). See DR-010 for full session management details.
+
+## Updates
+
+- 2025-12-15: Initial version
+- 2025-12-16: Added sessionId field to entries, added session filtering (see DR-010)

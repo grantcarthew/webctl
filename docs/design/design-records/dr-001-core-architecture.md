@@ -211,7 +211,9 @@ Ring buffer with oldest-first eviction:
 
 - When buffer is full, oldest entries are silently evicted
 - Buffer size configurable via `--buffer-size` flag on start
-- Queries return all buffered entries (non-destructive by default)
+- Queries return buffered entries filtered to active session by default
+- Entries are tagged with session ID for filtering (see DR-010)
+- Entries from a session are discarded when that session detaches
 
 ### Clear Command
 
@@ -297,3 +299,4 @@ webctl stop
 ## Updates
 
 - 2025-12-11: Added `browser` command and `--attach` flag to `start` command (see DR-002)
+- 2025-12-16: Added session-aware buffering notes (see DR-010)
