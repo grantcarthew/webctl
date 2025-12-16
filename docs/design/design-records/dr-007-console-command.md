@@ -45,6 +45,7 @@ JSON (default to terminal, raw to pipes):
   "ok": true,
   "entries": [
     {
+      "sessionId": "9A3E8D71...",
       "type": "error",
       "text": "Uncaught TypeError: Cannot read property 'foo'",
       "args": ["Uncaught TypeError: Cannot read property 'foo'"],
@@ -315,6 +316,13 @@ Integration tests:
 - Verify empty buffer returns count: 0
 - Verify error when daemon not running
 
+## Session Filtering
+
+Console entries are filtered to the active session by default. Each entry includes a sessionId field identifying which page session produced it. When multiple browser tabs are open, only entries from the active session are returned.
+
+Entries from a session are discarded when that session detaches (tab closed or cross-origin navigation). See DR-010 for full session management details.
+
 ## Updates
 
 - 2025-12-14: Initial version
+- 2025-12-16: Added sessionId field to entries, added session filtering (see DR-010)

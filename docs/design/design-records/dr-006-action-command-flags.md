@@ -48,6 +48,8 @@ Flag behavior:
 
 Clearing happens atomically BEFORE the action executes.
 
+Note: Clearing always clears all entries regardless of session. This provides a clean slate for debugging. See DR-010 for session management details.
+
 Action commands that support `--clear`:
 
 - navigate
@@ -208,3 +210,4 @@ perform action command
 ## Updates
 
 - 2025-12-14: Initial version
+- 2025-12-16: Clarified that clear always clears all sessions (see DR-010)
