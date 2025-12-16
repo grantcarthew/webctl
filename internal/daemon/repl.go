@@ -11,13 +11,17 @@ import (
 	"golang.org/x/term"
 )
 
+// SessionProvider returns the active session info and total count.
+type SessionProvider func() (active *ipc.PageSession, count int)
+
 // REPL provides an interactive command interface for the daemon.
 type REPL struct {
-	handler   ipc.Handler
-	cmdExec   ipc.CommandExecutor
-	liner     *liner.State
-	history   []string
-	shutdown  func()
+	handler     ipc.Handler
+	cmdExec     ipc.CommandExecutor
+	sessionProv SessionProvider
+	liner       *liner.State
+	history     []string
+	shutdown    func()
 }
 
 // NewREPL creates a new REPL with the given handler, command executor, and shutdown callback.
@@ -29,6 +33,11 @@ func NewREPL(handler ipc.Handler, cmdExec ipc.CommandExecutor, shutdown func()) 
 		cmdExec:  cmdExec,
 		shutdown: shutdown,
 	}
+}
+
+// SetSessionProvider sets the session provider for dynamic prompt generation.
+func (r *REPL) SetSessionProvider(sp SessionProvider) {
+	r.sessionProv = sp
 }
 
 // IsStdinTTY returns true if stdin is a terminal.
@@ -44,7 +53,7 @@ func (r *REPL) Run() error {
 	r.liner.SetCtrlCAborts(true)
 
 	for {
-		line, err := r.liner.Prompt("webctl> ")
+		line, err := r.liner.Prompt(r.prompt())
 		if err != nil {
 			if err == liner.ErrPromptAborted || err == io.EOF {
 				return nil
@@ -66,6 +75,29 @@ func (r *REPL) Run() error {
 
 		r.executeCommand(line)
 	}
+}
+
+// prompt generates the REPL prompt with session context.
+func (r *REPL) prompt() string {
+	if r.sessionProv == nil {
+		return "webctl> "
+	}
+
+	active, count := r.sessionProv()
+	if active == nil {
+		return "webctl> "
+	}
+
+	// Truncate title to 30 chars
+	title := active.Title
+	if len(title) > 30 {
+		title = title[:27] + "..."
+	}
+
+	if count > 1 {
+		return fmt.Sprintf("webctl [%s](%d)> ", title, count)
+	}
+	return fmt.Sprintf("webctl [%s]> ", title)
 }
 
 // handleSpecialCommand handles REPL-specific commands.
@@ -148,6 +180,12 @@ func (r *REPL) parseBasicCommand(cmd string, args []string) *ipc.Request {
 		return &ipc.Request{Cmd: "console"}
 	case "network":
 		return &ipc.Request{Cmd: "network"}
+	case "target":
+		query := ""
+		if len(args) > 0 {
+			query = args[0]
+		}
+		return &ipc.Request{Cmd: "target", Target: query}
 	case "clear":
 		target := ""
 		if len(args) > 0 {
@@ -183,6 +221,7 @@ Commands:
     --tail <n>          Return last N entries
     --range <start-end> Return entries in range
   network             Show network requests
+  target [query]      List sessions or switch to a session
   clear [target]      Clear event buffers (console, network, or all)
 
 REPL:

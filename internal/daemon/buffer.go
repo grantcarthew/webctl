@@ -110,3 +110,42 @@ func (b *RingBuffer[T]) Clear() {
 	b.head = 0
 	b.count = 0
 }
+
+// RemoveIf removes all items for which fn returns true.
+// Items are compacted in-place, maintaining order.
+func (b *RingBuffer[T]) RemoveIf(fn func(*T) bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if b.count == 0 {
+		return
+	}
+
+	// Collect items to keep
+	var keep []T
+	start := 0
+	if b.count == b.cap {
+		start = b.head
+	}
+
+	for i := 0; i < b.count; i++ {
+		idx := (start + i) % b.cap
+		if !fn(&b.items[idx]) {
+			keep = append(keep, b.items[idx])
+		}
+	}
+
+	// Zero out buffer
+	var zero T
+	for i := range b.items {
+		b.items[i] = zero
+	}
+
+	// Re-add kept items
+	b.head = 0
+	b.count = len(keep)
+	for i, item := range keep {
+		b.items[i] = item
+	}
+	b.head = b.count % b.cap
+}
