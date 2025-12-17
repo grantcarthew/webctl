@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // Version is set at build time.
@@ -82,9 +83,18 @@ func resetCommandFlags() {
 	// TODO: Add flag resets for: screenshot, html, eval, cookies
 }
 
+// isStdoutTTY returns true if stdout is a terminal.
+func isStdoutTTY() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
 // outputJSON writes a JSON response to the given writer.
+// Pretty prints if stdout is a TTY, compact otherwise.
 func outputJSON(w io.Writer, data any) error {
 	enc := json.NewEncoder(w)
+	if isStdoutTTY() {
+		enc.SetIndent("", "  ")
+	}
 	return enc.Encode(data)
 }
 

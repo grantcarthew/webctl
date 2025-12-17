@@ -172,6 +172,56 @@ func TestDaemon_Integration(t *testing.T) {
 		// so we just log rather than fail
 	})
 
+	// Test that session URL updates after cross-origin navigation
+	// This verifies Target.setDiscoverTargets is enabled for targetInfoChanged events
+	t.Run("session_url_updates_after_navigation", func(t *testing.T) {
+		// Navigate to a real external URL (cross-origin from about:blank)
+		params, _ := json.Marshal(map[string]any{
+			"url": "https://example.com",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "cdp",
+			Target: "Page.navigate",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("navigate failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("navigate returned error: %s", resp.Error)
+		}
+
+		// Wait for navigation and target info update
+		time.Sleep(2 * time.Second)
+
+		// Verify status shows updated URL
+		resp, err = client.SendCmd("status")
+		if err != nil {
+			t.Fatalf("status command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("status returned error: %s", resp.Error)
+		}
+
+		var status ipc.StatusData
+		if err := json.Unmarshal(resp.Data, &status); err != nil {
+			t.Fatalf("failed to parse status: %v", err)
+		}
+
+		// Check active session URL updated
+		if status.ActiveSession == nil {
+			t.Fatal("expected active session")
+		}
+		if status.ActiveSession.URL != "https://example.com/" {
+			t.Errorf("expected session URL 'https://example.com/', got %q", status.ActiveSession.URL)
+		}
+
+		// Also verify the deprecated URL field for backwards compatibility
+		if status.URL != "https://example.com/" {
+			t.Errorf("expected status.URL 'https://example.com/', got %q", status.URL)
+		}
+	})
+
 	// Test clear command
 	t.Run("clear", func(t *testing.T) {
 		// First add a console entry

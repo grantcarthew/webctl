@@ -68,7 +68,7 @@ func runTarget(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
-	return outputTargetJSON(data, isStdoutTTY())
+	return outputTargetJSON(data)
 }
 
 // outputTargetError outputs an error response that includes session data.
@@ -96,26 +96,17 @@ func outputTargetError(resp ipc.Response) error {
 		output["matches"] = errData.Matches
 	}
 
-	enc := json.NewEncoder(os.Stdout)
-	if isStdoutTTY() {
-		enc.SetIndent("", "  ")
-	}
-	return enc.Encode(output)
+	return outputJSON(os.Stdout, output)
 }
 
 // outputTargetJSON outputs target data in JSON format.
-func outputTargetJSON(data ipc.TargetData, pretty bool) error {
+func outputTargetJSON(data ipc.TargetData) error {
 	output := map[string]any{
 		"ok":            true,
 		"activeSession": data.ActiveSession,
 		"sessions":      formatSessions(data.Sessions, data.ActiveSession),
 	}
-
-	enc := json.NewEncoder(os.Stdout)
-	if pretty {
-		enc.SetIndent("", "  ")
-	}
-	return enc.Encode(output)
+	return outputJSON(os.Stdout, output)
 }
 
 // formatSessions formats sessions with truncated IDs for display.

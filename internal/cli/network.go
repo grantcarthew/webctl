@@ -131,7 +131,7 @@ func runNetwork(cmd *cobra.Command, args []string) error {
 	if format == "text" {
 		return outputNetworkText(entries)
 	}
-	return outputNetworkJSON(entries, isStdoutTTY())
+	return outputNetworkJSON(entries)
 }
 
 // statusMatcher represents a parsed status pattern.
@@ -381,7 +381,7 @@ func outputNetworkText(entries []ipc.NetworkEntry) error {
 }
 
 // outputNetworkJSON outputs entries in JSON format.
-func outputNetworkJSON(entries []ipc.NetworkEntry, pretty bool) error {
+func outputNetworkJSON(entries []ipc.NetworkEntry) error {
 	// Apply body truncation based on max-body-size flag
 	for i := range entries {
 		if len(entries[i].Body) > networkMaxBodySize {
@@ -395,12 +395,7 @@ func outputNetworkJSON(entries []ipc.NetworkEntry, pretty bool) error {
 		"entries": entries,
 		"count":   len(entries),
 	}
-
-	enc := json.NewEncoder(os.Stdout)
-	if pretty {
-		enc.SetIndent("", "  ")
-	}
-	return enc.Encode(resp)
+	return outputJSON(os.Stdout, resp)
 }
 
 // getBodiesDir returns the path to the bodies storage directory.
