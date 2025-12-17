@@ -55,23 +55,27 @@ Daemon REPL:
 - [x] `webctl start` accepts interactive commands via stdin when TTY
 - [x] REPL supports: status, console, network, clear, stop
 - [x] REPL has readline support with command history
+- [x] REPL command abbreviations (s=status, n=network, t=target, etc.)
+- [x] TTY-aware JSON output (pretty in terminal, compact when piped)
 
 Network Command:
 
 - [x] DR-009 written documenting network command interface
 - [x] `webctl network` returns buffered requests with bodies
 - [x] Network command has unit tests
-- [ ] Network command has integration tests
+- [x] Network command has integration tests
 
 Browser-Level CDP Sessions (fixes BUG-001):
 
 - [x] DR-010 written documenting browser-level CDP with session management
 - [x] Daemon connects to browser WebSocket (not page target)
 - [x] Target.setAutoAttach enables automatic session tracking
+- [x] Target.setDiscoverTargets enables targetInfoChanged events
 - [x] Session management with active session concept
 - [x] `webctl target` command for listing/switching sessions
 - [x] REPL prompt shows active session context
 - [x] Entries tagged with sessionId and filtered to active session
+- [x] Integration test verifies session URL updates after navigation
 
 Screenshot Command:
 
@@ -117,17 +121,17 @@ Design Records:
 Implementation Files:
 
 - `internal/cli/console.go` - COMPLETE
-- `internal/cli/network.go` - COMPLETE (unit tests pass)
-- `internal/cli/target.go` - Session listing and switching
-- `internal/cli/screenshot.go`
-- `internal/cli/html.go`
-- `internal/cli/eval.go`
-- `internal/cli/cookies.go`
+- `internal/cli/network.go` - COMPLETE (unit and integration tests pass)
+- `internal/cli/target.go` - COMPLETE (session listing and switching)
+- `internal/cli/screenshot.go` - TODO
+- `internal/cli/html.go` - TODO
+- `internal/cli/eval.go` - TODO
+- `internal/cli/cookies.go` - TODO
 - `internal/executor/` - Executor interface for CLI/REPL command execution - COMPLETE
-- `internal/daemon/repl.go` - REPL implementation - COMPLETE (needs session prompt update)
-- `internal/daemon/daemon.go` - Needs browser-level connection and session management
-- `internal/cdp/client.go` - Needs session ID support in messages
-- `internal/cdp/message.go` - Needs sessionId field
+- `internal/daemon/repl.go` - COMPLETE (session prompt, abbreviations, TTY-aware output)
+- `internal/daemon/daemon.go` - COMPLETE (browser-level connection, session management)
+- `internal/cdp/client.go` - COMPLETE (session ID support)
+- `internal/cdp/message.go` - COMPLETE (sessionId field)
 - Daemon-side handlers for each command (internal/daemon/)
 - Test files for each command (internal/cli/cli_test.go)
 
@@ -361,7 +365,7 @@ Recommended order (prioritize console and network):
 
 1. Console (DR-007 + implementation) - COMPLETE
 2. Daemon REPL (DR-008 + implementation) - COMPLETE
-3. Network (DR-009 + implementation) - COMPLETE (unit tests pass)
+3. Network (DR-009 + implementation) - COMPLETE (unit and integration tests pass)
 4. Browser-Level CDP Sessions (DR-010 + implementation) - COMPLETE
 5. Screenshot (DR-011 + implementation)
 6. HTML (DR-012 + implementation)
@@ -385,7 +389,8 @@ Root cause: The CDP WebSocket connection is to a page-level target. Cross-origin
 Solution: DR-010 (Browser-Level CDP Sessions) addresses this by:
 1. Connecting to the browser-level WebSocket instead of page target
 2. Using Target.setAutoAttach with flatten: true for automatic session tracking
-3. Tracking sessions and automatically handling target attach/detach
-4. Implementing session-based command routing
+3. Using Target.setDiscoverTargets for targetInfoChanged events (URL/title updates)
+4. Tracking sessions and automatically handling target attach/detach
+5. Implementing session-based command routing
 
-Status: Implementation complete.
+Status: Implementation complete. Integration test added to verify session URL updates.
