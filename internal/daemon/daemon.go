@@ -776,6 +776,8 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 		return d.handleConsole()
 	case "network":
 		return d.handleNetwork()
+	case "screenshot":
+		return d.handleScreenshot(req)
 	case "target":
 		return d.handleTarget(req.Target)
 	case "clear":
@@ -862,6 +864,59 @@ func (d *Daemon) handleNetwork() ipc.Response {
 	return ipc.SuccessResponse(ipc.NetworkData{
 		Entries: filtered,
 		Count:   len(filtered),
+	})
+}
+
+// handleScreenshot captures a screenshot of the active session.
+func (d *Daemon) handleScreenshot(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	// Parse screenshot parameters
+	var params ipc.ScreenshotParams
+	if len(req.Params) > 0 {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("invalid screenshot parameters: %v", err))
+		}
+	}
+
+	// Build CDP request parameters
+	cdpParams := map[string]any{
+		"format": "png",
+	}
+
+	// Add captureBeyondViewport for full-page screenshots
+	if params.FullPage {
+		cdpParams["captureBeyondViewport"] = true
+	}
+
+	// Call Page.captureScreenshot
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	result, err := d.cdp.SendToSession(ctx, activeID, "Page.captureScreenshot", cdpParams)
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to capture screenshot: %v", err))
+	}
+
+	// Parse CDP response
+	var cdpResp struct {
+		Data string `json:"data"` // base64-encoded PNG
+	}
+	if err := json.Unmarshal(result, &cdpResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse screenshot response: %v", err))
+	}
+
+	// Decode base64 data
+	pngData, err := base64.StdEncoding.DecodeString(cdpResp.Data)
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to decode screenshot data: %v", err))
+	}
+
+	return ipc.SuccessResponse(ipc.ScreenshotData{
+		Data: pngData,
 	})
 }
 

@@ -79,9 +79,10 @@ Browser-Level CDP Sessions (fixes BUG-001):
 
 Screenshot Command:
 
-- [ ] DR-011 written documenting screenshot command interface
-- [ ] `webctl screenshot` outputs PNG to stdout or JSON with base64
-- [ ] `webctl screenshot --full-page` captures entire scrollable page
+- [x] DR-011 written documenting screenshot command interface
+- [x] `webctl screenshot` saves PNG to /tmp/webctl-screenshots/ and returns JSON with path
+- [x] `webctl screenshot --full-page` captures entire scrollable page
+- [x] `webctl screenshot --output <path>` saves to custom path
 - [ ] Screenshot command has unit and integration tests
 
 HTML Command:
@@ -123,7 +124,7 @@ Implementation Files:
 - `internal/cli/console.go` - COMPLETE
 - `internal/cli/network.go` - COMPLETE (unit and integration tests pass)
 - `internal/cli/target.go` - COMPLETE (session listing and switching)
-- `internal/cli/screenshot.go` - TODO
+- `internal/cli/screenshot.go` - COMPLETE (tests pending)
 - `internal/cli/html.go` - TODO
 - `internal/cli/eval.go` - TODO
 - `internal/cli/cookies.go` - TODO
@@ -367,7 +368,7 @@ Recommended order (prioritize console and network):
 2. Daemon REPL (DR-008 + implementation) - COMPLETE
 3. Network (DR-009 + implementation) - COMPLETE (unit and integration tests pass)
 4. Browser-Level CDP Sessions (DR-010 + implementation) - COMPLETE
-5. Screenshot (DR-011 + implementation)
+5. Screenshot (DR-011 + implementation) - COMPLETE (tests pending)
 6. HTML (DR-012 + implementation)
 7. Eval (DR-013 + implementation)
 8. Cookies (DR-014 + implementation)
