@@ -175,7 +175,15 @@ func (d *Daemon) Run(ctx context.Context) error {
 // This is called on the browser-level connection and automatically attaches
 // to all page targets, enabling domains for each.
 func (d *Daemon) enableAutoAttach() error {
-	_, err := d.cdp.Send("Target.setAutoAttach", map[string]any{
+	// Enable target discovery to receive targetInfoChanged events
+	_, err := d.cdp.Send("Target.setDiscoverTargets", map[string]any{
+		"discover": true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to set discover targets: %w", err)
+	}
+
+	_, err = d.cdp.Send("Target.setAutoAttach", map[string]any{
 		"autoAttach":             true,
 		"flatten":                true,
 		"waitForDebuggerOnStart": true,

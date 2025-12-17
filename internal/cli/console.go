@@ -11,7 +11,6 @@ import (
 
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 var consoleCmd = &cobra.Command{
@@ -86,7 +85,7 @@ func runConsole(cmd *cobra.Command, args []string) error {
 	if format == "text" {
 		return outputConsoleText(entries)
 	}
-	return outputConsoleJSON(entries, isStdoutTTY())
+	return outputConsoleJSON(entries)
 }
 
 // filterConsoleByType filters entries to only include those with matching types.
@@ -149,11 +148,6 @@ func applyConsoleLimiting(entries []ipc.ConsoleEntry, head, tail int, rangeStr s
 	return entries, nil
 }
 
-// isStdoutTTY returns true if stdout is a terminal.
-func isStdoutTTY() bool {
-	return term.IsTerminal(int(os.Stdout.Fd()))
-}
-
 // outputConsoleText outputs entries in human-readable text format.
 func outputConsoleText(entries []ipc.ConsoleEntry) error {
 	for _, e := range entries {
@@ -180,16 +174,11 @@ func outputConsoleText(entries []ipc.ConsoleEntry) error {
 }
 
 // outputConsoleJSON outputs entries in JSON format.
-func outputConsoleJSON(entries []ipc.ConsoleEntry, pretty bool) error {
+func outputConsoleJSON(entries []ipc.ConsoleEntry) error {
 	resp := map[string]any{
 		"ok":      true,
 		"entries": entries,
 		"count":   len(entries),
 	}
-
-	enc := json.NewEncoder(os.Stdout)
-	if pretty {
-		enc.SetIndent("", "  ")
-	}
-	return enc.Encode(resp)
+	return outputJSON(os.Stdout, resp)
 }

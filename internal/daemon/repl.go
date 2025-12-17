@@ -101,6 +101,29 @@ func (r *REPL) prompt() string {
 	return fmt.Sprintf("webctl [%s]> ", title)
 }
 
+// replCommands lists REPL-specific commands for abbreviation matching.
+var replCommands = []string{"exit", "quit", "help", "history", "stop"}
+
+// webctlCommands lists webctl commands for abbreviation matching.
+var webctlCommands = []string{"status", "console", "network", "target", "clear"}
+
+// expandAbbreviation expands a command prefix to a full command name.
+// Returns the expanded command and true if exactly one match found.
+// Returns empty string and false if no matches or ambiguous.
+func expandAbbreviation(prefix string, commands []string) (string, bool) {
+	prefix = strings.ToLower(prefix)
+	var matches []string
+	for _, cmd := range commands {
+		if strings.HasPrefix(cmd, prefix) {
+			matches = append(matches, cmd)
+		}
+	}
+	if len(matches) == 1 {
+		return matches[0], true
+	}
+	return "", false
+}
+
 // handleSpecialCommand handles REPL-specific commands.
 // Returns true if the command was handled, false otherwise.
 func (r *REPL) handleSpecialCommand(line string) bool {
@@ -109,6 +132,11 @@ func (r *REPL) handleSpecialCommand(line string) bool {
 		return false
 	}
 	cmd := strings.ToLower(parts[0])
+
+	// Try to expand abbreviation
+	if expanded, ok := expandAbbreviation(cmd, replCommands); ok {
+		cmd = expanded
+	}
 
 	switch cmd {
 	case "exit", "quit":
@@ -139,17 +167,22 @@ func (r *REPL) executeCommand(line string) {
 		return
 	}
 
+	// Try to expand command abbreviation
+	if expanded, ok := expandAbbreviation(args[0], webctlCommands); ok {
+		args[0] = expanded
+	}
+
 	// Use command executor if available (provides full Cobra flag support)
 	if r.cmdExec != nil {
 		recognized, err := r.cmdExec(args)
 		if !recognized {
-			fmt.Printf("{\"ok\":false,\"error\":\"unknown command: %s\"}\n", args[0])
+			outputError(fmt.Sprintf("unknown command: %s", args[0]))
 			return
 		}
 		// Errors are already output by the command, but Cobra may return an error
 		// for flag parsing issues that aren't output
 		if err != nil && !strings.Contains(err.Error(), "daemon") {
-			fmt.Printf("{\"ok\":false,\"error\":\"%s\"}\n", err.Error())
+			outputError(err.Error())
 		}
 		return
 	}
@@ -164,7 +197,7 @@ func (r *REPL) executeBasic(args []string) {
 	cmd := args[0]
 	req := r.parseBasicCommand(cmd, args[1:])
 	if req == nil {
-		fmt.Printf("{\"ok\":false,\"error\":\"unknown command: %s\"}\n", cmd)
+		outputError(fmt.Sprintf("unknown command: %s", cmd))
 		return
 	}
 
@@ -198,20 +231,37 @@ func (r *REPL) parseBasicCommand(cmd string, args []string) *ipc.Request {
 	}
 }
 
+// isStdoutTTY returns true if stdout is a terminal.
+func isStdoutTTY() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
+}
+
+// outputJSON writes data as JSON to stdout, pretty-printing if stdout is a TTY.
+func outputJSON(data any) {
+	enc := json.NewEncoder(os.Stdout)
+	if isStdoutTTY() {
+		enc.SetIndent("", "  ")
+	}
+	enc.Encode(data)
+}
+
+// outputError writes an error response as JSON to stdout.
+func outputError(msg string) {
+	outputJSON(map[string]any{
+		"ok":    false,
+		"error": msg,
+	})
+}
+
 // outputResponse writes the response as JSON to stdout.
 func (r *REPL) outputResponse(resp ipc.Response) {
-	data, err := json.Marshal(resp)
-	if err != nil {
-		fmt.Println(`{"ok":false,"error":"failed to marshal response"}`)
-		return
-	}
-	fmt.Println(string(data))
+	outputJSON(resp)
 }
 
 // printHelp displays available commands.
 func (r *REPL) printHelp() {
 	help := `
-Commands:
+Commands (unique prefixes accepted: s=status, n=network, t=target, co=console, cl=clear):
   status              Show daemon status
   console [flags]     Show console log entries
     --format text|json  Output format (default: json)
@@ -223,7 +273,7 @@ Commands:
   target [query]      List sessions or switch to a session
   clear [target]      Clear event buffers (console, network, or all)
 
-REPL:
+REPL (unique prefixes accepted: he=help, hi=history, e=exit, q=quit):
   help, ?     Show this help
   history     Show command history
   exit, quit  Stop daemon and exit
