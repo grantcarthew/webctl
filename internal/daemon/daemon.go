@@ -778,6 +778,8 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 		return d.handleNetwork()
 	case "screenshot":
 		return d.handleScreenshot(req)
+	case "html":
+		return d.handleHTML(req)
 	case "target":
 		return d.handleTarget(req.Target)
 	case "clear":
@@ -917,6 +919,122 @@ func (d *Daemon) handleScreenshot(req ipc.Request) ipc.Response {
 
 	return ipc.SuccessResponse(ipc.ScreenshotData{
 		Data: pngData,
+	})
+}
+
+// handleHTML extracts HTML from the current page or specified selector.
+func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	// Parse HTML parameters
+	var params ipc.HTMLParams
+	if len(req.Params) > 0 {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("invalid html parameters: %v", err))
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Get document root node
+	docResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.getDocument", map[string]any{
+		"depth":  -1,
+		"pierce": false,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to get document: %v", err))
+	}
+
+	var docResp struct {
+		Root struct {
+			NodeID int `json:"nodeId"`
+		} `json:"root"`
+	}
+	if err := json.Unmarshal(docResult, &docResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse document response: %v", err))
+	}
+
+	// If no selector, get full page HTML
+	if params.Selector == "" {
+		htmlResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
+			"nodeId": docResp.Root.NodeID,
+		})
+		if err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to get HTML: %v", err))
+		}
+
+		var htmlResp struct {
+			OuterHTML string `json:"outerHTML"`
+		}
+		if err := json.Unmarshal(htmlResult, &htmlResp); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to parse HTML response: %v", err))
+		}
+
+		return ipc.SuccessResponse(ipc.HTMLData{
+			HTML: htmlResp.OuterHTML,
+		})
+	}
+
+	// Query selector for matching elements
+	queryResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.querySelectorAll", map[string]any{
+		"nodeId":   docResp.Root.NodeID,
+		"selector": params.Selector,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to query selector: %v", err))
+	}
+
+	var queryResp struct {
+		NodeIDs []int `json:"nodeIds"`
+	}
+	if err := json.Unmarshal(queryResult, &queryResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse query response: %v", err))
+	}
+
+	// Check if selector matched any elements
+	if len(queryResp.NodeIDs) == 0 {
+		return ipc.ErrorResponse(fmt.Sprintf("selector '%s' matched no elements", params.Selector))
+	}
+
+	// Get HTML for each matching element
+	var htmlParts []string
+	for i, nodeID := range queryResp.NodeIDs {
+		htmlResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
+			"nodeId": nodeID,
+		})
+		if err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to get HTML for element %d: %v", i+1, err))
+		}
+
+		var htmlResp struct {
+			OuterHTML string `json:"outerHTML"`
+		}
+		if err := json.Unmarshal(htmlResult, &htmlResp); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to parse HTML response for element %d: %v", i+1, err))
+		}
+
+		// Add comment separator for multiple matches
+		if len(queryResp.NodeIDs) > 1 {
+			htmlParts = append(htmlParts, fmt.Sprintf("<!-- Element %d of %d: %s -->", i+1, len(queryResp.NodeIDs), params.Selector))
+		}
+		htmlParts = append(htmlParts, htmlResp.OuterHTML)
+	}
+
+	// Join with newlines
+	html := ""
+	for i, part := range htmlParts {
+		html += part
+		if i < len(htmlParts)-1 {
+			html += "\n\n"
+		}
+	}
+
+	return ipc.SuccessResponse(ipc.HTMLData{
+		HTML: html,
 	})
 }
 
