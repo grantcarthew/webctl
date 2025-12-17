@@ -955,3 +955,226 @@ func TestScreenshot_Integration(t *testing.T) {
 		t.Error("daemon did not shut down in time")
 	}
 }
+
+// TestHTML_Integration tests HTML extraction with a real browser.
+// Run with: go test -run Integration ./...
+func TestHTML_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "webctl.sock")
+	pidPath := filepath.Join(tmpDir, "webctl.pid")
+
+	cfg := Config{
+		Headless:   true,
+		Port:       0,
+		SocketPath: socketPath,
+		PIDPath:    pidPath,
+		BufferSize: 100,
+	}
+
+	d := New(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- d.Run(ctx)
+	}()
+
+	if !waitForSocket(socketPath, 30*time.Second) {
+		t.Fatal("daemon did not start in time")
+	}
+
+	client, err := ipc.DialPath(socketPath)
+	if err != nil {
+		t.Fatalf("failed to connect to daemon: %v", err)
+	}
+	defer client.Close()
+
+	// Navigate to a test page first
+	testHTML := `<html><head><title>HTML Test</title></head><body><h1>Test Page</h1><div class="content">Content 1</div><div class="content">Content 2</div><p id="unique">Unique element</p></body></html>`
+	params, _ := json.Marshal(map[string]any{
+		"url": "data:text/html," + testHTML,
+	})
+	resp, err := client.Send(ipc.Request{
+		Cmd:    "cdp",
+		Target: "Page.navigate",
+		Params: params,
+	})
+	if err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("navigate returned error: %s", resp.Error)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Test: Full page HTML
+	t.Run("full_page_html", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.HTMLParams{})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "html",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("html command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("html returned error: %s", resp.Error)
+		}
+
+		var data ipc.HTMLData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse HTML data: %v", err)
+		}
+
+		if len(data.HTML) == 0 {
+			t.Fatal("expected HTML data")
+		}
+
+		// Verify it contains expected elements
+		if !bytes.Contains([]byte(data.HTML), []byte("HTML Test")) {
+			t.Error("HTML should contain title")
+		}
+		if !bytes.Contains([]byte(data.HTML), []byte("Test Page")) {
+			t.Error("HTML should contain h1 content")
+		}
+
+		t.Logf("full page HTML length: %d bytes", len(data.HTML))
+	})
+
+	// Test: Single element match
+	t.Run("single_element_selector", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.HTMLParams{
+			Selector: "#unique",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "html",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("html command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("html returned error: %s", resp.Error)
+		}
+
+		var data ipc.HTMLData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse HTML data: %v", err)
+		}
+
+		if !bytes.Contains([]byte(data.HTML), []byte("Unique element")) {
+			t.Error("HTML should contain unique element content")
+		}
+		if !bytes.Contains([]byte(data.HTML), []byte(`id="unique"`)) {
+			t.Error("HTML should include element attributes")
+		}
+
+		t.Logf("element HTML: %s", data.HTML)
+	})
+
+	// Test: Multiple element matches
+	t.Run("multiple_element_matches", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.HTMLParams{
+			Selector: ".content",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "html",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("html command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("html returned error: %s", resp.Error)
+		}
+
+		var data ipc.HTMLData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse HTML data: %v", err)
+		}
+
+		// Should contain both content elements
+		if !bytes.Contains([]byte(data.HTML), []byte("Content 1")) {
+			t.Error("HTML should contain first content element")
+		}
+		if !bytes.Contains([]byte(data.HTML), []byte("Content 2")) {
+			t.Error("HTML should contain second content element")
+		}
+
+		// Should contain comment separators
+		if !bytes.Contains([]byte(data.HTML), []byte("<!-- Element 1 of 2")) {
+			t.Error("HTML should contain first element comment")
+		}
+		if !bytes.Contains([]byte(data.HTML), []byte("<!-- Element 2 of 2")) {
+			t.Error("HTML should contain second element comment")
+		}
+
+		t.Logf("multiple elements HTML length: %d bytes", len(data.HTML))
+	})
+
+	// Test: Selector matches no elements
+	t.Run("no_match_error", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.HTMLParams{
+			Selector: ".nonexistent",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "html",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("html command failed: %v", err)
+		}
+
+		if resp.OK {
+			t.Error("expected error for non-matching selector")
+		}
+
+		if !bytes.Contains([]byte(resp.Error), []byte("matched no elements")) {
+			t.Errorf("error should mention no matches, got: %s", resp.Error)
+		}
+	})
+
+	// Test: Complex selector
+	t.Run("complex_selector", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.HTMLParams{
+			Selector: "body > h1",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "html",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("html command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("html returned error: %s", resp.Error)
+		}
+
+		var data ipc.HTMLData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse HTML data: %v", err)
+		}
+
+		if !bytes.Contains([]byte(data.HTML), []byte("<h1>Test Page</h1>")) {
+			t.Error("HTML should contain h1 element")
+		}
+	})
+
+	client.Close()
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != context.Canceled {
+			t.Errorf("daemon exited with error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("daemon did not shut down in time")
+	}
+}

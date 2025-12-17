@@ -83,14 +83,17 @@ Screenshot Command:
 - [x] `webctl screenshot` saves PNG to /tmp/webctl-screenshots/ and returns JSON with path
 - [x] `webctl screenshot --full-page` captures entire scrollable page
 - [x] `webctl screenshot --output <path>` saves to custom path
-- [ ] Screenshot command has unit and integration tests
+- [x] Screenshot command has unit and integration tests
 
 HTML Command:
 
-- [ ] DR-012 written documenting html command interface
-- [ ] `webctl html` returns full page HTML
-- [ ] `webctl html ".selector"` returns element HTML
-- [ ] HTML command has unit and integration tests
+- [x] DR-012 written documenting html command interface
+- [x] `webctl html` returns full page HTML to /tmp/webctl-html/ as file
+- [x] `webctl html ".selector"` returns element HTML with CSS selector support
+- [x] `webctl html ".selector"` returns multiple matches with HTML comment separators
+- [x] `webctl html --output <path>` saves to custom path
+- [x] HTML command has unit and integration tests
+- [ ] BUG-002: HTML command fails with "client closed while waiting for response" in REPL
 
 Eval Command:
 
@@ -395,3 +398,49 @@ Solution: DR-010 (Browser-Level CDP Sessions) addresses this by:
 5. Implementing session-based command routing
 
 Status: Implementation complete. Integration test added to verify session URL updates.
+
+---
+
+BUG-002: HTML command fails with "client closed while waiting for response" - OPEN
+
+Symptom: When running `webctl html` in the REPL, the command fails with error "failed to get document: client closed while waiting for response". The error appears twice in succession.
+
+Example:
+```
+webctl [about:blank]> html
+{
+  "error": "failed to get document: client closed while waiting for response",
+  "ok": false
+}
+{
+  "error": "failed to get document: client closed while waiting for response",
+  "ok": false
+}
+```
+
+Context:
+- Occurs in REPL mode (`webctl start` with interactive session)
+- HTML command implemented 2025-12-17
+- Unit tests pass (using mock executor)
+- Integration tests pass (using IPC client)
+- Screenshot command (similar CDP usage) works correctly
+
+Observed behavior:
+- Error occurs when calling `DOM.getDocument` via CDP
+- CDP client appears to close connection while waiting for response
+- Error repeats twice (possibly due to retry or duplicate call)
+
+Possible causes:
+- CDP timeout issue specific to DOM methods
+- Session routing problem for HTML command
+- CDP client lifecycle issue in handleHTML
+- Response parsing or context deadline
+
+Next steps:
+1. Compare handleHTML CDP calls with working handleScreenshot
+2. Add debug logging to CDP client for DOM.getDocument calls
+3. Verify session ID is correctly passed to CDP client
+4. Check if DOM domain needs to be enabled first
+5. Test with longer timeout or different CDP methods
+
+Status: Not yet investigated. Discovered during manual testing 2025-12-17.

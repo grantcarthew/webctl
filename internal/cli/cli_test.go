@@ -1640,3 +1640,214 @@ func TestRunScreenshot_FullPage(t *testing.T) {
 		t.Error("expected FullPage=true in screenshot params")
 	}
 }
+
+// HTML command tests
+
+func TestRunHTML_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runHTML(htmlCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunHTML_FullPage(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	htmlContent := "<!DOCTYPE html><html><head><title>Test</title></head><body><h1>Hello</h1></body></html>"
+	htmlData := ipc.HTMLData{HTML: htmlContent}
+	htmlJSON, _ := json.Marshal(htmlData)
+
+	statusData := ipc.StatusData{
+		Running: true,
+		ActiveSession: &ipc.PageSession{
+			ID:    "session-123",
+			URL:   "https://example.com",
+			Title: "Test Page",
+		},
+	}
+	statusJSON, _ := json.Marshal(statusData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "html" {
+				return ipc.Response{OK: true, Data: htmlJSON}, nil
+			}
+			if req.Cmd == "status" {
+				return ipc.Response{OK: true, Data: statusJSON}, nil
+			}
+			t.Errorf("unexpected command: %s", req.Cmd)
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	htmlOutput = tmpDir + "/test.html"
+	defer func() { htmlOutput = "" }()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runHTML(htmlCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+
+	path, ok := result["path"].(string)
+	if !ok {
+		t.Fatal("expected path in response")
+	}
+
+	// Verify file was created
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Errorf("failed to read HTML file: %v", err)
+	}
+
+	if string(data) != htmlContent {
+		t.Errorf("HTML content mismatch: got %q, want %q", string(data), htmlContent)
+	}
+}
+
+func TestRunHTML_WithSelector(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	htmlContent := `<div class="content">Test Content</div>`
+	htmlData := ipc.HTMLData{HTML: htmlContent}
+	htmlJSON, _ := json.Marshal(htmlData)
+
+	var capturedSelector string
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "html" {
+				var params ipc.HTMLParams
+				json.Unmarshal(req.Params, &params)
+				capturedSelector = params.Selector
+				return ipc.Response{OK: true, Data: htmlJSON}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	htmlOutput = tmpDir + "/test.html"
+	defer func() { htmlOutput = "" }()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runHTML(htmlCmd, []string{".content"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedSelector != ".content" {
+		t.Errorf("expected selector='.content', got %q", capturedSelector)
+	}
+}
+
+func TestRunHTML_CustomOutput(t *testing.T) {
+	tmpDir := t.TempDir()
+	customPath := tmpDir + "/custom/page.html"
+
+	htmlContent := "<!DOCTYPE html><html><body>Test</body></html>"
+	htmlData := ipc.HTMLData{HTML: htmlContent}
+	htmlJSON, _ := json.Marshal(htmlData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "html" {
+				return ipc.Response{OK: true, Data: htmlJSON}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	htmlOutput = customPath
+	defer func() { htmlOutput = "" }()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runHTML(htmlCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	json.Unmarshal(buf.Bytes(), &result)
+
+	// Verify custom path is used
+	if result["path"] != customPath {
+		t.Errorf("expected path=%s, got %v", customPath, result["path"])
+	}
+
+	// Verify file exists at custom path
+	if _, err := os.Stat(customPath); err != nil {
+		t.Errorf("HTML not created at custom path: %v", err)
+	}
+}

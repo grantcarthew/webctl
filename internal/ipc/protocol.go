@@ -107,6 +107,16 @@ type ScreenshotData struct {
 	Data []byte `json:"data"`
 }
 
+// HTMLParams represents parameters for the "html" command.
+type HTMLParams struct {
+	Selector string `json:"selector,omitempty"`
+}
+
+// HTMLData is the response data for the "html" command.
+type HTMLData struct {
+	HTML string `json:"html"`
+}
+
 // SuccessResponse creates a successful response with the given data.
 func SuccessResponse(data any) Response {
 	var raw json.RawMessage
