@@ -1110,3 +1110,252 @@ func TestRunNetwork_Success(t *testing.T) {
 		t.Errorf("expected count=2, got %v", result["count"])
 	}
 }
+
+// Target command tests
+
+func TestRunTarget_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: false,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runTarget(targetCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunTarget_ListSessions(t *testing.T) {
+	targetData := ipc.TargetData{
+		ActiveSession: "session-abc",
+		Sessions: []ipc.PageSession{
+			{ID: "session-abc", URL: "https://example.com", Title: "Example"},
+			{ID: "session-def", URL: "https://test.com", Title: "Test Page"},
+		},
+	}
+	targetJSON, _ := json.Marshal(targetData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "target" {
+				t.Errorf("expected cmd=target, got %s", req.Cmd)
+			}
+			if req.Target != "" {
+				t.Errorf("expected empty target for list, got %s", req.Target)
+			}
+			return ipc.Response{OK: true, Data: targetJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runTarget(targetCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+	if result["activeSession"] != "session-abc" {
+		t.Errorf("expected activeSession=session-abc, got %v", result["activeSession"])
+	}
+
+	sessions := result["sessions"].([]any)
+	if len(sessions) != 2 {
+		t.Errorf("expected 2 sessions, got %d", len(sessions))
+	}
+}
+
+func TestRunTarget_SwitchSession(t *testing.T) {
+	targetData := ipc.TargetData{
+		ActiveSession: "session-def",
+		Sessions: []ipc.PageSession{
+			{ID: "session-abc", URL: "https://example.com", Title: "Example"},
+			{ID: "session-def", URL: "https://test.com", Title: "Test Page"},
+		},
+	}
+	targetJSON, _ := json.Marshal(targetData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "target" {
+				t.Errorf("expected cmd=target, got %s", req.Cmd)
+			}
+			if req.Target != "test" {
+				t.Errorf("expected target=test, got %s", req.Target)
+			}
+			return ipc.Response{OK: true, Data: targetJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runTarget(targetCmd, []string{"test"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+	if result["activeSession"] != "session-def" {
+		t.Errorf("expected activeSession=session-def, got %v", result["activeSession"])
+	}
+}
+
+func TestRunTarget_AmbiguousMatch(t *testing.T) {
+	// Daemon returns error with multiple matches
+	matchData := struct {
+		Error   string            `json:"error"`
+		Matches []ipc.PageSession `json:"matches"`
+	}{
+		Error: "ambiguous query 'test', matches multiple sessions",
+		Matches: []ipc.PageSession{
+			{ID: "session-abc", URL: "https://test1.com", Title: "Test 1"},
+			{ID: "session-def", URL: "https://test2.com", Title: "Test 2"},
+		},
+	}
+	matchJSON, _ := json.Marshal(matchData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: false, Error: matchData.Error, Data: matchJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	_ = runTarget(targetCmd, []string{"test"})
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != false {
+		t.Error("expected ok=false for ambiguous match")
+	}
+	if result["error"] == nil || result["error"] == "" {
+		t.Error("expected error message")
+	}
+	if result["matches"] == nil {
+		t.Error("expected matches in response")
+	}
+}
+
+func TestTruncateID(t *testing.T) {
+	tests := []struct {
+		id   string
+		n    int
+		want string
+	}{
+		{"short", 8, "short"},
+		{"exactly8", 8, "exactly8"},
+		{"toolongid123456", 8, "toolongi..."},
+		{"", 8, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			if got := truncateID(tt.id, tt.n); got != tt.want {
+				t.Errorf("truncateID(%q, %d) = %q, want %q", tt.id, tt.n, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTruncateTitle(t *testing.T) {
+	tests := []struct {
+		title string
+		max   int
+		want  string
+	}{
+		{"Short title", 40, "Short title"},
+		{"  Padded  ", 40, "Padded"},
+		{"This is a very long title that exceeds the maximum length allowed", 40, "This is a very long title that exceed..."},
+		{"", 40, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.title, func(t *testing.T) {
+			if got := truncateTitle(tt.title, tt.max); got != tt.want {
+				t.Errorf("truncateTitle(%q, %d) = %q, want %q", tt.title, tt.max, got, tt.want)
+			}
+		})
+	}
+}

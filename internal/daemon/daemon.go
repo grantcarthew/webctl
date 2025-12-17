@@ -138,7 +138,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 		errCh <- d.server.Serve(ctx)
 	}()
 
-	// Start REPL if stdin is a TTY
+	// Start REPL if stdin is a TTY.
+	// replDone is only closed when REPL exits; if stdin is not a TTY,
+	// it stays open so the select below doesn't trigger early exit.
 	replDone := make(chan struct{})
 	if IsStdinTTY() {
 		repl := NewREPL(d.handleRequest, d.config.CommandExecutor, func() { close(d.shutdown) })
@@ -149,9 +151,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 			defer close(replDone)
 			repl.Run()
 		}()
-	} else {
-		close(replDone)
 	}
+	// When stdin is not a TTY, replDone remains open - daemon waits for
+	// context cancellation, signal, shutdown command, or server error.
 
 	// Wait for shutdown
 	select {
