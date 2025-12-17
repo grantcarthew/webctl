@@ -194,6 +194,261 @@ func TestGetBodiesDir(t *testing.T) {
 	}
 }
 
+func TestDaemon_parseExceptionEvent(t *testing.T) {
+	d := New(DefaultConfig())
+
+	t.Run("with exception description", func(t *testing.T) {
+		timestamp := float64(time.Now().UnixMilli())
+		params := map[string]any{
+			"timestamp": timestamp,
+			"exceptionDetails": map[string]any{
+				"text":         "Uncaught Error",
+				"url":          "https://example.com/script.js",
+				"lineNumber":   42,
+				"columnNumber": 10,
+				"exception": map[string]any{
+					"description": "Error: Something went wrong\n    at foo (script.js:42:10)",
+				},
+			},
+		}
+		paramsJSON, _ := json.Marshal(params)
+
+		evt := cdp.Event{
+			Method: "Runtime.exceptionThrown",
+			Params: json.RawMessage(paramsJSON),
+		}
+
+		entry, ok := d.parseExceptionEvent(evt)
+		if !ok {
+			t.Fatal("parseExceptionEvent returned false")
+		}
+
+		if entry.Type != "error" {
+			t.Errorf("Type = %q, want 'error'", entry.Type)
+		}
+		// Should prefer exception.description over exceptionDetails.text
+		if entry.Text != "Error: Something went wrong\n    at foo (script.js:42:10)" {
+			t.Errorf("Text = %q, want exception description", entry.Text)
+		}
+		if entry.URL != "https://example.com/script.js" {
+			t.Errorf("URL = %q, want 'https://example.com/script.js'", entry.URL)
+		}
+		if entry.Line != 42 {
+			t.Errorf("Line = %d, want 42", entry.Line)
+		}
+		if entry.Column != 10 {
+			t.Errorf("Column = %d, want 10", entry.Column)
+		}
+		if entry.Timestamp != int64(timestamp) {
+			t.Errorf("Timestamp = %d, want %d", entry.Timestamp, int64(timestamp))
+		}
+	})
+
+	t.Run("without exception object", func(t *testing.T) {
+		params := map[string]any{
+			"timestamp": float64(1000),
+			"exceptionDetails": map[string]any{
+				"text":         "Script error.",
+				"url":          "",
+				"lineNumber":   0,
+				"columnNumber": 0,
+			},
+		}
+		paramsJSON, _ := json.Marshal(params)
+
+		evt := cdp.Event{
+			Method: "Runtime.exceptionThrown",
+			Params: json.RawMessage(paramsJSON),
+		}
+
+		entry, ok := d.parseExceptionEvent(evt)
+		if !ok {
+			t.Fatal("parseExceptionEvent returned false")
+		}
+
+		// Should use exceptionDetails.text when no exception object
+		if entry.Text != "Script error." {
+			t.Errorf("Text = %q, want 'Script error.'", entry.Text)
+		}
+	})
+
+	t.Run("invalid JSON", func(t *testing.T) {
+		evt := cdp.Event{
+			Method: "Runtime.exceptionThrown",
+			Params: json.RawMessage(`{invalid json}`),
+		}
+
+		_, ok := d.parseExceptionEvent(evt)
+		if ok {
+			t.Error("parseExceptionEvent should return false for invalid JSON")
+		}
+	})
+}
+
+func TestDaemon_updateResponseEvent(t *testing.T) {
+	d := New(DefaultConfig())
+
+	// First, add a request to the network buffer
+	requestEntry := ipc.NetworkEntry{
+		RequestID:   "req-123",
+		URL:         "https://example.com/api",
+		Method:      "GET",
+		RequestTime: time.Now().Add(-100 * time.Millisecond).UnixMilli(),
+	}
+	d.networkBuf.Push(requestEntry)
+
+	// Now simulate a response event
+	params := map[string]any{
+		"requestId": "req-123",
+		"response": map[string]any{
+			"status":     200,
+			"statusText": "OK",
+			"mimeType":   "application/json",
+			"headers": map[string]string{
+				"Content-Type": "application/json",
+			},
+		},
+	}
+	paramsJSON, _ := json.Marshal(params)
+
+	evt := cdp.Event{
+		Method: "Network.responseReceived",
+		Params: json.RawMessage(paramsJSON),
+	}
+
+	d.updateResponseEvent(evt)
+
+	// Verify the entry was updated
+	entries := d.networkBuf.All()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+
+	entry := entries[0]
+	if entry.Status != 200 {
+		t.Errorf("Status = %d, want 200", entry.Status)
+	}
+	if entry.StatusText != "OK" {
+		t.Errorf("StatusText = %q, want 'OK'", entry.StatusText)
+	}
+	if entry.MimeType != "application/json" {
+		t.Errorf("MimeType = %q, want 'application/json'", entry.MimeType)
+	}
+	if entry.ResponseHeaders["Content-Type"] != "application/json" {
+		t.Errorf("ResponseHeaders[Content-Type] = %q, want 'application/json'", entry.ResponseHeaders["Content-Type"])
+	}
+	if entry.ResponseTime == 0 {
+		t.Error("ResponseTime should be set")
+	}
+	if entry.Duration <= 0 {
+		t.Error("Duration should be positive")
+	}
+}
+
+func TestDaemon_handleLoadingFailed(t *testing.T) {
+	t.Run("network error", func(t *testing.T) {
+		d := New(DefaultConfig())
+
+		// Add a request to the buffer
+		requestEntry := ipc.NetworkEntry{
+			RequestID:   "req-456",
+			URL:         "https://example.com/missing",
+			Method:      "GET",
+			RequestTime: time.Now().Add(-50 * time.Millisecond).UnixMilli(),
+		}
+		d.networkBuf.Push(requestEntry)
+
+		// Simulate a loading failed event
+		params := map[string]any{
+			"requestId": "req-456",
+			"errorText": "net::ERR_CONNECTION_REFUSED",
+			"canceled":  false,
+		}
+		paramsJSON, _ := json.Marshal(params)
+
+		evt := cdp.Event{
+			Method: "Network.loadingFailed",
+			Params: json.RawMessage(paramsJSON),
+		}
+
+		d.handleLoadingFailed(evt)
+
+		entries := d.networkBuf.All()
+		if len(entries) != 1 {
+			t.Fatalf("expected 1 entry, got %d", len(entries))
+		}
+
+		entry := entries[0]
+		if !entry.Failed {
+			t.Error("Failed should be true")
+		}
+		if entry.Error != "net::ERR_CONNECTION_REFUSED" {
+			t.Errorf("Error = %q, want 'net::ERR_CONNECTION_REFUSED'", entry.Error)
+		}
+		if entry.ResponseTime == 0 {
+			t.Error("ResponseTime should be set")
+		}
+		if entry.Duration <= 0 {
+			t.Error("Duration should be positive")
+		}
+	})
+
+	t.Run("canceled request", func(t *testing.T) {
+		d := New(DefaultConfig())
+
+		requestEntry := ipc.NetworkEntry{
+			RequestID:   "req-789",
+			URL:         "https://example.com/slow",
+			Method:      "GET",
+			RequestTime: time.Now().Add(-50 * time.Millisecond).UnixMilli(),
+		}
+		d.networkBuf.Push(requestEntry)
+
+		params := map[string]any{
+			"requestId": "req-789",
+			"errorText": "",
+			"canceled":  true,
+		}
+		paramsJSON, _ := json.Marshal(params)
+
+		evt := cdp.Event{
+			Method: "Network.loadingFailed",
+			Params: json.RawMessage(paramsJSON),
+		}
+
+		d.handleLoadingFailed(evt)
+
+		entries := d.networkBuf.All()
+		entry := entries[0]
+		if !entry.Failed {
+			t.Error("Failed should be true")
+		}
+		if entry.Error != "canceled" {
+			t.Errorf("Error = %q, want 'canceled'", entry.Error)
+		}
+	})
+
+	t.Run("no matching request", func(t *testing.T) {
+		d := New(DefaultConfig())
+
+		// Don't add any request - should not panic
+		params := map[string]any{
+			"requestId": "nonexistent",
+			"errorText": "error",
+			"canceled":  false,
+		}
+		paramsJSON, _ := json.Marshal(params)
+
+		evt := cdp.Event{
+			Method: "Network.loadingFailed",
+			Params: json.RawMessage(paramsJSON),
+		}
+
+		// Should not panic
+		d.handleLoadingFailed(evt)
+	})
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
 }
