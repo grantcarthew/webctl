@@ -1359,3 +1359,284 @@ func TestTruncateTitle(t *testing.T) {
 		})
 	}
 }
+
+// Screenshot command tests
+
+func TestNormalizeTitle(t *testing.T) {
+	tests := []struct {
+		name  string
+		title string
+		want  string
+	}{
+		// Basic cases
+		{"simple title", "Example Domain", "example-domain"},
+		{"with punctuation", "React App - Development Server!", "react-app-development-server"},
+		{"mixed case", "MyWebApp 2024", "mywebapp-2024"},
+
+		// Truncation cases
+		{"long title truncated", "JSONPlaceholder - Free Fake REST API for Testing", "jsonplaceholder-free-fake-re"},
+		{"exactly 30 chars", "123456789012345678901234567890", "123456789012345678901234567890"},
+		{"over 30 chars", "1234567890123456789012345678901", "123456789012345678901234567890"},
+		{"truncate at special char", "abcdefghijklmnopqrstuvwxyz!@#$", "abcdefghijklmnopqrstuvwxyz"},
+		{"truncate creates trailing hyphen", "abcdefghijklmnopqrstuvwxyz----extra", "abcdefghijklmnopqrstuvwxyz"},
+
+		// Whitespace cases
+		{"multiple spaces", "   Lots   of---Spaces!!!   ", "lots-of-spaces"},
+		{"empty string", "", "untitled"},
+		{"only whitespace", "   ", "untitled"},
+		{"whitespace in middle", "foo   bar", "foo-bar"},
+		{"tabs and newlines", "\n\t  Title  \n\t", "title"},
+
+		// Special character cases
+		{"only non-alphanumeric", "!@#$%^&*()", "untitled"},
+		{"single hyphen", "-", "untitled"},
+		{"multiple hyphens only", "-----", "untitled"},
+		{"special unicode", "Café ☕ 日本", "caf"},
+		{"long special chars only", "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", "untitled"},
+
+		// Hyphen handling
+		{"trailing hyphens", "---Title---", "title"},
+		{"leading hyphens only", "---title", "title"},
+		{"multiple consecutive hyphens", "foo---bar___baz", "foo-bar-baz"},
+		{"underscores to hyphens", "foo__bar__baz", "foo-bar-baz"},
+
+		// Single/minimal cases
+		{"single character", "A", "a"},
+		{"single digit", "1", "1"},
+		{"numbers only", "123456", "123456"},
+
+		// Real-world examples
+		{"github url style", "my-awesome-project", "my-awesome-project"},
+		{"windows filename", "file:name*.txt", "file-name-txt"},
+		{"path separators", "path/to/file", "path-to-file"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeTitle(tt.title)
+			if got != tt.want {
+				t.Errorf("normalizeTitle(%q) = %q, want %q", tt.title, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunScreenshot_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runScreenshot(screenshotCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunScreenshot_Success(t *testing.T) {
+	// Create temp directory for screenshots
+	tmpDir := t.TempDir()
+
+	// Mock screenshot data (minimal valid PNG header)
+	pngData := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	screenshotData := ipc.ScreenshotData{
+		Data: pngData,
+	}
+	screenshotJSON, _ := json.Marshal(screenshotData)
+
+	statusData := ipc.StatusData{
+		Running: true,
+		ActiveSession: &ipc.PageSession{
+			ID:    "session-123",
+			URL:   "https://example.com",
+			Title: "Example Domain",
+		},
+	}
+	statusJSON, _ := json.Marshal(statusData)
+
+	callCount := 0
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			callCount++
+			if req.Cmd == "screenshot" {
+				return ipc.Response{OK: true, Data: screenshotJSON}, nil
+			}
+			if req.Cmd == "status" {
+				return ipc.Response{OK: true, Data: statusJSON}, nil
+			}
+			t.Errorf("unexpected command: %s", req.Cmd)
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	// Set custom output path in temp dir
+	screenshotOutput = tmpDir + "/test-screenshot.png"
+	defer func() { screenshotOutput = "" }()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runScreenshot(screenshotCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+
+	path, ok := result["path"].(string)
+	if !ok {
+		t.Fatal("expected path in response")
+	}
+
+	// Verify file was created
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Errorf("failed to read screenshot file: %v", err)
+	}
+
+	if !bytes.Equal(data, pngData) {
+		t.Errorf("screenshot data mismatch")
+	}
+}
+
+func TestRunScreenshot_CustomOutput(t *testing.T) {
+	tmpDir := t.TempDir()
+	customPath := tmpDir + "/custom/screenshot.png"
+
+	pngData := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+	screenshotData := ipc.ScreenshotData{Data: pngData}
+	screenshotJSON, _ := json.Marshal(screenshotData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "screenshot" {
+				var params ipc.ScreenshotParams
+				json.Unmarshal(req.Params, &params)
+				return ipc.Response{OK: true, Data: screenshotJSON}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	screenshotOutput = customPath
+	defer func() { screenshotOutput = "" }()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runScreenshot(screenshotCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	json.Unmarshal(buf.Bytes(), &result)
+
+	// Verify custom path is used
+	if result["path"] != customPath {
+		t.Errorf("expected path=%s, got %v", customPath, result["path"])
+	}
+
+	// Verify file exists at custom path
+	if _, err := os.Stat(customPath); err != nil {
+		t.Errorf("screenshot not created at custom path: %v", err)
+	}
+}
+
+func TestRunScreenshot_FullPage(t *testing.T) {
+	pngData := []byte{0x89, 0x50, 0x4E, 0x47}
+	screenshotData := ipc.ScreenshotData{Data: pngData}
+	screenshotJSON, _ := json.Marshal(screenshotData)
+
+	var capturedFullPage bool
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "screenshot" {
+				var params ipc.ScreenshotParams
+				json.Unmarshal(req.Params, &params)
+				capturedFullPage = params.FullPage
+				return ipc.Response{OK: true, Data: screenshotJSON}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	tmpDir := t.TempDir()
+	screenshotOutput = tmpDir + "/test.png"
+	defer func() { screenshotOutput = "" }()
+
+	screenshotFullPage = true
+	defer func() { screenshotFullPage = false }()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runScreenshot(screenshotCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if !capturedFullPage {
+		t.Error("expected FullPage=true in screenshot params")
+	}
+}

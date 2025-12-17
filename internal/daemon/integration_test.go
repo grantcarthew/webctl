@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -730,6 +731,218 @@ func TestNetwork_Integration(t *testing.T) {
 	})
 
 	// Cleanup
+	client.Close()
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != context.Canceled {
+			t.Errorf("daemon exited with error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("daemon did not shut down in time")
+	}
+}
+
+// TestScreenshot_Integration tests screenshot capture with a real browser.
+// Run with: go test -run Integration ./...
+func TestScreenshot_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "webctl.sock")
+	pidPath := filepath.Join(tmpDir, "webctl.pid")
+
+	cfg := Config{
+		Headless:   true,
+		Port:       0,
+		SocketPath: socketPath,
+		PIDPath:    pidPath,
+		BufferSize: 100,
+	}
+
+	d := New(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- d.Run(ctx)
+	}()
+
+	if !waitForSocket(socketPath, 30*time.Second) {
+		t.Fatal("daemon did not start in time")
+	}
+
+	client, err := ipc.DialPath(socketPath)
+	if err != nil {
+		t.Fatalf("failed to connect to daemon: %v", err)
+	}
+	defer client.Close()
+
+	// Navigate to a test page first
+	params, _ := json.Marshal(map[string]any{
+		"url": "data:text/html,<html><head><title>Screenshot Test</title></head><body><h1>Test Page</h1></body></html>",
+	})
+	resp, err := client.Send(ipc.Request{
+		Cmd:    "cdp",
+		Target: "Page.navigate",
+		Params: params,
+	})
+	if err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("navigate returned error: %s", resp.Error)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Test: Basic viewport screenshot
+	t.Run("basic_viewport_screenshot", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.ScreenshotParams{
+			FullPage: false,
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "screenshot",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("screenshot command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("screenshot returned error: %s", resp.Error)
+		}
+
+		var data ipc.ScreenshotData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse screenshot data: %v", err)
+		}
+
+		if len(data.Data) == 0 {
+			t.Fatal("expected screenshot data")
+		}
+
+		// Verify PNG header
+		if len(data.Data) < 8 {
+			t.Fatal("screenshot data too small")
+		}
+		pngHeader := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+		if !bytes.Equal(data.Data[:8], pngHeader) {
+			t.Errorf("invalid PNG header: got %x", data.Data[:8])
+		}
+
+		t.Logf("screenshot size: %d bytes", len(data.Data))
+	})
+
+	// Test: Full-page screenshot
+	t.Run("full_page_screenshot", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.ScreenshotParams{
+			FullPage: true,
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "screenshot",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("screenshot command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("screenshot returned error: %s", resp.Error)
+		}
+
+		var data ipc.ScreenshotData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse screenshot data: %v", err)
+		}
+
+		if len(data.Data) == 0 {
+			t.Fatal("expected screenshot data")
+		}
+
+		// Verify PNG header
+		pngHeader := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+		if !bytes.Equal(data.Data[:8], pngHeader) {
+			t.Errorf("invalid PNG header: got %x", data.Data[:8])
+		}
+
+		t.Logf("full-page screenshot size: %d bytes", len(data.Data))
+	})
+
+	// Test: Screenshot with no active session should fail gracefully
+	t.Run("no_active_session", func(t *testing.T) {
+		// This test would need session manipulation which isn't easy in current architecture
+		// We'll skip for now but document the expected behavior
+		t.Skip("session manipulation not easily testable in current architecture")
+	})
+
+	// Test: Screenshot after navigation updates session
+	t.Run("screenshot_after_navigation", func(t *testing.T) {
+		// Navigate to new page
+		params, _ := json.Marshal(map[string]any{
+			"url": "data:text/html,<html><head><title>Second Page</title></head><body><h1>Page 2</h1></body></html>",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "cdp",
+			Target: "Page.navigate",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("navigate failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("navigate returned error: %s", resp.Error)
+		}
+
+		time.Sleep(500 * time.Millisecond)
+
+		// Capture screenshot
+		screenshotParams, _ := json.Marshal(ipc.ScreenshotParams{
+			FullPage: false,
+		})
+		resp, err = client.Send(ipc.Request{
+			Cmd:    "screenshot",
+			Params: screenshotParams,
+		})
+		if err != nil {
+			t.Fatalf("screenshot command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("screenshot returned error: %s", resp.Error)
+		}
+
+		var data ipc.ScreenshotData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse screenshot data: %v", err)
+		}
+
+		if len(data.Data) == 0 {
+			t.Fatal("expected screenshot data after navigation")
+		}
+
+		t.Logf("screenshot after navigation size: %d bytes", len(data.Data))
+	})
+
+	// Test: Screenshot command validates fullPage parameter
+	t.Run("parameter_validation", func(t *testing.T) {
+		// Test with explicit false
+		params, _ := json.Marshal(ipc.ScreenshotParams{
+			FullPage: false,
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "screenshot",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("screenshot command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("screenshot returned error: %s", resp.Error)
+		}
+	})
+
 	client.Close()
 	cancel()
 

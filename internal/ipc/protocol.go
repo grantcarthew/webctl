@@ -97,6 +97,16 @@ type TargetData struct {
 	Sessions      []PageSession `json:"sessions"`
 }
 
+// ScreenshotParams represents parameters for the "screenshot" command.
+type ScreenshotParams struct {
+	FullPage bool `json:"fullPage"`
+}
+
+// ScreenshotData is the response data for the "screenshot" command.
+type ScreenshotData struct {
+	Data []byte `json:"data"`
+}
+
 // SuccessResponse creates a successful response with the given data.
 func SuccessResponse(data any) Response {
 	var raw json.RawMessage
