@@ -196,7 +196,7 @@ func (d *Daemon) enableAutoAttach() error {
 
 // enableDomainsForSession enables CDP domains for a specific session.
 func (d *Daemon) enableDomainsForSession(sessionID string) error {
-	domains := []string{"Runtime.enable", "Network.enable", "Page.enable"}
+	domains := []string{"Runtime.enable", "Network.enable", "Page.enable", "DOM.enable"}
 	for _, method := range domains {
 		if _, err := d.cdp.SendToSession(context.Background(), sessionID, method, nil); err != nil {
 			return fmt.Errorf("failed to enable %s: %w", method, err)
@@ -439,11 +439,11 @@ func (d *Daemon) handleLoadingFinished(evt cdp.Event) {
 		return false
 	})
 
-	// Fetch the response body
+	// Fetch the response body using the session ID from the event
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := d.cdp.SendContext(ctx, "Network.getResponseBody", map[string]any{
+	result, err := d.cdp.SendToSession(ctx, evt.SessionID, "Network.getResponseBody", map[string]any{
 		"requestId": params.RequestID,
 	})
 	if err != nil {

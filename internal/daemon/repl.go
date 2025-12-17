@@ -105,7 +105,7 @@ func (r *REPL) prompt() string {
 var replCommands = []string{"exit", "quit", "help", "history", "stop"}
 
 // webctlCommands lists webctl commands for abbreviation matching.
-var webctlCommands = []string{"status", "console", "network", "screenshot", "target", "clear"}
+var webctlCommands = []string{"status", "console", "network", "screenshot", "html", "target", "clear"}
 
 // expandAbbreviation expands a command prefix to a full command name.
 // Returns the expanded command and true if exactly one match found.
@@ -261,7 +261,7 @@ func (r *REPL) outputResponse(resp ipc.Response) {
 // printHelp displays available commands.
 func (r *REPL) printHelp() {
 	help := `
-Commands (unique prefixes accepted: s=status, n=network, t=target, co=console, cl=clear):
+Commands (unique prefixes accepted: st=status, sc=screenshot, h=html, n=network, t=target, co=console, cl=clear):
   status              Show daemon status
   console [flags]     Show console log entries
     --format text|json  Output format (default: json)
@@ -270,6 +270,8 @@ Commands (unique prefixes accepted: s=status, n=network, t=target, co=console, c
     --tail <n>          Return last N entries
     --range <start-end> Return entries in range
   network             Show network requests
+  screenshot          Capture screenshot of current page
+  html [selector]     Extract HTML from current page
   target [query]      List sessions or switch to a session
   clear [target]      Clear event buffers (console, network, or all)
 

@@ -80,7 +80,14 @@ func resetCommandFlags() {
 	networkTail = 0
 	networkRange = ""
 
-	// TODO: Add flag resets for: screenshot, html, eval, cookies
+	// Screenshot command flags
+	screenshotFullPage = false
+	screenshotOutput = ""
+
+	// HTML command flags
+	htmlOutput = ""
+
+	// TODO: Add flag resets for: eval, cookies
 }
 
 // isStdoutTTY returns true if stdout is a terminal.
