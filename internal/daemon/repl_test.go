@@ -244,13 +244,15 @@ func TestExpandAbbreviation(t *testing.T) {
 		wantOK   bool
 	}{
 		// Webctl commands
-		{"s -> status", "s", webctlCommands, "status", true},
+		{"s ambiguous", "s", webctlCommands, "", false}, // status and screenshot
 		{"st -> status", "st", webctlCommands, "status", true},
+		{"sc -> screenshot", "sc", webctlCommands, "screenshot", true},
 		{"n -> network", "n", webctlCommands, "network", true},
 		{"t -> target", "t", webctlCommands, "target", true},
 		{"co -> console", "co", webctlCommands, "console", true},
 		{"cl -> clear", "cl", webctlCommands, "clear", true},
 		{"c ambiguous", "c", webctlCommands, "", false}, // console and clear
+		{"h -> html", "h", webctlCommands, "html", true},
 		{"full status", "status", webctlCommands, "status", true},
 		{"unknown", "xyz", webctlCommands, "", false},
 
@@ -259,12 +261,12 @@ func TestExpandAbbreviation(t *testing.T) {
 		{"q -> quit", "q", replCommands, "quit", true},
 		{"he -> help", "he", replCommands, "help", true},
 		{"hi -> history", "hi", replCommands, "history", true},
-		{"h ambiguous", "h", replCommands, "", false}, // help and history
+		{"h ambiguous in repl", "h", replCommands, "", false}, // help and history
 		{"sto -> stop", "sto", replCommands, "stop", true},
 
 		// Case insensitivity
-		{"uppercase S", "S", webctlCommands, "status", true},
-		{"mixed case", "Sta", webctlCommands, "status", true},
+		{"uppercase S ambiguous", "S", webctlCommands, "", false}, // status and screenshot
+		{"mixed case Sta", "Sta", webctlCommands, "status", true},
 	}
 
 	for _, tt := range tests {
@@ -331,11 +333,13 @@ func TestREPL_executeCommand_abbreviations(t *testing.T) {
 		line        string
 		wantCommand string
 	}{
-		{"s -> status", "s", "status"},
+		{"st -> status", "st", "status"},
+		{"sc -> screenshot", "sc", "screenshot"},
 		{"n -> network", "n", "network"},
 		{"t -> target", "t", "target"},
 		{"co -> console", "co", "console"},
 		{"cl -> clear", "cl", "clear"},
+		{"h -> html", "h", "html"},
 		{"n with args", "n --head 5", "network"},
 	}
 

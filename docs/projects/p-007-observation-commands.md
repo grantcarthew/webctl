@@ -93,7 +93,7 @@ HTML Command:
 - [x] `webctl html ".selector"` returns multiple matches with HTML comment separators
 - [x] `webctl html --output <path>` saves to custom path
 - [x] HTML command has unit and integration tests
-- [ ] BUG-002: HTML command fails with "client closed while waiting for response" in REPL
+- [x] BUG-002: HTML command fails with "client closed while waiting for response" in REPL - FIXED
 
 Eval Command:
 
@@ -401,46 +401,26 @@ Status: Implementation complete. Integration test added to verify session URL up
 
 ---
 
-BUG-002: HTML command fails with "client closed while waiting for response" - OPEN
+BUG-002: HTML command fails with "client closed while waiting for response" - FIXED
 
 Symptom: When running `webctl html` in the REPL, the command fails with error "failed to get document: client closed while waiting for response". The error appears twice in succession.
 
-Example:
-```
-webctl [about:blank]> html
-{
-  "error": "failed to get document: client closed while waiting for response",
-  "ok": false
-}
-{
-  "error": "failed to get document: client closed while waiting for response",
-  "ok": false
-}
-```
+Root cause: Multiple issues identified:
 
-Context:
-- Occurs in REPL mode (`webctl start` with interactive session)
-- HTML command implemented 2025-12-17
-- Unit tests pass (using mock executor)
-- Integration tests pass (using IPC client)
-- Screenshot command (similar CDP usage) works correctly
+1. **Primary fix**: `handleLoadingFinished` was calling `d.cdp.SendContext` (browser-level, no session ID) for `Network.getResponseBody`, but this method requires the session context where the network event originated. This could cause CDP errors that destabilized the connection. Fixed by using `d.cdp.SendToSession(ctx, evt.SessionID, ...)`.
 
-Observed behavior:
-- Error occurs when calling `DOM.getDocument` via CDP
-- CDP client appears to close connection while waiting for response
-- Error repeats twice (possibly due to retry or duplicate call)
+2. **DOM domain not enabled**: The `enableDomainsForSession` function only enabled Runtime, Network, and Page domains. Added DOM.enable to ensure DOM methods work reliably.
 
-Possible causes:
-- CDP timeout issue specific to DOM methods
-- Session routing problem for HTML command
-- CDP client lifecycle issue in handleHTML
-- Response parsing or context deadline
+3. **Double error output**: The error appeared twice because both `cli.outputError` (to stderr) and `daemon.outputError` (to stdout) were called. This was a side effect of how REPL handles Cobra command errors.
 
-Next steps:
-1. Compare handleHTML CDP calls with working handleScreenshot
-2. Add debug logging to CDP client for DOM.getDocument calls
-3. Verify session ID is correctly passed to CDP client
-4. Check if DOM domain needs to be enabled first
-5. Test with longer timeout or different CDP methods
+4. **Missing REPL abbreviations**: Added "html" to webctlCommands and updated abbreviation tests. Also added flag resets for screenshot and html commands.
 
-Status: Not yet investigated. Discovered during manual testing 2025-12-17.
+Solution applied (2025-12-18):
+- Changed `handleLoadingFinished` to use `d.cdp.SendToSession(ctx, evt.SessionID, ...)` for Network.getResponseBody
+- Added "DOM.enable" to the domains list in `enableDomainsForSession`
+- Added "html" to webctlCommands for REPL abbreviation support (h=html)
+- Updated REPL help text with new abbreviations (st=status, sc=screenshot, h=html)
+- Added flag resets for screenshot and html commands in `resetCommandFlags`
+- Fixed test expectations for abbreviations (s is now ambiguous with status/screenshot)
+
+Status: Fixed. All unit and integration tests pass.

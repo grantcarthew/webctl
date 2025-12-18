@@ -1,10 +1,14 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/grantcarthew/webctl/internal/cdp"
 	"github.com/grantcarthew/webctl/internal/ipc"
 )
@@ -460,4 +464,143 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// TestDaemon_handleLoadingFinished_UsesSessionID tests that handleLoadingFinished
+// calls Network.getResponseBody with the correct session ID from the event.
+// This test was added to catch a bug where SendContext (browser-level, no session ID)
+// was used instead of SendToSession (with the event's session ID).
+func TestDaemon_handleLoadingFinished_UsesSessionID(t *testing.T) {
+	d := New(DefaultConfig())
+
+	// Add a request to the buffer that will match the loading finished event
+	requestEntry := ipc.NetworkEntry{
+		RequestID:   "req-789",
+		URL:         "https://example.com/api/data",
+		Method:      "GET",
+		MimeType:    "application/json",
+		RequestTime: time.Now().Add(-100 * time.Millisecond).UnixMilli(),
+	}
+	d.networkBuf.Push(requestEntry)
+
+	// Create a mock CDP connection that captures requests
+	mockConn := newSessionCapturingMockConn()
+	d.cdp = cdp.NewClient(mockConn)
+
+	// Simulate a loading finished event WITH a session ID
+	eventSessionID := "session-abc-123"
+	params := map[string]any{
+		"requestId":         "req-789",
+		"encodedDataLength": int64(1234),
+	}
+	paramsJSON, _ := json.Marshal(params)
+
+	evt := cdp.Event{
+		Method:    "Network.loadingFinished",
+		Params:    json.RawMessage(paramsJSON),
+		SessionID: eventSessionID, // This session ID should be used for the CDP call
+	}
+
+	// Call handleLoadingFinished - this should trigger a Network.getResponseBody call
+	d.handleLoadingFinished(evt)
+
+	// Wait briefly for the async CDP call
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify that the CDP request used the correct session ID
+	requests := mockConn.getCapturedRequests()
+	if len(requests) == 0 {
+		t.Fatal("expected at least one CDP request to be sent")
+	}
+
+	// Find the Network.getResponseBody request
+	var found bool
+	for _, req := range requests {
+		if req.Method == "Network.getResponseBody" {
+			found = true
+			if req.SessionID != eventSessionID {
+				t.Errorf("Network.getResponseBody was called with sessionId=%q, want %q",
+					req.SessionID, eventSessionID)
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Error("Network.getResponseBody was not called")
+	}
+
+	d.cdp.Close()
+}
+
+// sessionCapturingMockConn is a mock CDP connection that captures all requests
+// and their session IDs for verification in tests.
+type sessionCapturingMockConn struct {
+	mu        sync.Mutex
+	requests  []cdp.Request
+	responses chan []byte
+	closed    bool
+	closeCh   chan struct{}
+}
+
+func newSessionCapturingMockConn() *sessionCapturingMockConn {
+	return &sessionCapturingMockConn{
+		responses: make(chan []byte, 100),
+		closeCh:   make(chan struct{}),
+	}
+}
+
+func (m *sessionCapturingMockConn) Read(ctx context.Context) (websocket.MessageType, []byte, error) {
+	select {
+	case resp := <-m.responses:
+		return websocket.MessageText, resp, nil
+	case <-m.closeCh:
+		return 0, nil, errors.New("connection closed")
+	case <-ctx.Done():
+		return 0, nil, ctx.Err()
+	}
+}
+
+func (m *sessionCapturingMockConn) Write(ctx context.Context, typ websocket.MessageType, data []byte) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.closed {
+		return errors.New("connection closed")
+	}
+
+	// Parse and capture the request
+	var req cdp.Request
+	if err := json.Unmarshal(data, &req); err != nil {
+		return err
+	}
+	m.requests = append(m.requests, req)
+
+	// Send back a success response
+	resp := map[string]any{
+		"id":     req.ID,
+		"result": map[string]any{"body": "test body", "base64Encoded": false},
+	}
+	respData, _ := json.Marshal(resp)
+	m.responses <- respData
+
+	return nil
+}
+
+func (m *sessionCapturingMockConn) Close(code websocket.StatusCode, reason string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.closed {
+		m.closed = true
+		close(m.closeCh)
+	}
+	return nil
+}
+
+func (m *sessionCapturingMockConn) getCapturedRequests() []cdp.Request {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	result := make([]cdp.Request, len(m.requests))
+	copy(result, m.requests)
+	return result
 }
