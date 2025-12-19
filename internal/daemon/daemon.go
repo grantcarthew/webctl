@@ -58,6 +58,16 @@ type Daemon struct {
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
 	debug        bool
+
+	// Navigation event waiting
+	navWaiters sync.Map // map[string]chan *frameNavigatedInfo for sessionID -> waiter
+	loadWaiters sync.Map // map[string]chan struct{} for sessionID -> waiter (loadEventFired)
+}
+
+// frameNavigatedInfo contains information from a Page.frameNavigated event.
+type frameNavigatedInfo struct {
+	URL   string
+	Title string
 }
 
 // debugf logs a debug message if debug mode is enabled.
@@ -274,6 +284,15 @@ func (d *Daemon) subscribeEvents() {
 
 	d.cdp.Subscribe("Network.loadingFailed", func(evt cdp.Event) {
 		d.handleLoadingFailed(evt)
+	})
+
+	// Page navigation events for navigation commands
+	d.cdp.Subscribe("Page.frameNavigated", func(evt cdp.Event) {
+		d.handleFrameNavigated(evt)
+	})
+
+	d.cdp.Subscribe("Page.loadEventFired", func(evt cdp.Event) {
+		d.handleLoadEventFired(evt)
 	})
 }
 
@@ -812,6 +831,28 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 		return d.handleClear(req.Target)
 	case "cdp":
 		return d.handleCDP(req)
+	case "navigate":
+		return d.handleNavigate(req)
+	case "reload":
+		return d.handleReload(req)
+	case "back":
+		return d.handleBack()
+	case "forward":
+		return d.handleForward()
+	case "ready":
+		return d.handleReady(req)
+	case "click":
+		return d.handleClick(req)
+	case "focus":
+		return d.handleFocus(req)
+	case "type":
+		return d.handleType(req)
+	case "key":
+		return d.handleKey(req)
+	case "select":
+		return d.handleSelect(req)
+	case "scroll":
+		return d.handleScroll(req)
 	case "shutdown":
 		return d.handleShutdown()
 	default:
@@ -1182,4 +1223,771 @@ func (d *Daemon) writePIDFile() error {
 // removePIDFile removes the PID file.
 func (d *Daemon) removePIDFile() {
 	os.Remove(d.config.PIDPath)
+}
+
+// handleFrameNavigated processes Page.frameNavigated events.
+// Signals any waiting navigation operations.
+func (d *Daemon) handleFrameNavigated(evt cdp.Event) {
+	var params struct {
+		Frame struct {
+			ID       string `json:"id"`
+			ParentID string `json:"parentId"`
+			URL      string `json:"url"`
+			Name     string `json:"name"`
+		} `json:"frame"`
+	}
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return
+	}
+
+	// Only care about main frame navigations (no parent)
+	if params.Frame.ParentID != "" {
+		return
+	}
+
+	// Check if anyone is waiting for this session's navigation
+	if ch, ok := d.navWaiters.LoadAndDelete(evt.SessionID); ok {
+		waiter := ch.(chan *frameNavigatedInfo)
+		// Get title via JavaScript since frameNavigated doesn't include it
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		title := d.getPageTitle(ctx, evt.SessionID)
+		select {
+		case waiter <- &frameNavigatedInfo{URL: params.Frame.URL, Title: title}:
+		default:
+		}
+	}
+}
+
+// handleLoadEventFired processes Page.loadEventFired events.
+// Signals any waiting ready operations.
+func (d *Daemon) handleLoadEventFired(evt cdp.Event) {
+	if ch, ok := d.loadWaiters.LoadAndDelete(evt.SessionID); ok {
+		waiter := ch.(chan struct{})
+		select {
+		case waiter <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// getPageTitle retrieves the current page title via JavaScript.
+func (d *Daemon) getPageTitle(ctx context.Context, sessionID string) string {
+	result, err := d.cdp.SendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
+		"expression":    "document.title",
+		"returnByValue": true,
+	})
+	if err != nil {
+		return ""
+	}
+	var resp struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(result, &resp); err != nil {
+		return ""
+	}
+	return resp.Result.Value
+}
+
+// waitForFrameNavigated waits for a Page.frameNavigated event for the given session.
+func (d *Daemon) waitForFrameNavigated(sessionID string, timeout time.Duration) (*frameNavigatedInfo, error) {
+	ch := make(chan *frameNavigatedInfo, 1)
+	d.navWaiters.Store(sessionID, ch)
+	defer d.navWaiters.Delete(sessionID)
+
+	select {
+	case info := <-ch:
+		return info, nil
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("timeout waiting for navigation")
+	}
+}
+
+// waitForLoadEvent waits for a Page.loadEventFired event for the given session.
+func (d *Daemon) waitForLoadEvent(sessionID string, timeout time.Duration) error {
+	ch := make(chan struct{}, 1)
+	d.loadWaiters.Store(sessionID, ch)
+	defer d.loadWaiters.Delete(sessionID)
+
+	select {
+	case <-ch:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("timeout waiting for page load")
+	}
+}
+
+// handleNavigate navigates to a URL and waits for navigation to commit.
+func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	var params ipc.NavigateParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("invalid navigate parameters: %v", err))
+	}
+
+	if params.URL == "" {
+		return ipc.ErrorResponse("url is required")
+	}
+
+	// Set up waiter before sending navigate command
+	ch := make(chan *frameNavigatedInfo, 1)
+	d.navWaiters.Store(activeID, ch)
+	defer d.navWaiters.Delete(activeID)
+
+	// Send navigate command
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	result, err := d.cdp.SendToSession(ctx, activeID, "Page.navigate", map[string]any{
+		"url": params.URL,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("navigation failed: %v", err))
+	}
+
+	// Check for navigation errors in response
+	var navResp struct {
+		ErrorText string `json:"errorText"`
+	}
+	if err := json.Unmarshal(result, &navResp); err == nil && navResp.ErrorText != "" {
+		return ipc.ErrorResponse(navResp.ErrorText)
+	}
+
+	// Wait for frameNavigated event
+	select {
+	case info := <-ch:
+		return ipc.SuccessResponse(ipc.NavigateData{
+			URL:   info.URL,
+			Title: info.Title,
+		})
+	case <-time.After(30 * time.Second):
+		return ipc.ErrorResponse("timeout waiting for navigation")
+	case <-ctx.Done():
+		return ipc.ErrorResponse("navigation cancelled")
+	}
+}
+
+// handleReload reloads the current page.
+func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	var params ipc.ReloadParams
+	if len(req.Params) > 0 {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("invalid reload parameters: %v", err))
+		}
+	}
+
+	// Set up waiter before sending reload command
+	ch := make(chan *frameNavigatedInfo, 1)
+	d.navWaiters.Store(activeID, ch)
+	defer d.navWaiters.Delete(activeID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	_, err := d.cdp.SendToSession(ctx, activeID, "Page.reload", map[string]any{
+		"ignoreCache": params.IgnoreCache,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("reload failed: %v", err))
+	}
+
+	// Wait for frameNavigated event
+	select {
+	case info := <-ch:
+		return ipc.SuccessResponse(ipc.NavigateData{
+			URL:   info.URL,
+			Title: info.Title,
+		})
+	case <-time.After(30 * time.Second):
+		return ipc.ErrorResponse("timeout waiting for reload")
+	}
+}
+
+// handleBack navigates to the previous history entry.
+func (d *Daemon) handleBack() ipc.Response {
+	return d.navigateHistory(-1)
+}
+
+// handleForward navigates to the next history entry.
+func (d *Daemon) handleForward() ipc.Response {
+	return d.navigateHistory(1)
+}
+
+// navigateHistory navigates forward or backward in history.
+func (d *Daemon) navigateHistory(delta int) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Get navigation history
+	result, err := d.cdp.SendToSession(ctx, activeID, "Page.getNavigationHistory", nil)
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to get history: %v", err))
+	}
+
+	var history struct {
+		CurrentIndex int `json:"currentIndex"`
+		Entries      []struct {
+			ID  int    `json:"id"`
+			URL string `json:"url"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(result, &history); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse history: %v", err))
+	}
+
+	targetIndex := history.CurrentIndex + delta
+	if targetIndex < 0 {
+		return ipc.ErrorResponse("no previous page in history")
+	}
+	if targetIndex >= len(history.Entries) {
+		return ipc.ErrorResponse("no next page in history")
+	}
+
+	// Set up waiter before navigating
+	ch := make(chan *frameNavigatedInfo, 1)
+	d.navWaiters.Store(activeID, ch)
+	defer d.navWaiters.Delete(activeID)
+
+	// Navigate to history entry
+	_, err = d.cdp.SendToSession(ctx, activeID, "Page.navigateToHistoryEntry", map[string]any{
+		"entryId": history.Entries[targetIndex].ID,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to navigate history: %v", err))
+	}
+
+	// Wait for frameNavigated event
+	select {
+	case info := <-ch:
+		return ipc.SuccessResponse(ipc.NavigateData{
+			URL:   info.URL,
+			Title: info.Title,
+		})
+	case <-time.After(30 * time.Second):
+		return ipc.ErrorResponse("timeout waiting for history navigation")
+	}
+}
+
+// handleReady waits for the page to finish loading.
+func (d *Daemon) handleReady(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	var params ipc.ReadyParams
+	if len(req.Params) > 0 {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("invalid ready parameters: %v", err))
+		}
+	}
+
+	timeout := 30 * time.Second
+	if params.Timeout > 0 {
+		timeout = time.Duration(params.Timeout) * time.Millisecond
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// First check if page is already loaded via document.readyState
+	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+		"expression":    "document.readyState",
+		"returnByValue": true,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to check page state: %v", err))
+	}
+
+	var evalResp struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(result, &evalResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse page state: %v", err))
+	}
+
+	// If already complete, return immediately
+	if evalResp.Result.Value == "complete" {
+		return ipc.SuccessResponse(nil)
+	}
+
+	// Page not yet loaded, wait for loadEventFired
+	if err := d.waitForLoadEvent(activeID, timeout); err != nil {
+		return ipc.ErrorResponse(err.Error())
+	}
+
+	return ipc.SuccessResponse(nil)
+}
+
+// handleClick clicks an element by selector.
+func (d *Daemon) handleClick(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	var params ipc.ClickParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("invalid click parameters: %v", err))
+	}
+
+	if params.Selector == "" {
+		return ipc.ErrorResponse("selector is required")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Get element coordinates using JavaScript
+	js := fmt.Sprintf(`(() => {
+		const el = document.querySelector(%q);
+		if (!el) return null;
+		const rect = el.getBoundingClientRect();
+		return {
+			x: rect.left + rect.width / 2,
+			y: rect.top + rect.height / 2
+		};
+	})()`, params.Selector)
+
+	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+		"expression":    js,
+		"returnByValue": true,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to find element: %v", err))
+	}
+
+	var evalResp struct {
+		Result struct {
+			Type  string `json:"type"`
+			Value struct {
+				X float64 `json:"x"`
+				Y float64 `json:"y"`
+			} `json:"value"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(result, &evalResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse element position: %v", err))
+	}
+	if evalResp.Result.Type == "undefined" || (evalResp.Result.Value.X == 0 && evalResp.Result.Value.Y == 0) {
+		return ipc.ErrorResponse(fmt.Sprintf("element not found: %s", params.Selector))
+	}
+
+	x := evalResp.Result.Value.X
+	y := evalResp.Result.Value.Y
+
+	// Send mouse events
+	// mousePressed
+	_, err = d.cdp.SendToSession(ctx, activeID, "Input.dispatchMouseEvent", map[string]any{
+		"type":       "mousePressed",
+		"x":          x,
+		"y":          y,
+		"button":     "left",
+		"clickCount": 1,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to click: %v", err))
+	}
+
+	// mouseReleased
+	_, err = d.cdp.SendToSession(ctx, activeID, "Input.dispatchMouseEvent", map[string]any{
+		"type":       "mouseReleased",
+		"x":          x,
+		"y":          y,
+		"button":     "left",
+		"clickCount": 1,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to click: %v", err))
+	}
+
+	return ipc.SuccessResponse(nil)
+}
+
+// handleFocus focuses an element by selector.
+func (d *Daemon) handleFocus(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	var params ipc.FocusParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("invalid focus parameters: %v", err))
+	}
+
+	if params.Selector == "" {
+		return ipc.ErrorResponse("selector is required")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Focus using JavaScript
+	js := fmt.Sprintf(`(() => {
+		const el = document.querySelector(%q);
+		if (!el) return false;
+		el.focus();
+		return true;
+	})()`, params.Selector)
+
+	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+		"expression":    js,
+		"returnByValue": true,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to focus element: %v", err))
+	}
+
+	var evalResp struct {
+		Result struct {
+			Value bool `json:"value"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(result, &evalResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse focus result: %v", err))
+	}
+	if !evalResp.Result.Value {
+		return ipc.ErrorResponse(fmt.Sprintf("element not found: %s", params.Selector))
+	}
+
+	return ipc.SuccessResponse(nil)
+}
+
+// handleType types text into an element.
+func (d *Daemon) handleType(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	var params ipc.TypeParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("invalid type parameters: %v", err))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// If selector provided, focus the element first
+	if params.Selector != "" {
+		focusResp := d.handleFocus(ipc.Request{
+			Params: func() json.RawMessage {
+				b, _ := json.Marshal(ipc.FocusParams{Selector: params.Selector})
+				return b
+			}(),
+		})
+		if !focusResp.OK {
+			return focusResp
+		}
+	}
+
+	// If clear flag, send Ctrl+A then Backspace
+	if params.Clear {
+		// Select all
+		keyResp := d.handleKey(ipc.Request{
+			Params: func() json.RawMessage {
+				b, _ := json.Marshal(ipc.KeyParams{Key: "a", Ctrl: true})
+				return b
+			}(),
+		})
+		if !keyResp.OK {
+			return keyResp
+		}
+		// Delete
+		keyResp = d.handleKey(ipc.Request{
+			Params: func() json.RawMessage {
+				b, _ := json.Marshal(ipc.KeyParams{Key: "Backspace"})
+				return b
+			}(),
+		})
+		if !keyResp.OK {
+			return keyResp
+		}
+	}
+
+	// Insert text
+	if params.Text != "" {
+		_, err := d.cdp.SendToSession(ctx, activeID, "Input.insertText", map[string]any{
+			"text": params.Text,
+		})
+		if err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to type text: %v", err))
+		}
+	}
+
+	// If key specified, send it
+	if params.Key != "" {
+		keyResp := d.handleKey(ipc.Request{
+			Params: func() json.RawMessage {
+				b, _ := json.Marshal(ipc.KeyParams{Key: params.Key})
+				return b
+			}(),
+		})
+		if !keyResp.OK {
+			return keyResp
+		}
+	}
+
+	return ipc.SuccessResponse(nil)
+}
+
+// handleKey sends a keyboard key event.
+func (d *Daemon) handleKey(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	var params ipc.KeyParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("invalid key parameters: %v", err))
+	}
+
+	if params.Key == "" {
+		return ipc.ErrorResponse("key is required")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Calculate modifiers bitmap: Alt=1, Ctrl=2, Meta=4, Shift=8
+	modifiers := 0
+	if params.Alt {
+		modifiers |= 1
+	}
+	if params.Ctrl {
+		modifiers |= 2
+	}
+	if params.Meta {
+		modifiers |= 4
+	}
+	if params.Shift {
+		modifiers |= 8
+	}
+
+	// Map key names to CDP key info
+	keyInfo := getKeyInfo(params.Key)
+
+	// keyDown
+	_, err := d.cdp.SendToSession(ctx, activeID, "Input.dispatchKeyEvent", map[string]any{
+		"type":                  "keyDown",
+		"key":                   keyInfo.key,
+		"code":                  keyInfo.code,
+		"windowsVirtualKeyCode": keyInfo.keyCode,
+		"modifiers":             modifiers,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to send key: %v", err))
+	}
+
+	// keyUp
+	_, err = d.cdp.SendToSession(ctx, activeID, "Input.dispatchKeyEvent", map[string]any{
+		"type":                  "keyUp",
+		"key":                   keyInfo.key,
+		"code":                  keyInfo.code,
+		"windowsVirtualKeyCode": keyInfo.keyCode,
+		"modifiers":             modifiers,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to send key: %v", err))
+	}
+
+	return ipc.SuccessResponse(nil)
+}
+
+// keyInfo holds CDP key event parameters.
+type keyInfo struct {
+	key     string
+	code    string
+	keyCode int
+}
+
+// getKeyInfo returns CDP key parameters for a key name.
+func getKeyInfo(key string) keyInfo {
+	// Common key mappings
+	switch key {
+	case "Enter":
+		return keyInfo{key: "Enter", code: "Enter", keyCode: 13}
+	case "Tab":
+		return keyInfo{key: "Tab", code: "Tab", keyCode: 9}
+	case "Escape":
+		return keyInfo{key: "Escape", code: "Escape", keyCode: 27}
+	case "Backspace":
+		return keyInfo{key: "Backspace", code: "Backspace", keyCode: 8}
+	case "Delete":
+		return keyInfo{key: "Delete", code: "Delete", keyCode: 46}
+	case "ArrowUp":
+		return keyInfo{key: "ArrowUp", code: "ArrowUp", keyCode: 38}
+	case "ArrowDown":
+		return keyInfo{key: "ArrowDown", code: "ArrowDown", keyCode: 40}
+	case "ArrowLeft":
+		return keyInfo{key: "ArrowLeft", code: "ArrowLeft", keyCode: 37}
+	case "ArrowRight":
+		return keyInfo{key: "ArrowRight", code: "ArrowRight", keyCode: 39}
+	case "Home":
+		return keyInfo{key: "Home", code: "Home", keyCode: 36}
+	case "End":
+		return keyInfo{key: "End", code: "End", keyCode: 35}
+	case "PageUp":
+		return keyInfo{key: "PageUp", code: "PageUp", keyCode: 33}
+	case "PageDown":
+		return keyInfo{key: "PageDown", code: "PageDown", keyCode: 34}
+	case "Space":
+		return keyInfo{key: " ", code: "Space", keyCode: 32}
+	default:
+		// Single character keys
+		if len(key) == 1 {
+			keyCode := int(key[0])
+			if key[0] >= 'a' && key[0] <= 'z' {
+				keyCode = int(key[0]) - 32 // Convert to uppercase keyCode
+			}
+			return keyInfo{key: key, code: "Key" + strings.ToUpper(key), keyCode: keyCode}
+		}
+		// Unknown key, return as-is
+		return keyInfo{key: key, code: key, keyCode: 0}
+	}
+}
+
+// handleSelect selects an option in a dropdown.
+func (d *Daemon) handleSelect(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	var params ipc.SelectParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("invalid select parameters: %v", err))
+	}
+
+	if params.Selector == "" {
+		return ipc.ErrorResponse("selector is required")
+	}
+	if params.Value == "" {
+		return ipc.ErrorResponse("value is required")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Select using JavaScript
+	js := fmt.Sprintf(`(() => {
+		const el = document.querySelector(%q);
+		if (!el) return 'not_found';
+		if (el.tagName !== 'SELECT') return 'not_select';
+		el.value = %q;
+		el.dispatchEvent(new Event('change', {bubbles: true}));
+		return 'ok';
+	})()`, params.Selector, params.Value)
+
+	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+		"expression":    js,
+		"returnByValue": true,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to select option: %v", err))
+	}
+
+	var evalResp struct {
+		Result struct {
+			Value string `json:"value"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(result, &evalResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse select result: %v", err))
+	}
+
+	switch evalResp.Result.Value {
+	case "not_found":
+		return ipc.ErrorResponse(fmt.Sprintf("element not found: %s", params.Selector))
+	case "not_select":
+		return ipc.ErrorResponse(fmt.Sprintf("element is not a select: %s", params.Selector))
+	case "ok":
+		return ipc.SuccessResponse(nil)
+	default:
+		return ipc.ErrorResponse("unexpected select result")
+	}
+}
+
+// handleScroll scrolls to an element or position.
+func (d *Daemon) handleScroll(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	var params ipc.ScrollParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("invalid scroll parameters: %v", err))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var js string
+	switch params.Mode {
+	case "element":
+		if params.Selector == "" {
+			return ipc.ErrorResponse("selector is required for element scroll")
+		}
+		js = fmt.Sprintf(`(() => {
+			const el = document.querySelector(%q);
+			if (!el) return false;
+			el.scrollIntoView({block: 'center', behavior: 'instant'});
+			return true;
+		})()`, params.Selector)
+	case "to":
+		js = fmt.Sprintf(`(() => {
+			window.scrollTo({left: %d, top: %d, behavior: 'instant'});
+			return true;
+		})()`, params.ToX, params.ToY)
+	case "by":
+		js = fmt.Sprintf(`(() => {
+			window.scrollBy({left: %d, top: %d, behavior: 'instant'});
+			return true;
+		})()`, params.ByX, params.ByY)
+	default:
+		return ipc.ErrorResponse("invalid scroll mode: must be 'element', 'to', or 'by'")
+	}
+
+	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+		"expression":    js,
+		"returnByValue": true,
+	})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to scroll: %v", err))
+	}
+
+	var evalResp struct {
+		Result struct {
+			Value bool `json:"value"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(result, &evalResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse scroll result: %v", err))
+	}
+	if !evalResp.Result.Value {
+		return ipc.ErrorResponse(fmt.Sprintf("element not found: %s", params.Selector))
+	}
+
+	return ipc.SuccessResponse(nil)
 }

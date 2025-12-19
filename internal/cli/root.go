@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -100,6 +101,26 @@ func resetCommandFlags() {
 
 	// HTML command flags
 	htmlOutput = ""
+
+	// Reload command flags
+	reloadIgnoreCache = false
+
+	// Ready command flags
+	readyTimeout = 30 * time.Second
+
+	// Key command flags
+	keyCtrl = false
+	keyAlt = false
+	keyShift = false
+	keyMeta = false
+
+	// Type command flags
+	typeKey = ""
+	typeClear = false
+
+	// Scroll command flags
+	scrollTo = ""
+	scrollBy = ""
 
 	// TODO: Add flag resets for: eval, cookies
 }

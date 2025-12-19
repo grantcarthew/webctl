@@ -12,6 +12,11 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 |---------|-------|--------|---------|-----------|
 | P-001 | Project Initialization | Completed | 2025-12-11 | 2025-12-11 |
 | P-002 | Project Definition | Proposed | - | - |
+| P-007 | Observation Commands | In Progress | 2025-12-15 | - |
+| P-008 | Navigation & Interaction Commands | In Progress | 2025-12-19 | - |
+| P-009 | Wait-For Commands | Proposed | - | - |
+| P-010 | Polish & Release | Proposed | - | - |
+| P-011 | CDP Navigation Debugging | In Progress | 2025-12-19 | - |
 
 Note: Completed projects are in `completed/`
 
