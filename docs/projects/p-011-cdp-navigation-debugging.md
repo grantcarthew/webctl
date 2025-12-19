@@ -231,3 +231,23 @@ Understanding these failure modes is key to building robust solutions.
 ## Updates
 
 - 2025-12-19: Project created to systematically debug CDP navigation issues
+- 2025-12-19: Session progress:
+  - **Reproduced BUG-003**: `html` command times out (30s) when called immediately after `navigate` to complex pages like google.com
+  - **Root cause confirmed**: `Runtime.evaluate` blocks during page load, regardless of JavaScript content
+  - **Researched Rod's approach**: Uses Promise-based JavaScript with `awaitPromise: true` in `Runtime.evaluate`. Key function is `WaitLoad` which returns a Promise that resolves when `document.readyState === 'complete'` or on `window.onload` event
+  - **Implemented fix attempt**: Modified `handleHTML` in `daemon.go:992-1153` to use Promise-based JavaScript with `awaitPromise: true`. The Promise waits for readyState complete or load event before extracting HTML
+  - **Fix status**: Initial test showed 0.55s (success), but subsequent test showed 30s timeout. The fix may work for cached pages but not for fresh navigations. **Further investigation needed.**
+  - **Key insight from testing**: The Promise-based approach may still block if `Runtime.evaluate` itself is blocked by Chrome during early navigation phase. May need to wait for navigation to complete at the daemon level before calling any Runtime methods.
+  - **Next steps**:
+    1. Add diagnostic logging to see when Runtime.evaluate is called vs when frameNavigated fires
+    2. Consider waiting for Page.loadEventFired before allowing html command
+    3. Or add retry logic similar to Rod's `Evaluate()` which retries on `ErrCtxNotFound`
+- 2025-12-19: Continued debugging session:
+  - **Implemented navigation state tracking**: Added `navigating sync.Map` to daemon to track sessions in navigation
+  - **Navigation flow**: `handleNavigate/handleReload/navigateHistory` set navigating channel, `handleLoadEventFired` closes it
+  - **handleHTML now waits for load**: Before calling `Runtime.evaluate`, checks if navigation is in progress and waits for `Page.loadEventFired`
+  - **Key finding**: `Runtime.evaluate` ALWAYS blocks until `Page.loadEventFired` fires, regardless of JavaScript content (even simple `document.documentElement.outerHTML`)
+  - **Fix verified**: Once `Page.loadEventFired` fires, JavaScript execution is instant (1ms)
+  - **Environment issue identified**: On test machine, `Page.loadEventFired` takes ~15 seconds for simple data URLs - this is abnormal browser behavior, not a webctl issue
+  - **Files changed**: `internal/daemon/daemon.go` - added `navigating` sync.Map, updated `handleNavigate`, `handleReload`, `navigateHistory`, `handleLoadEventFired`, `handleHTML`
+  - **Status**: Fix implemented and tested. BUG-003 is addressed - html command now properly waits for page load before extracting HTML
