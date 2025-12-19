@@ -27,6 +27,7 @@ func init() {
 }
 
 func runHTML(cmd *cobra.Command, args []string) error {
+	start := time.Now()
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -50,13 +51,16 @@ func runHTML(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	t1 := time.Now()
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "html",
 		Params: params,
 	})
+	debugf("html IPC call took %v", time.Since(t1))
 	if err != nil {
 		return outputError(err.Error())
 	}
+	_ = start // used later
 
 	if !resp.OK {
 		return outputError(resp.Error)
@@ -74,7 +78,9 @@ func runHTML(cmd *cobra.Command, args []string) error {
 		outputPath = htmlOutput
 	} else {
 		// Generate filename in temp directory
+		t2 := time.Now()
 		outputPath, err = generateHTMLPath(exec)
+		debugf("generateHTMLPath took %v", time.Since(t2))
 		if err != nil {
 			return outputError(err.Error())
 		}
@@ -91,6 +97,7 @@ func runHTML(cmd *cobra.Command, args []string) error {
 		return outputError(fmt.Sprintf("failed to write HTML: %v", err))
 	}
 
+	debugf("runHTML total: %v", time.Since(start))
 	// Return JSON with file path
 	result := map[string]any{
 		"ok":   true,

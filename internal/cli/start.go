@@ -34,6 +34,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	cfg := daemon.DefaultConfig()
 	cfg.Headless = startHeadless
 	cfg.Port = startPort
+	cfg.Debug = Debug
 
 	// Declare d first so the closure can capture it.
 	// The closure is only called when REPL executes commands, by which time d is set.

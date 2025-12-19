@@ -52,6 +52,9 @@ func Dial(ctx context.Context, wsURL string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to CDP endpoint: %w", err)
 	}
+	// Chrome can send large messages (DOM snapshots, console output, etc.)
+	// Default limit is 32KB which is too small. Set to 16MB.
+	conn.SetReadLimit(16 * 1024 * 1024)
 	return NewClient(conn), nil
 }
 
