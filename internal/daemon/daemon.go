@@ -60,8 +60,13 @@ type Daemon struct {
 	debug        bool
 
 	// Navigation event waiting
-	navWaiters sync.Map // map[string]chan *frameNavigatedInfo for sessionID -> waiter
+	navWaiters  sync.Map // map[string]chan *frameNavigatedInfo for sessionID -> waiter
 	loadWaiters sync.Map // map[string]chan struct{} for sessionID -> waiter (loadEventFired)
+
+	// Navigation state tracking
+	// navigating tracks sessions currently in navigation (before loadEventFired)
+	// Value is a chan struct{} that will be closed when load completes
+	navigating sync.Map // map[string]chan struct{} for sessionID -> done channel
 }
 
 // frameNavigatedInfo contains information from a Page.frameNavigated event.
@@ -293,6 +298,10 @@ func (d *Daemon) subscribeEvents() {
 
 	d.cdp.Subscribe("Page.loadEventFired", func(evt cdp.Event) {
 		d.handleLoadEventFired(evt)
+	})
+
+	d.cdp.Subscribe("Page.domContentEventFired", func(evt cdp.Event) {
+		d.handleDOMContentEventFired(evt)
 	})
 }
 
@@ -990,8 +999,9 @@ func (d *Daemon) handleScreenshot(req ipc.Request) ipc.Response {
 }
 
 // handleHTML extracts HTML from the current page or specified selector.
-// Uses JavaScript-based extraction (like Rod) to avoid DOM.getDocument blocking during navigation.
+// Uses JavaScript Promise to wait for page ready before extracting HTML (same approach as Rod).
 func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
+	d.debugf("handleHTML called")
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -1008,14 +1018,19 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// If no selector, get full page HTML using JavaScript
+	// Get full page HTML or query selector
 	if params.Selector == "" {
+		// Get HTML directly - if the page isn't ready, the call will block
+		// until Chrome has an execution context available.
 		js := `document.documentElement.outerHTML`
 
+		start := time.Now()
+		d.debugf("html: calling Runtime.evaluate")
 		result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 			"expression":    js,
 			"returnByValue": true,
 		})
+		d.debugf("html: Runtime.evaluate completed in %v", time.Since(start))
 		if err != nil {
 			return ipc.ErrorResponse(fmt.Sprintf("failed to get HTML: %v", err))
 		}
@@ -1040,25 +1055,53 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 		})
 	}
 
-	// For selector queries, use JavaScript querySelectorAll
-	js := fmt.Sprintf(`(() => {
-		const elements = document.querySelectorAll(%q);
-		if (elements.length === 0) {
-			return null;
-		}
-		const results = [];
-		elements.forEach((el, i) => {
-			if (elements.length > 1) {
-				results.push('<!-- Element ' + (i+1) + ' of ' + elements.length + ': %s -->');
+	// For selector queries, use JavaScript querySelectorAll with Promise-based wait
+	js := fmt.Sprintf(`(function() {
+		return new Promise((resolve, reject) => {
+			const queryElements = () => {
+				const elements = document.querySelectorAll(%q);
+				if (elements.length === 0) {
+					resolve(null);
+					return;
+				}
+				const results = [];
+				elements.forEach((el, i) => {
+					if (elements.length > 1) {
+						results.push('<!-- Element ' + (i+1) + ' of ' + elements.length + ': %s -->');
+					}
+					results.push(el.outerHTML);
+				});
+				resolve(results.join('\n\n'));
+			};
+
+			if (document.readyState === 'complete') {
+				queryElements();
+			} else {
+				let resolved = false;
+				const onLoad = () => {
+					if (!resolved) {
+						resolved = true;
+						queryElements();
+					}
+				};
+				window.addEventListener('load', onLoad);
+				if (document.readyState === 'interactive') {
+					setTimeout(() => {
+						if (!resolved) {
+							resolved = true;
+							window.removeEventListener('load', onLoad);
+							queryElements();
+						}
+					}, 100);
+				}
 			}
-			results.push(el.outerHTML);
 		});
-		return results.join('\n\n');
 	})()`, params.Selector, params.Selector)
 
 	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 		"expression":    js,
 		"returnByValue": true,
+		"awaitPromise":  true,
 	})
 	if err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to query selector: %v", err))
@@ -1260,14 +1303,39 @@ func (d *Daemon) handleFrameNavigated(evt cdp.Event) {
 }
 
 // handleLoadEventFired processes Page.loadEventFired events.
-// Signals any waiting ready operations.
+// Signals any waiting ready operations and marks navigation as complete.
 func (d *Daemon) handleLoadEventFired(evt cdp.Event) {
+	d.debugf("Page.loadEventFired: sessionID=%s", evt.SessionID)
+
+	// Signal ready waiters
 	if ch, ok := d.loadWaiters.LoadAndDelete(evt.SessionID); ok {
+		d.debugf("Page.loadEventFired: signaling ready waiter for session %s", evt.SessionID)
 		waiter := ch.(chan struct{})
 		select {
 		case waiter <- struct{}{}:
 		default:
 		}
+	}
+
+	// Mark navigation as complete by closing the navigating channel
+	if ch, ok := d.navigating.LoadAndDelete(evt.SessionID); ok {
+		d.debugf("Page.loadEventFired: closing navigating channel for session %s", evt.SessionID)
+		close(ch.(chan struct{}))
+	}
+}
+
+// handleDOMContentEventFired processes Page.domContentEventFired events.
+// Marks navigation as complete for DOM operations - fires earlier than loadEventFired.
+// This allows html/eval commands to proceed once DOM is ready, without waiting
+// for all resources (images, scripts, ads) to finish loading.
+func (d *Daemon) handleDOMContentEventFired(evt cdp.Event) {
+	d.debugf("Page.domContentEventFired: sessionID=%s", evt.SessionID)
+
+	// Mark navigation as complete by closing the navigating channel
+	// This fires before loadEventFired, allowing DOM operations to proceed sooner
+	if ch, ok := d.navigating.LoadAndDelete(evt.SessionID); ok {
+		d.debugf("Page.domContentEventFired: closing navigating channel for session %s", evt.SessionID)
+		close(ch.(chan struct{}))
 	}
 }
 
@@ -1321,6 +1389,7 @@ func (d *Daemon) waitForLoadEvent(sessionID string, timeout time.Duration) error
 
 // handleNavigate navigates to a URL and waits for navigation to commit.
 func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
+	d.debugf("handleNavigate called")
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -1334,6 +1403,16 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 	if params.URL == "" {
 		return ipc.ErrorResponse("url is required")
 	}
+
+	// Mark session as navigating BEFORE sending command.
+	// Close any existing navigation channel first (handles rapid navigation).
+	if oldCh, loaded := d.navigating.LoadAndDelete(activeID); loaded {
+		d.debugf("navigate: closing old navigating channel for session %s", activeID)
+		close(oldCh.(chan struct{}))
+	}
+	navDoneCh := make(chan struct{})
+	d.navigating.Store(activeID, navDoneCh)
+	d.debugf("navigate: created navigating channel for session %s", activeID)
 
 	// Set up waiter before sending navigate command
 	ch := make(chan *frameNavigatedInfo, 1)
@@ -1386,6 +1465,13 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 			return ipc.ErrorResponse(fmt.Sprintf("invalid reload parameters: %v", err))
 		}
 	}
+
+	// Mark session as navigating BEFORE sending command.
+	if oldCh, loaded := d.navigating.LoadAndDelete(activeID); loaded {
+		close(oldCh.(chan struct{}))
+	}
+	navDoneCh := make(chan struct{})
+	d.navigating.Store(activeID, navDoneCh)
 
 	// Set up waiter before sending reload command
 	ch := make(chan *frameNavigatedInfo, 1)
@@ -1458,6 +1544,13 @@ func (d *Daemon) navigateHistory(delta int) ipc.Response {
 	if targetIndex >= len(history.Entries) {
 		return ipc.ErrorResponse("no next page in history")
 	}
+
+	// Mark session as navigating BEFORE sending command.
+	if oldCh, loaded := d.navigating.LoadAndDelete(activeID); loaded {
+		close(oldCh.(chan struct{}))
+	}
+	navDoneCh := make(chan struct{})
+	d.navigating.Store(activeID, navDoneCh)
 
 	// Set up waiter before navigating
 	ch := make(chan *frameNavigatedInfo, 1)
