@@ -117,6 +117,70 @@ type HTMLData struct {
 	HTML string `json:"html"`
 }
 
+// NavigateParams represents parameters for the "navigate" command.
+type NavigateParams struct {
+	URL string `json:"url"`
+}
+
+// NavigateData is the response data for the "navigate" command.
+type NavigateData struct {
+	URL   string `json:"url"`
+	Title string `json:"title"`
+}
+
+// ReloadParams represents parameters for the "reload" command.
+type ReloadParams struct {
+	IgnoreCache bool `json:"ignoreCache"`
+}
+
+// ReadyParams represents parameters for the "ready" command.
+type ReadyParams struct {
+	Timeout int `json:"timeout"` // timeout in milliseconds
+}
+
+// ClickParams represents parameters for the "click" command.
+type ClickParams struct {
+	Selector string `json:"selector"`
+}
+
+// FocusParams represents parameters for the "focus" command.
+type FocusParams struct {
+	Selector string `json:"selector"`
+}
+
+// TypeParams represents parameters for the "type" command.
+type TypeParams struct {
+	Selector string `json:"selector,omitempty"`
+	Text     string `json:"text"`
+	Key      string `json:"key,omitempty"`
+	Clear    bool   `json:"clear,omitempty"`
+}
+
+// KeyParams represents parameters for the "key" command.
+type KeyParams struct {
+	Key   string `json:"key"`
+	Ctrl  bool   `json:"ctrl,omitempty"`
+	Alt   bool   `json:"alt,omitempty"`
+	Shift bool   `json:"shift,omitempty"`
+	Meta  bool   `json:"meta,omitempty"`
+}
+
+// SelectParams represents parameters for the "select" command.
+type SelectParams struct {
+	Selector string `json:"selector"`
+	Value    string `json:"value"`
+}
+
+// ScrollParams represents parameters for the "scroll" command.
+type ScrollParams struct {
+	Selector string `json:"selector,omitempty"`
+	ToX      int    `json:"toX,omitempty"`
+	ToY      int    `json:"toY,omitempty"`
+	ByX      int    `json:"byX,omitempty"`
+	ByY      int    `json:"byY,omitempty"`
+	Mode     string `json:"mode"` // "element", "to", or "by"
+}
+
 // SuccessResponse creates a successful response with the given data.
 func SuccessResponse(data any) Response {
 	var raw json.RawMessage
