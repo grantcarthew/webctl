@@ -29,6 +29,7 @@ type Config struct {
 	SocketPath string
 	PIDPath    string
 	BufferSize int
+	Debug      bool
 	// CommandExecutor is called by REPL for CLI command execution with flags.
 	// If nil, REPL falls back to basic IPC-only execution.
 	CommandExecutor ipc.CommandExecutor
@@ -56,6 +57,14 @@ type Daemon struct {
 	server       *ipc.Server
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
+	debug        bool
+}
+
+// debugf logs a debug message if debug mode is enabled.
+func (d *Daemon) debugf(format string, args ...any) {
+	if d.debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+	}
 }
 
 // New creates a new daemon with the given configuration.
@@ -70,6 +79,7 @@ func New(cfg Config) *Daemon {
 		consoleBuf: NewRingBuffer[ipc.ConsoleEntry](cfg.BufferSize),
 		networkBuf: NewRingBuffer[ipc.NetworkEntry](cfg.BufferSize),
 		shutdown:   make(chan struct{}),
+		debug:      cfg.Debug,
 	}
 }
 
@@ -201,6 +211,11 @@ func (d *Daemon) enableDomainsForSession(sessionID string) error {
 		if _, err := d.cdp.SendToSession(context.Background(), sessionID, method, nil); err != nil {
 			return fmt.Errorf("failed to enable %s: %w", method, err)
 		}
+	}
+
+	// Enable lifecycle events (required to receive Page.lifecycleEvent)
+	if _, err := d.cdp.SendToSession(context.Background(), sessionID, "Page.setLifecycleEventsEnabled", map[string]any{"enabled": true}); err != nil {
+		return fmt.Errorf("failed to enable lifecycle events: %w", err)
 	}
 
 	// Resume the target (it's paused due to waitForDebuggerOnStart)
@@ -539,6 +554,9 @@ func (d *Daemon) handleTargetAttached(evt cdp.Event) {
 		return
 	}
 
+	d.debugf("Target.attachedToTarget: sessionID=%q, targetID=%q, url=%q",
+		params.SessionID, params.TargetInfo.TargetID, params.TargetInfo.URL)
+
 	// Add to session manager
 	d.sessions.Add(
 		params.SessionID,
@@ -549,10 +567,12 @@ func (d *Daemon) handleTargetAttached(evt cdp.Event) {
 
 	// Enable domains for this session (async to not block event loop)
 	go func() {
+		startEnable := time.Now()
 		if err := d.enableDomainsForSession(params.SessionID); err != nil {
 			// Log error but don't fail - session is still tracked
 			fmt.Fprintf(os.Stderr, "warning: failed to enable domains for session: %v\n", err)
 		}
+		d.debugf("enableDomainsForSession completed in %v for session %q", time.Since(startEnable), params.SessionID)
 	}()
 }
 
@@ -566,8 +586,11 @@ func (d *Daemon) handleTargetDetached(evt cdp.Event) {
 		return
 	}
 
+	d.debugf("Target.detachedFromTarget: sessionID=%q", params.SessionID)
+
 	// Remove from session manager
-	_, _ = d.sessions.Remove(params.SessionID)
+	newActive, changed := d.sessions.Remove(params.SessionID)
+	d.debugf("Session removed: newActiveID=%q, activeChanged=%v", newActive, changed)
 
 	// Purge entries for this session
 	d.purgeSessionEntries(params.SessionID)
@@ -592,6 +615,9 @@ func (d *Daemon) handleTargetInfoChanged(evt cdp.Event) {
 	if params.TargetInfo.Type != "page" {
 		return
 	}
+
+	d.debugf("Target.targetInfoChanged: targetID=%q, url=%q",
+		params.TargetInfo.TargetID, params.TargetInfo.URL)
 
 	// Update session by target ID
 	d.sessions.UpdateByTargetID(
@@ -923,6 +949,7 @@ func (d *Daemon) handleScreenshot(req ipc.Request) ipc.Response {
 }
 
 // handleHTML extracts HTML from the current page or specified selector.
+// Uses JavaScript-based extraction (like Rod) to avoid DOM.getDocument blocking during navigation.
 func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
@@ -940,101 +967,85 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Get document root node
-	docResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.getDocument", map[string]any{
-		"depth":  -1,
-		"pierce": false,
-	})
-	if err != nil {
-		return ipc.ErrorResponse(fmt.Sprintf("failed to get document: %v", err))
-	}
-
-	var docResp struct {
-		Root struct {
-			NodeID int `json:"nodeId"`
-		} `json:"root"`
-	}
-	if err := json.Unmarshal(docResult, &docResp); err != nil {
-		return ipc.ErrorResponse(fmt.Sprintf("failed to parse document response: %v", err))
-	}
-
-	// If no selector, get full page HTML
+	// If no selector, get full page HTML using JavaScript
 	if params.Selector == "" {
-		htmlResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
-			"nodeId": docResp.Root.NodeID,
+		js := `document.documentElement.outerHTML`
+
+		result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+			"expression":    js,
+			"returnByValue": true,
 		})
 		if err != nil {
 			return ipc.ErrorResponse(fmt.Sprintf("failed to get HTML: %v", err))
 		}
 
-		var htmlResp struct {
-			OuterHTML string `json:"outerHTML"`
+		var evalResp struct {
+			Result struct {
+				Value string `json:"value"`
+			} `json:"result"`
+			ExceptionDetails *struct {
+				Text string `json:"text"`
+			} `json:"exceptionDetails"`
 		}
-		if err := json.Unmarshal(htmlResult, &htmlResp); err != nil {
+		if err := json.Unmarshal(result, &evalResp); err != nil {
 			return ipc.ErrorResponse(fmt.Sprintf("failed to parse HTML response: %v", err))
+		}
+		if evalResp.ExceptionDetails != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("JavaScript error: %s", evalResp.ExceptionDetails.Text))
 		}
 
 		return ipc.SuccessResponse(ipc.HTMLData{
-			HTML: htmlResp.OuterHTML,
+			HTML: evalResp.Result.Value,
 		})
 	}
 
-	// Query selector for matching elements
-	queryResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.querySelectorAll", map[string]any{
-		"nodeId":   docResp.Root.NodeID,
-		"selector": params.Selector,
+	// For selector queries, use JavaScript querySelectorAll
+	js := fmt.Sprintf(`(() => {
+		const elements = document.querySelectorAll(%q);
+		if (elements.length === 0) {
+			return null;
+		}
+		const results = [];
+		elements.forEach((el, i) => {
+			if (elements.length > 1) {
+				results.push('<!-- Element ' + (i+1) + ' of ' + elements.length + ': %s -->');
+			}
+			results.push(el.outerHTML);
+		});
+		return results.join('\n\n');
+	})()`, params.Selector, params.Selector)
+
+	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+		"expression":    js,
+		"returnByValue": true,
 	})
 	if err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to query selector: %v", err))
 	}
 
-	var queryResp struct {
-		NodeIDs []int `json:"nodeIds"`
+	// Parse result - null means no matches, string means success
+	var evalResp struct {
+		Result struct {
+			Type  string `json:"type"`
+			Value string `json:"value"`
+		} `json:"result"`
+		ExceptionDetails *struct {
+			Text string `json:"text"`
+		} `json:"exceptionDetails"`
 	}
-	if err := json.Unmarshal(queryResult, &queryResp); err != nil {
+	if err := json.Unmarshal(result, &evalResp); err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to parse query response: %v", err))
 	}
-
-	// Check if selector matched any elements
-	if len(queryResp.NodeIDs) == 0 {
+	if evalResp.ExceptionDetails != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("JavaScript error: %s", evalResp.ExceptionDetails.Text))
+	}
+	// null result means no elements matched
+	if evalResp.Result.Type == "object" && evalResp.Result.Value == "" {
 		return ipc.ErrorResponse(fmt.Sprintf("selector '%s' matched no elements", params.Selector))
 	}
 
-	// Get HTML for each matching element
-	var htmlParts []string
-	for i, nodeID := range queryResp.NodeIDs {
-		htmlResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
-			"nodeId": nodeID,
-		})
-		if err != nil {
-			return ipc.ErrorResponse(fmt.Sprintf("failed to get HTML for element %d: %v", i+1, err))
-		}
-
-		var htmlResp struct {
-			OuterHTML string `json:"outerHTML"`
-		}
-		if err := json.Unmarshal(htmlResult, &htmlResp); err != nil {
-			return ipc.ErrorResponse(fmt.Sprintf("failed to parse HTML response for element %d: %v", i+1, err))
-		}
-
-		// Add comment separator for multiple matches
-		if len(queryResp.NodeIDs) > 1 {
-			htmlParts = append(htmlParts, fmt.Sprintf("<!-- Element %d of %d: %s -->", i+1, len(queryResp.NodeIDs), params.Selector))
-		}
-		htmlParts = append(htmlParts, htmlResp.OuterHTML)
-	}
-
-	// Join with newlines
-	html := ""
-	for i, part := range htmlParts {
-		html += part
-		if i < len(htmlParts)-1 {
-			html += "\n\n"
-		}
-	}
-
 	return ipc.SuccessResponse(ipc.HTMLData{
-		HTML: html,
+		HTML: evalResp.Result.Value,
 	})
 }
 

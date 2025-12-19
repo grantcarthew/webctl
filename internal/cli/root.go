@@ -13,6 +13,9 @@ import (
 // Version is set at build time.
 var Version = "dev"
 
+// Debug enables verbose debug output.
+var Debug bool
+
 var rootCmd = &cobra.Command{
 	Use:           "webctl",
 	Short:         "Browser automation CLI for AI agents",
@@ -20,6 +23,17 @@ var rootCmd = &cobra.Command{
 	Version:       Version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+}
+
+func init() {
+	rootCmd.PersistentFlags().BoolVar(&Debug, "debug", false, "Enable verbose debug output")
+}
+
+// debugf logs a debug message if debug mode is enabled.
+func debugf(format string, args ...any) {
+	if Debug {
+		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+	}
 }
 
 // Execute runs the root command.
