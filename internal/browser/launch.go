@@ -30,6 +30,8 @@ const DefaultPort = 9222
 const UserDataDirDefault = "default"
 
 // buildArgs constructs the Chrome command line arguments.
+// Uses Rod's extensive flag set to match their behavior.
+// See: context/rod/lib/launcher/launcher.go:58-97
 func buildArgs(opts LaunchOptions) []string {
 	port := opts.Port
 	if port == 0 {
@@ -38,11 +40,41 @@ func buildArgs(opts LaunchOptions) []string {
 
 	args := []string{
 		fmt.Sprintf("--remote-debugging-port=%d", port),
+
+		// Basic flags
 		"--no-first-run",
+		"--no-startup-window",
 		"--no-default-browser-check",
+
+		// Disable features that might affect timing/networking
+		"--disable-features=site-per-process,TranslateUI",
+		"--enable-features=NetworkService,NetworkServiceInProcess",
+
+		// Disable various background processes and timers
 		"--disable-background-networking",
-		"--disable-sync",
+		"--disable-background-timer-throttling",
+		"--disable-backgrounding-occluded-windows",
+		"--disable-renderer-backgrounding",
+
+		// Disable other features
+		"--disable-breakpad",
+		"--disable-client-side-phishing-detection",
+		"--disable-component-extensions-with-background-pages",
+		"--disable-default-apps",
+		"--disable-dev-shm-usage",
+		"--disable-hang-monitor",
+		"--disable-ipc-flooding-protection",
 		"--disable-popup-blocking",
+		"--disable-prompt-on-repost",
+		"--disable-sync",
+		"--disable-site-isolation-trials",
+
+		// Automation flags
+		"--enable-automation",
+		"--metrics-recording-only",
+
+		// Color profile
+		"--force-color-profile=srgb",
 	}
 
 	// Platform-specific flags to avoid system dialogs

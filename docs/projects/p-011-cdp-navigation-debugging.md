@@ -381,3 +381,31 @@ Understanding these failure modes is key to building robust solutions.
 2. Flatten: true parameter (line 275) vs our missing parameter
 3. SetDiscoverTargets on connect (line 174) vs our missing call
 4. EnableDomain pattern (line 313) for Page domain
+
+- 2025-12-20: Implementation session - Rod's session management pattern implemented:
+  - **Replaced setAutoAttach with manual attachToTarget**: Modified `enableAutoAttach()` to call `Target.setDiscoverTargets` only, then manually attach via `Target.attachToTarget{flatten: true}` for each target
+  - **Added Target.targetCreated event handling**: Subscribe to targetCreated events and manually attach to each page target asynchronously
+  - **Fixed double-attach issue**: Added `attachedTargets sync.Map` to track which targets we've already attached to, preventing double-attachment from both targetCreated event and Target.getTargets
+  - **Made attachment asynchronous**: Moved attachToTarget calls to goroutines to prevent deadlock when targetCreated events fire during setDiscoverTargets response wait
+  - **Files modified**:
+    - `internal/daemon/daemon.go`: Added `attachedTargets` tracking, implemented `handleTargetCreated`, modified `enableAutoAttach`, removed `Runtime.runIfWaitingForDebugger` call
+  - **Testing results - flatten: true DID NOT fix the blocking issue**:
+    - Daemon starts successfully (no more timeouts)
+    - Only one session per target (no more double-attach)
+    - BUT: `Runtime.evaluate` STILL blocks for 17+ seconds until `networkIdle` fires
+    - Timeline example: navigate at :00, html at :07, Runtime.evaluate called :07, completes at :24 (same millisecond as networkIdle)
+    - Tested both with and without waiting for DOMContentLoaded - no difference
+  - **CRITICAL FINDING**: The `flatten: true` hypothesis was incorrect. The blocking is NOT related to session flattening.
+  - **Hypothesis invalidated**: Using Rod's exact session attachment pattern (manual attachToTarget with flatten: true) does NOT eliminate the networkIdle blocking behavior
+  - **New hypothesis**: The difference might be in Chrome launch flags. Rod uses extensive `--disable-*` flags (disable-ipc-flooding-protection, disable-renderer-backgrounding, disable-background-timer-throttling, etc.) that webctl doesn't use
+  - **Attempted**: Implemented Rod's comprehensive Chrome launch flags in `internal/browser/launch.go`
+  - **Result**: Chrome failed to launch with Rod's flag set - needs investigation
+  - **Status**: Project paused - need to debug Chrome launch issue with new flags before testing if they fix networkIdle blocking
+
+## Current State
+
+- **Session management**: Successfully implemented Rod's pattern (manual attachToTarget with flatten: true)
+- **Double-attach bug**: Fixed
+- **Daemon startup**: Working
+- **Core issue remains**: Runtime.evaluate still blocks until networkIdle (~17+ seconds)
+- **Next session**: Debug Chrome launch failure with Rod's flags, or try flags incrementally to find which one causes the issue

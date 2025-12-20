@@ -67,6 +67,10 @@ type Daemon struct {
 	// navigating tracks sessions currently in navigation (before loadEventFired)
 	// Value is a chan struct{} that will be closed when load completes
 	navigating sync.Map // map[string]chan struct{} for sessionID -> done channel
+
+	// Target attachment tracking
+	// attachedTargets tracks which targetIDs we've already attached to (prevents double-attach)
+	attachedTargets sync.Map // map[string]bool for targetID -> attached
 }
 
 // frameNavigatedInfo contains information from a Page.frameNavigated event.
@@ -130,6 +134,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get browser version: %w", err)
 	}
+	d.debugf("Browser version info: %+v", version)
+	d.debugf("Connecting to CDP WebSocket: %s", version.WebSocketURL)
 
 	cdpClient, err := cdp.Dial(ctx, version.WebSocketURL)
 	if err != nil {
@@ -137,14 +143,19 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	d.cdp = cdpClient
 	defer d.cdp.Close()
+	d.debugf("CDP client connected successfully")
 
 	// Subscribe to events before enabling domains
+	d.debugf("Subscribing to CDP events")
 	d.subscribeEvents()
+	d.debugf("Event subscriptions complete")
 
 	// Enable auto-attach for session tracking
+	d.debugf("Enabling target discovery and attachment")
 	if err := d.enableAutoAttach(); err != nil {
 		return fmt.Errorf("failed to enable auto-attach: %w", err)
 	}
+	d.debugf("Target discovery and attachment enabled")
 
 	// Start IPC server
 	server, err := ipc.NewServer(d.config.SocketPath, d.handleRequest)
@@ -197,26 +208,74 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 }
 
-// enableAutoAttach enables Target.setAutoAttach for session tracking.
-// This is called on the browser-level connection and automatically attaches
-// to all page targets, enabling domains for each.
+// enableAutoAttach enables Target.setDiscoverTargets for target discovery.
+// Unlike Rod's auto-attach approach, we use manual Target.attachToTarget
+// with flatten:true for each discovered target (Rod's pattern).
 func (d *Daemon) enableAutoAttach() error {
-	// Enable target discovery to receive targetInfoChanged events
+	d.debugf("Calling Target.setDiscoverTargets...")
+	// Enable target discovery to receive targetCreated/targetInfoChanged/targetDestroyed events
 	_, err := d.cdp.Send("Target.setDiscoverTargets", map[string]any{
 		"discover": true,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to set discover targets: %w", err)
 	}
+	d.debugf("Target.setDiscoverTargets succeeded")
 
-	_, err = d.cdp.Send("Target.setAutoAttach", map[string]any{
-		"autoAttach":             true,
-		"flatten":                true,
-		"waitForDebuggerOnStart": true,
-	})
+	// NOTE: We do NOT use Target.setAutoAttach here.
+	// Instead, we manually call Target.attachToTarget for each target in handleTargetCreated.
+	// This follows Rod's approach which uses flatten:true in attachToTarget (not setAutoAttach).
+	// See: context/rod/browser.go:273-276
+
+	// Attach to any existing targets that were created before we enabled discovery
+	d.debugf("Calling Target.getTargets to find existing targets...")
+	result, err := d.cdp.Send("Target.getTargets", nil)
 	if err != nil {
-		return fmt.Errorf("failed to set auto-attach: %w", err)
+		return fmt.Errorf("failed to get existing targets: %w", err)
 	}
+	d.debugf("Target.getTargets succeeded, parsing results...")
+
+	var targetsResult struct {
+		TargetInfos []struct {
+			TargetID string `json:"targetId"`
+			Type     string `json:"type"`
+			Title    string `json:"title"`
+			URL      string `json:"url"`
+		} `json:"targetInfos"`
+	}
+	if err := json.Unmarshal(result, &targetsResult); err != nil {
+		return fmt.Errorf("failed to parse targets: %w", err)
+	}
+	d.debugf("Found %d total targets", len(targetsResult.TargetInfos))
+
+	// Attach to existing page targets asynchronously
+	for _, targetInfo := range targetsResult.TargetInfos {
+		d.debugf("  Target: type=%q, targetID=%q, url=%q", targetInfo.Type, targetInfo.TargetID, targetInfo.URL)
+		if targetInfo.Type == "page" {
+			// Check if we've already attached (targetCreated might have fired before getTargets returned)
+			if _, alreadyAttached := d.attachedTargets.LoadOrStore(targetInfo.TargetID, true); alreadyAttached {
+				d.debugf("  Already attached to targetID=%q, skipping", targetInfo.TargetID)
+				continue
+			}
+
+			targetID := targetInfo.TargetID // capture for goroutine
+			go func() {
+				d.debugf("  Attaching to existing page target: targetID=%q", targetID)
+				_, err := d.cdp.Send("Target.attachToTarget", map[string]any{
+					"targetId": targetID,
+					"flatten":  true,
+				})
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "warning: failed to attach to existing target %q: %v\n", targetID, err)
+					// Remove from attachedTargets on failure so we can retry
+					d.attachedTargets.Delete(targetID)
+				} else {
+					d.debugf("  Successfully attached to target %q", targetID)
+				}
+			}()
+		}
+	}
+
 	return nil
 }
 
@@ -234,10 +293,8 @@ func (d *Daemon) enableDomainsForSession(sessionID string) error {
 		return fmt.Errorf("failed to enable lifecycle events: %w", err)
 	}
 
-	// Resume the target (it's paused due to waitForDebuggerOnStart)
-	if _, err := d.cdp.SendToSession(context.Background(), sessionID, "Runtime.runIfWaitingForDebugger", nil); err != nil {
-		return fmt.Errorf("failed to resume debugger: %w", err)
-	}
+	// NOTE: We don't use waitForDebuggerOnStart with manual Target.attachToTarget,
+	// so no need to call Runtime.runIfWaitingForDebugger
 
 	return nil
 }
@@ -245,6 +302,10 @@ func (d *Daemon) enableDomainsForSession(sessionID string) error {
 // subscribeEvents subscribes to CDP events and buffers them.
 func (d *Daemon) subscribeEvents() {
 	// Target events (browser-level, no sessionId)
+	d.cdp.Subscribe("Target.targetCreated", func(evt cdp.Event) {
+		d.handleTargetCreated(evt)
+	})
+
 	d.cdp.Subscribe("Target.attachedToTarget", func(evt cdp.Event) {
 		d.handleTargetAttached(evt)
 	})
@@ -629,6 +690,58 @@ func (d *Daemon) handleLoadingFailed(evt cdp.Event) {
 		}
 		return false
 	})
+}
+
+// handleTargetCreated handles Target.targetCreated event.
+// Manually attaches to page targets using Target.attachToTarget with flatten:true.
+// This follows Rod's approach (see context/rod/browser.go:273-276).
+func (d *Daemon) handleTargetCreated(evt cdp.Event) {
+	var params struct {
+		TargetInfo struct {
+			TargetID string `json:"targetId"`
+			Type     string `json:"type"`
+			Title    string `json:"title"`
+			URL      string `json:"url"`
+		} `json:"targetInfo"`
+	}
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return
+	}
+
+	// Only attach to page targets
+	if params.TargetInfo.Type != "page" {
+		return
+	}
+
+	d.debugf("Target.targetCreated: targetID=%q, type=%q, url=%q",
+		params.TargetInfo.TargetID, params.TargetInfo.Type, params.TargetInfo.URL)
+
+	// Check if we've already attached to this target (prevent double-attach)
+	if _, alreadyAttached := d.attachedTargets.LoadOrStore(params.TargetInfo.TargetID, true); alreadyAttached {
+		d.debugf("Target.targetCreated: already attached to targetID=%q, skipping", params.TargetInfo.TargetID)
+		return
+	}
+
+	// Attach asynchronously to avoid blocking the event loop
+	// (Critical: targetCreated events can fire while waiting for setDiscoverTargets response)
+	go func() {
+		// Manually attach to the target with flatten:true (Rod's pattern)
+		// This is critical - without flatten:true, CDP responses may be queued until networkIdle
+		result, err := d.cdp.Send("Target.attachToTarget", map[string]any{
+			"targetId": params.TargetInfo.TargetID,
+			"flatten":  true,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to attach to target %q: %v\n", params.TargetInfo.TargetID, err)
+			// Remove from attachedTargets on failure so we can retry
+			d.attachedTargets.Delete(params.TargetInfo.TargetID)
+			return
+		}
+
+		// The result contains the sessionId, but we'll receive Target.attachedToTarget event anyway
+		// which will handle session setup via handleTargetAttached
+		d.debugf("Target.attachToTarget result for targetID=%q: %s", params.TargetInfo.TargetID, string(result))
+	}()
 }
 
 // handleTargetAttached handles Target.attachedToTarget event.
@@ -1090,24 +1203,13 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 
 	// Get full page HTML or query selector
 	if params.Selector == "" {
-		// Wait for DOMContentLoaded before calling Runtime.evaluate
-		// Check if navigation is in progress
-		if ch, ok := d.navigating.Load(activeID); ok {
-			d.debugf("html: waiting for DOMContentLoaded (navigation in progress)")
-			waitStart := time.Now()
-			select {
-			case <-ch.(chan struct{}):
-				d.debugf("html: DOMContentLoaded fired, waited %v", time.Since(waitStart))
-			case <-ctx.Done():
-				return ipc.ErrorResponse("timeout waiting for page ready")
-			}
-		} else {
-			d.debugf("html: no active navigation, DOM should be ready")
-		}
+		// NOTE: We DON'T wait for DOMContentLoaded here (Rod doesn't wait either)
+		// Rod just calls Runtime.evaluate immediately. If DOM isn't ready, it fails with error.
+		d.debugf("html: calling Runtime.evaluate immediately (Rod's approach - no page load wait)")
 
-		// Use Rod's approach: Runtime.evaluate to get element ObjectID, then DOM.getOuterHTML
 		start := time.Now()
 
+		// Use Rod's approach: Runtime.evaluate to get element ObjectID, then DOM.getOuterHTML
 		// Step 1: Evaluate document.documentElement to get RemoteObject with ObjectID
 		d.debugf("html: calling Runtime.evaluate for document.documentElement")
 		evalResult, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
