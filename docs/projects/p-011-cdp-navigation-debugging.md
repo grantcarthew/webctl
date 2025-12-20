@@ -165,12 +165,14 @@ Key files to study:
 
 ## Success Criteria
 
-- [ ] BUG-003 fixed: `html` command works reliably after navigation
+- [ ] Implement `Target.setDiscoverTargets{Discover: true}` in daemon init
+- [ ] Implement `Target.attachToTarget{Flatten: true}` for session management
+- [ ] BUG-003 fixed: `html` command returns in <1 second (not 10+ seconds)
+- [ ] `navigate` → `html` works instantly without waiting for `networkIdle`
 - [ ] `navigate` → `ready` → `html` sequence works consistently
-- [ ] `navigate` → `html` (without ready) gives clear error or waits appropriately
 - [ ] Rapid `navigate` → `navigate` doesn't cause crashes or hangs
 - [ ] All commands return sensible errors during navigation (not timeouts)
-- [ ] Documented the CDP event patterns discovered
+- [ ] Documented the CDP session management patterns
 - [ ] Final validation with user confirms all fixes work correctly
 
 ## Deliverables
@@ -251,3 +253,131 @@ Understanding these failure modes is key to building robust solutions.
   - **Environment issue identified**: On test machine, `Page.loadEventFired` takes ~15 seconds for simple data URLs - this is abnormal browser behavior, not a webctl issue
   - **Files changed**: `internal/daemon/daemon.go` - added `navigating` sync.Map, updated `handleNavigate`, `handleReload`, `navigateHistory`, `handleLoadEventFired`, `handleHTML`
   - **Status**: Fix implemented and tested. BUG-003 is addressed - html command now properly waits for page load before extracting HTML
+- 2025-12-20: Deep investigation into Runtime.evaluate blocking behavior:
+  - **CRITICAL DISCOVERY**: Previous fix was incorrect - `Runtime.evaluate` does NOT wait for `loadEventFired`, it waits for `Page.lifecycleEvent: name=networkIdle`
+  - **Timeline analysis with timestamps**:
+    - `DOMContentLoaded` fires when DOM is parsed and ready (~4s after navigation)
+    - `loadEventFired` fires when page resources loaded (~4s after navigation)
+    - `networkIdle` fires when no network activity for ~500ms (~14s after navigation due to slow favicon)
+    - `Runtime.evaluate` completes at EXACT same millisecond as `networkIdle` (not `loadEventFired`)
+  - **Test 1 - Runtime.evaluate timing**:
+    - Called `Runtime.evaluate` before `DOMContentLoaded`
+    - Waited 10 seconds after `loadEventFired` for `networkIdle`
+    - Total time: 14-18 seconds for simple example.com page
+    - Favicon 404 request takes 14-15 seconds, blocking `networkIdle`
+  - **Test 2 - Calling Runtime.evaluate AFTER DOMContentLoaded**:
+    - Modified code to wait for `DOMContentLoaded` before calling `Runtime.evaluate`
+    - `Runtime.evaluate` STILL blocked 10 seconds until `networkIdle`
+    - **Conclusion**: Chrome enforces `networkIdle` wait regardless of when you call `Runtime.evaluate`
+  - **Test 3 - DOM.getDocument approach**:
+    - Tried using `DOM.getDocument` + `DOM.getOuterHTML` instead of `Runtime.evaluate`
+    - `DOM.getDocument` ALSO waits for `networkIdle` (10+ seconds)
+    - `DOM.getOuterHTML` is instant (2ms) once you have nodeId
+    - **Conclusion**: `DOM.getDocument` has same blocking behavior as `Runtime.evaluate`
+  - **Test 4 - Direct DOM.getOuterHTML with nodeId=1**:
+    - Attempted to skip `DOM.getDocument` and call `DOM.getOuterHTML(nodeId: 1)` directly
+    - STILL waited 10 seconds for `networkIdle`, then returned error "Could not find node with given id"
+    - **Conclusion**: ALL CDP calls block until `networkIdle`, even failing calls
+  - **Test 5 - Rod comparison**:
+    - Created test program using Rod library to navigate to example.com and get HTML
+    - **Rod retrieves HTML in 73 milliseconds** (not 10+ seconds!)
+    - **CRITICAL FINDING**: Rod does NOT experience the `networkIdle` blocking delay
+    - Rod uses `DOM.getOuterHTML{ObjectID: ...}` with ObjectID from Runtime.RemoteObject (not nodeId)
+    - **Question**: How does Rod avoid the `networkIdle` wait that we're seeing?
+  - **Key discoveries**:
+    1. `Runtime.evaluate` blocks until `Page.lifecycleEvent: name=networkIdle` (NOT `loadEventFired`)
+    2. `DOM.getDocument` also blocks until `networkIdle`
+    3. ALL CDP method calls block until `networkIdle`, regardless of method or parameters
+    4. Slow network resources (like favicon 404s) delay `networkIdle` by 10+ seconds
+    5. Rod successfully extracts HTML in <100ms without this blocking behavior
+  - **Added comprehensive debug logging**:
+    - All debug messages now include timestamps
+    - Added logging for all Page lifecycle events (frameStartedLoading, frameStoppedLoading, lifecycleEvent)
+    - Added logging for Runtime execution context events (contextCreated, contextDestroyed, contextsCleared)
+    - Added logging for DOM events (documentUpdated)
+    - Added logging for all Network events (requestWillBeSent, responseReceived, loadingFinished, loadingFailed)
+  - **Status**: Root cause identified but solution unclear. Need to understand how Rod avoids `networkIdle` blocking.
+- 2025-12-20: ROOT CAUSE IDENTIFIED - CDP Session Management Difference:
+  - **Investigated Rod's source code** (local copy in `./context/rod/`)
+  - **Test 6 - Rod timing breakdown**:
+    - Rod's `MustNavigate()`: 18ms (returns immediately after navigation starts)
+    - Rod's `MustHTML()` called immediately after navigate: 25ms (gets HTML instantly!)
+    - Total time: ~100ms vs our 15+ seconds
+  - **Test 7 - Tried Rod's exact ObjectID approach**:
+    - Modified our code to use `Runtime.evaluate` for `document.documentElement` to get ObjectID
+    - Then call `DOM.getOuterHTML{objectId: ...}` with that ObjectID
+    - STILL blocked for 10+ seconds waiting for `networkIdle`
+    - **Conclusion**: Using ObjectID vs nodeId is NOT the difference
+  - **ROOT CAUSE DISCOVERED** - CDP session setup is fundamentally different:
+    - **Rod's approach** (`context/rod/browser.go:273-276`):
+      ```go
+      session, err := proto.TargetAttachToTarget{
+          TargetID: targetID,
+          Flatten:  true, // if it's not set no response will return
+      }.Call(b)
+      ```
+    - **Our approach**:
+      - We DON'T call `Target.attachToTarget` ourselves
+      - We DON'T use `Flatten: true`
+      - We passively receive `Target.attachedToTarget` events from browser
+      - We use sessionID from those events
+  - **Key differences identified**:
+    1. **Rod calls `Target.setDiscoverTargets{Discover: true}`** on browser connect (line 174)
+    2. **Rod explicitly attaches to targets with `Flatten: true`** (line 273-276)
+    3. Rod's comment: "if it's not set no response will return" - suggests `Flatten: true` is critical
+    4. **We don't call either of these methods**
+  - **Hypothesis**: Without `Flatten: true`, Chrome handles sessions differently and queues CDP responses until page reaches stable state (`networkIdle`). With `Flatten: true`, responses return immediately regardless of page state.
+  - **Implementation plan**:
+    1. Add `Target.setDiscoverTargets{Discover: true}` call in daemon initialization
+    2. Refactor session attachment to actively call `Target.attachToTarget{Flatten: true}`
+    3. Update session tracking to use the returned sessionID
+    4. Test if this eliminates the `networkIdle` blocking behavior
+  - **Files to modify**:
+    - `internal/cdp/client.go` - May need to add Target domain methods
+    - `internal/daemon/daemon.go` - Session initialization and attachment logic
+    - `internal/daemon/session.go` - Session state management
+  - **Status**: Root cause identified! Need to implement Rod's session attachment pattern with `Flatten: true`.
+
+## Next Session Implementation Plan
+
+**Goal**: Implement Rod's CDP session management pattern to eliminate `networkIdle` blocking.
+
+**Step 1: Add Target.setDiscoverTargets**
+- Location: `internal/daemon/daemon.go` in `New()` function after CDP client creation
+- Add call: `Target.setDiscoverTargets{Discover: true}`
+- This enables target discovery events from browser
+
+**Step 2: Implement Active Target Attachment**
+- Location: `internal/daemon/daemon.go` in target attachment handling
+- Currently: We passively receive `Target.attachedToTarget` events
+- Change to: Actively call `Target.attachToTarget{TargetID: ..., Flatten: true}`
+- Use the returned sessionID for all operations on that target
+
+**Step 3: Update Session Tracking**
+- Location: `internal/daemon/session.go`
+- Ensure sessions use the sessionID from `Target.attachToTarget` response
+- May need to refactor how we track and manage sessions
+
+**Step 4: Test**
+- Build and test `navigate` → `html` sequence
+- Verify HTML retrieval is <1 second (not 10+ seconds)
+- Check debug logs show no `networkIdle` waiting
+
+**Step 5: Verify Fix**
+- Test all navigation sequences from project goals
+- Test edge cases (rapid navigation, navigation during operations)
+- Confirm all observation commands work reliably
+
+**Reference Implementation** (from `./context/rod/`):
+- `browser.go:174` - `proto.TargetSetDiscoverTargets{Discover: true}.Call(b)` in Connect()
+- `browser.go:273-276` - `proto.TargetAttachToTarget{TargetID: targetID, Flatten: true}.Call(b)` in PageFromTarget()
+- `browser.go:275` - Comment: "if it's not set no response will return" (critical!)
+- `browser.go:313` - `page.EnableDomain(&proto.PageEnable{})` after attachment
+- `states.go:59-65` - EnableDomain() implementation pattern
+- `element.go:~2000` - HTML() method using `DOM.getOuterHTML{ObjectID: ...}`
+
+**Key Rod differences**:
+1. Active target attachment (line 273) vs our passive event listening
+2. Flatten: true parameter (line 275) vs our missing parameter
+3. SetDiscoverTargets on connect (line 174) vs our missing call
+4. EnableDomain pattern (line 313) for Page domain
