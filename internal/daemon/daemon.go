@@ -78,7 +78,8 @@ type frameNavigatedInfo struct {
 // debugf logs a debug message if debug mode is enabled.
 func (d *Daemon) debugf(format string, args ...any) {
 	if d.debug {
-		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+		timestamp := time.Now().Format("15:04:05.000")
+		fmt.Fprintf(os.Stderr, "[DEBUG] [%s] "+format+"\n", append([]any{timestamp}, args...)...)
 	}
 }
 
@@ -276,19 +277,39 @@ func (d *Daemon) subscribeEvents() {
 		if entry, ok := d.parseRequestEvent(evt); ok {
 			entry.SessionID = evt.SessionID
 			d.networkBuf.Push(entry)
+			d.debugf("Network.requestWillBeSent: requestId=%s, url=%s, type=%s", entry.RequestID, entry.URL, entry.Type)
 		}
 	})
 
 	d.cdp.Subscribe("Network.responseReceived", func(evt cdp.Event) {
 		d.updateResponseEvent(evt)
+		var params struct {
+			RequestID string `json:"requestId"`
+			Type      string `json:"type"`
+		}
+		if err := json.Unmarshal(evt.Params, &params); err == nil {
+			d.debugf("Network.responseReceived: requestId=%s, type=%s", params.RequestID, params.Type)
+		}
 	})
 
 	d.cdp.Subscribe("Network.loadingFinished", func(evt cdp.Event) {
 		d.handleLoadingFinished(evt)
+		var params struct {
+			RequestID string `json:"requestId"`
+		}
+		if err := json.Unmarshal(evt.Params, &params); err == nil {
+			d.debugf("Network.loadingFinished: requestId=%s", params.RequestID)
+		}
 	})
 
 	d.cdp.Subscribe("Network.loadingFailed", func(evt cdp.Event) {
 		d.handleLoadingFailed(evt)
+		var params struct {
+			RequestID string `json:"requestId"`
+		}
+		if err := json.Unmarshal(evt.Params, &params); err == nil {
+			d.debugf("Network.loadingFailed: requestId=%s", params.RequestID)
+		}
 	})
 
 	// Page navigation events for navigation commands
@@ -302,6 +323,55 @@ func (d *Daemon) subscribeEvents() {
 
 	d.cdp.Subscribe("Page.domContentEventFired", func(evt cdp.Event) {
 		d.handleDOMContentEventFired(evt)
+	})
+
+	// Debug: Additional Page events
+	d.cdp.Subscribe("Page.frameStartedLoading", func(evt cdp.Event) {
+		d.debugf("Page.frameStartedLoading: sessionID=%s", evt.SessionID)
+	})
+
+	d.cdp.Subscribe("Page.frameStoppedLoading", func(evt cdp.Event) {
+		d.debugf("Page.frameStoppedLoading: sessionID=%s", evt.SessionID)
+	})
+
+	d.cdp.Subscribe("Page.lifecycleEvent", func(evt cdp.Event) {
+		var params struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(evt.Params, &params); err == nil {
+			d.debugf("Page.lifecycleEvent: name=%s, sessionID=%s", params.Name, evt.SessionID)
+		}
+	})
+
+	// Debug: Runtime execution context events
+	d.cdp.Subscribe("Runtime.executionContextCreated", func(evt cdp.Event) {
+		var params struct {
+			Context struct {
+				ID   int    `json:"id"`
+				Name string `json:"name"`
+			} `json:"context"`
+		}
+		if err := json.Unmarshal(evt.Params, &params); err == nil {
+			d.debugf("Runtime.executionContextCreated: contextId=%d, name=%s", params.Context.ID, params.Context.Name)
+		}
+	})
+
+	d.cdp.Subscribe("Runtime.executionContextDestroyed", func(evt cdp.Event) {
+		var params struct {
+			ExecutionContextID int `json:"executionContextId"`
+		}
+		if err := json.Unmarshal(evt.Params, &params); err == nil {
+			d.debugf("Runtime.executionContextDestroyed: contextId=%d", params.ExecutionContextID)
+		}
+	})
+
+	d.cdp.Subscribe("Runtime.executionContextsCleared", func(evt cdp.Event) {
+		d.debugf("Runtime.executionContextsCleared")
+	})
+
+	// Debug: DOM events
+	d.cdp.Subscribe("DOM.documentUpdated", func(evt cdp.Event) {
+		d.debugf("DOM.documentUpdated: sessionID=%s", evt.SessionID)
 	})
 }
 
@@ -1020,38 +1090,71 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 
 	// Get full page HTML or query selector
 	if params.Selector == "" {
-		// Get HTML directly - if the page isn't ready, the call will block
-		// until Chrome has an execution context available.
-		js := `document.documentElement.outerHTML`
+		// Wait for DOMContentLoaded before calling Runtime.evaluate
+		// Check if navigation is in progress
+		if ch, ok := d.navigating.Load(activeID); ok {
+			d.debugf("html: waiting for DOMContentLoaded (navigation in progress)")
+			waitStart := time.Now()
+			select {
+			case <-ch.(chan struct{}):
+				d.debugf("html: DOMContentLoaded fired, waited %v", time.Since(waitStart))
+			case <-ctx.Done():
+				return ipc.ErrorResponse("timeout waiting for page ready")
+			}
+		} else {
+			d.debugf("html: no active navigation, DOM should be ready")
+		}
 
+		// Use Rod's approach: Runtime.evaluate to get element ObjectID, then DOM.getOuterHTML
 		start := time.Now()
-		d.debugf("html: calling Runtime.evaluate")
-		result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
-			"expression":    js,
-			"returnByValue": true,
+
+		// Step 1: Evaluate document.documentElement to get RemoteObject with ObjectID
+		d.debugf("html: calling Runtime.evaluate for document.documentElement")
+		evalResult, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+			"expression": "document.documentElement",
 		})
 		d.debugf("html: Runtime.evaluate completed in %v", time.Since(start))
 		if err != nil {
-			return ipc.ErrorResponse(fmt.Sprintf("failed to get HTML: %v", err))
+			return ipc.ErrorResponse(fmt.Sprintf("failed to evaluate document.documentElement: %v", err))
 		}
 
 		var evalResp struct {
 			Result struct {
-				Value string `json:"value"`
+				ObjectID string `json:"objectId"`
 			} `json:"result"`
 			ExceptionDetails *struct {
 				Text string `json:"text"`
 			} `json:"exceptionDetails"`
 		}
-		if err := json.Unmarshal(result, &evalResp); err != nil {
-			return ipc.ErrorResponse(fmt.Sprintf("failed to parse HTML response: %v", err))
+		if err := json.Unmarshal(evalResult, &evalResp); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to parse evaluate response: %v", err))
 		}
 		if evalResp.ExceptionDetails != nil {
 			return ipc.ErrorResponse(fmt.Sprintf("JavaScript error: %s", evalResp.ExceptionDetails.Text))
 		}
 
+		// Step 2: Get outer HTML using the ObjectID
+		d.debugf("html: calling DOM.getOuterHTML with objectId=%s", evalResp.Result.ObjectID)
+		htmlStart := time.Now()
+		htmlResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
+			"objectId": evalResp.Result.ObjectID,
+		})
+		d.debugf("html: DOM.getOuterHTML completed in %v", time.Since(htmlStart))
+		if err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to get outer HTML: %v", err))
+		}
+
+		var htmlResp struct {
+			OuterHTML string `json:"outerHTML"`
+		}
+		if err := json.Unmarshal(htmlResult, &htmlResp); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to parse HTML response: %v", err))
+		}
+
+		d.debugf("html: total time: %v", time.Since(start))
+
 		return ipc.SuccessResponse(ipc.HTMLData{
-			HTML: evalResp.Result.Value,
+			HTML: htmlResp.OuterHTML,
 		})
 	}
 
