@@ -122,7 +122,8 @@ func resetCommandFlags() {
 	scrollTo = ""
 	scrollBy = ""
 
-	// TODO: Add flag resets for: eval, cookies
+	// Eval command flags
+	evalTimeout = 30 * time.Second
 }
 
 // isStdoutTTY returns true if stdout is a terminal.

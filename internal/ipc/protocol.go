@@ -181,6 +181,18 @@ type ScrollParams struct {
 	Mode     string `json:"mode"` // "element", "to", or "by"
 }
 
+// EvalParams represents parameters for the "eval" command.
+type EvalParams struct {
+	Expression string `json:"expression"`
+	Timeout    int    `json:"timeout,omitempty"` // timeout in milliseconds
+}
+
+// EvalData is the response data for the "eval" command.
+type EvalData struct {
+	Value    any  `json:"value,omitempty"`
+	HasValue bool `json:"hasValue,omitempty"`
+}
+
 // SuccessResponse creates a successful response with the given data.
 func SuccessResponse(data any) Response {
 	var raw json.RawMessage

@@ -19,5 +19,7 @@ Design Records (DRs) document significant technical decisions made during develo
 | DR-011 | [Screenshot Command Interface](dr-011-screenshot-command.md) | Accepted | 2025-12-17 |
 | DR-012 | [HTML Command Interface](dr-012-html-command.md) | Accepted | 2025-12-17 |
 | DR-013 | [Navigation & Interaction Commands](dr-013-navigation-interaction-commands.md) | Accepted | 2025-12-19 |
+| DR-014 | [Eval Command Interface](dr-014-eval-command.md) | Accepted | 2025-12-22 |
+| DR-015 | [Cookies Command Interface](dr-015-cookies-command.md) | Proposed | 2025-12-22 |
 
 Note: Superseded design records are in `superseded/`

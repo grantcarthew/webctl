@@ -105,7 +105,7 @@ func (r *REPL) prompt() string {
 var replCommands = []string{"exit", "quit", "help", "history", "stop"}
 
 // webctlCommands lists webctl commands for abbreviation matching.
-var webctlCommands = []string{"status", "console", "network", "screenshot", "html", "target", "clear"}
+var webctlCommands = []string{"status", "console", "network", "screenshot", "html", "target", "clear", "eval"}
 
 // expandAbbreviation expands a command prefix to a full command name.
 // Returns the expanded command and true if exactly one match found.

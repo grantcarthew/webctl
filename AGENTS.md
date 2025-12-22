@@ -12,7 +12,7 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-Active Project: docs/projects/p-011-cdp-navigation-debugging.md
+Active Project: docs/projects/p-007-observation-commands.md
 
 Completed projects are in docs/projects/completed/
 

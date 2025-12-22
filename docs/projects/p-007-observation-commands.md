@@ -94,19 +94,20 @@ HTML Command:
 - [x] `webctl html --output <path>` saves to custom path
 - [x] HTML command has unit and integration tests
 - [x] BUG-002: HTML command fails with "client closed while waiting for response" in REPL - FIXED
-- [ ] BUG-003: HTML command extremely slow and times out in REPL (navigation race condition?)
+- [x] BUG-003: HTML command extremely slow and times out in REPL - FIXED (see P-011)
 
 Eval Command:
 
-- [ ] DR-013 written documenting eval command interface
-- [ ] `webctl eval "1+1"` returns `2`
-- [ ] `webctl eval "Promise.resolve(42)"` handles async expressions
+- [x] DR-014 written documenting eval command interface
+- [x] `webctl eval "1+1"` returns `2`
+- [x] `webctl eval "Promise.resolve(42)"` handles async expressions
 - [ ] Eval command has unit and integration tests
 
 Cookies Command:
 
-- [ ] DR-014 written documenting cookies command interface
+- [x] DR-015 written documenting cookies command interface
 - [ ] `webctl cookies` returns all cookies as JSON
+- [ ] `webctl cookies set` and `webctl cookies delete` subcommands work
 - [ ] Cookies command has unit and integration tests
 
 ## Deliverables
@@ -130,7 +131,7 @@ Implementation Files:
 - `internal/cli/target.go` - COMPLETE (session listing and switching)
 - `internal/cli/screenshot.go` - COMPLETE (tests pending)
 - `internal/cli/html.go` - TODO
-- `internal/cli/eval.go` - TODO
+- `internal/cli/eval.go` - COMPLETE
 - `internal/cli/cookies.go` - TODO
 - `internal/executor/` - Executor interface for CLI/REPL command execution - COMPLETE
 - `internal/daemon/repl.go` - COMPLETE (session prompt, abbreviations, TTY-aware output)
@@ -428,7 +429,7 @@ Status: Fixed. All unit and integration tests pass.
 
 ---
 
-BUG-003: HTML command extremely slow and times out in REPL - IN PROGRESS
+BUG-003: HTML command extremely slow and times out in REPL - FIXED
 
 Symptom: When running `webctl html` in REPL after navigating to a page, DOM.getDocument takes ~10-12 seconds or times out entirely.
 

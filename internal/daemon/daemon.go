@@ -1053,6 +1053,8 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 		return d.handleSelect(req)
 	case "scroll":
 		return d.handleScroll(req)
+	case "eval":
+		return d.handleEval(req)
 	case "shutdown":
 		return d.handleShutdown()
 	default:
@@ -2340,4 +2342,74 @@ func (d *Daemon) handleScroll(req ipc.Request) ipc.Response {
 	}
 
 	return ipc.SuccessResponse(nil)
+}
+
+// handleEval evaluates JavaScript in the browser context.
+func (d *Daemon) handleEval(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	var params ipc.EvalParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("invalid eval parameters: %v", err))
+	}
+
+	if params.Expression == "" {
+		return ipc.ErrorResponse("expression is required")
+	}
+
+	timeout := 30 * time.Second
+	if params.Timeout > 0 {
+		timeout = time.Duration(params.Timeout) * time.Millisecond
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+		"expression":    params.Expression,
+		"awaitPromise":  true,
+		"returnByValue": true,
+	})
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return ipc.ErrorResponse(fmt.Sprintf("evaluation timed out after %s", timeout))
+		}
+		return ipc.ErrorResponse(fmt.Sprintf("failed to evaluate expression: %v", err))
+	}
+
+	// Parse the CDP response
+	var cdpResp struct {
+		Result struct {
+			Type  string `json:"type"`
+			Value any    `json:"value"`
+		} `json:"result"`
+		ExceptionDetails *struct {
+			Text      string `json:"text"`
+			Exception struct {
+				Description string `json:"description"`
+			} `json:"exception"`
+		} `json:"exceptionDetails"`
+	}
+	if err := json.Unmarshal(result, &cdpResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse evaluation result: %v", err))
+	}
+
+	// Check for JavaScript errors
+	if cdpResp.ExceptionDetails != nil {
+		errMsg := cdpResp.ExceptionDetails.Exception.Description
+		if errMsg == "" {
+			errMsg = cdpResp.ExceptionDetails.Text
+		}
+		return ipc.ErrorResponse(errMsg)
+	}
+
+	// Return the result - omit value field if undefined
+	if cdpResp.Result.Type == "undefined" {
+		return ipc.SuccessResponse(ipc.EvalData{HasValue: false})
+	}
+
+	return ipc.SuccessResponse(ipc.EvalData{Value: cdpResp.Result.Value, HasValue: true})
 }
