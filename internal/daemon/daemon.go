@@ -71,6 +71,11 @@ type Daemon struct {
 	// Target attachment tracking
 	// attachedTargets tracks which targetIDs we've already attached to (prevents double-attach)
 	attachedTargets sync.Map // map[string]bool for targetID -> attached
+
+	// Network domain lazy enablement
+	// networkEnabled tracks which sessions have Network.enable called
+	// We enable Network lazily because it causes Runtime.evaluate to block until networkIdle
+	networkEnabled sync.Map // map[string]bool for sessionID -> enabled
 }
 
 // frameNavigatedInfo contains information from a Page.frameNavigated event.
@@ -281,7 +286,10 @@ func (d *Daemon) enableAutoAttach() error {
 
 // enableDomainsForSession enables CDP domains for a specific session.
 func (d *Daemon) enableDomainsForSession(sessionID string) error {
-	domains := []string{"Runtime.enable", "Network.enable", "Page.enable", "DOM.enable"}
+	// NOTE: Enabling Network domain causes Chrome to track network activity
+	// and block Runtime.evaluate until networkIdle. Rod only enables Page.
+	// We enable minimal domains and add others only when needed.
+	domains := []string{"Runtime.enable", "Page.enable", "DOM.enable"}
 	for _, method := range domains {
 		if _, err := d.cdp.SendToSession(context.Background(), sessionID, method, nil); err != nil {
 			return fmt.Errorf("failed to enable %s: %w", method, err)
@@ -1108,10 +1116,22 @@ func (d *Daemon) handleConsole() ipc.Response {
 }
 
 // handleNetwork returns buffered network entries filtered to active session.
+// Enables Network domain lazily on first call to avoid blocking Runtime.evaluate.
 func (d *Daemon) handleNetwork() ipc.Response {
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
+	}
+
+	// Enable Network domain lazily for this session
+	if _, loaded := d.networkEnabled.LoadOrStore(activeID, true); !loaded {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := d.cdp.SendToSession(ctx, activeID, "Network.enable", nil); err != nil {
+			d.debugf("warning: failed to enable Network domain: %v", err)
+		} else {
+			d.debugf("Network domain enabled lazily for session %s", activeID)
+		}
 	}
 
 	allEntries := d.networkBuf.All()
@@ -1182,7 +1202,8 @@ func (d *Daemon) handleScreenshot(req ipc.Request) ipc.Response {
 }
 
 // handleHTML extracts HTML from the current page or specified selector.
-// Uses JavaScript Promise to wait for page ready before extracting HTML (same approach as Rod).
+// Uses Rod's approach: get window ObjectID first, then use Runtime.callFunctionOn.
+// This avoids the networkIdle blocking that occurs with direct Runtime.evaluate.
 func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 	d.debugf("handleHTML called")
 	activeID := d.sessions.ActiveID()
@@ -1203,24 +1224,24 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 
 	// Get full page HTML or query selector
 	if params.Selector == "" {
-		// NOTE: We DON'T wait for DOMContentLoaded here (Rod doesn't wait either)
-		// Rod just calls Runtime.evaluate immediately. If DOM isn't ready, it fails with error.
-		d.debugf("html: calling Runtime.evaluate immediately (Rod's approach - no page load wait)")
-
 		start := time.Now()
 
-		// Use Rod's approach: Runtime.evaluate to get element ObjectID, then DOM.getOuterHTML
-		// Step 1: Evaluate document.documentElement to get RemoteObject with ObjectID
-		d.debugf("html: calling Runtime.evaluate for document.documentElement")
-		evalResult, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
-			"expression": "document.documentElement",
+		// NOTE: We do NOT call Page.stopLoading here. Testing showed it blocks for 10 seconds.
+		// The issue is that Chrome blocks CDP method calls during page load.
+
+		// Step 1: Get window ObjectID using Runtime.evaluate.
+		// Rod does this once and caches it (see page_eval.go:333).
+		// Chrome handles "window" specially - it's always available.
+		d.debugf("html: calling Runtime.evaluate for window")
+		windowResult, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+			"expression": "window",
 		})
-		d.debugf("html: Runtime.evaluate completed in %v", time.Since(start))
+		d.debugf("html: Runtime.evaluate(window) completed in %v", time.Since(start))
 		if err != nil {
-			return ipc.ErrorResponse(fmt.Sprintf("failed to evaluate document.documentElement: %v", err))
+			return ipc.ErrorResponse(fmt.Sprintf("failed to get window: %v", err))
 		}
 
-		var evalResp struct {
+		var windowResp struct {
 			Result struct {
 				ObjectID string `json:"objectId"`
 			} `json:"result"`
@@ -1228,18 +1249,55 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 				Text string `json:"text"`
 			} `json:"exceptionDetails"`
 		}
-		if err := json.Unmarshal(evalResult, &evalResp); err != nil {
-			return ipc.ErrorResponse(fmt.Sprintf("failed to parse evaluate response: %v", err))
+		if err := json.Unmarshal(windowResult, &windowResp); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to parse window response: %v", err))
 		}
-		if evalResp.ExceptionDetails != nil {
-			return ipc.ErrorResponse(fmt.Sprintf("JavaScript error: %s", evalResp.ExceptionDetails.Text))
+		if windowResp.ExceptionDetails != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("JavaScript error getting window: %s", windowResp.ExceptionDetails.Text))
+		}
+		if windowResp.Result.ObjectID == "" {
+			return ipc.ErrorResponse("window objectId is empty")
 		}
 
-		// Step 2: Get outer HTML using the ObjectID
-		d.debugf("html: calling DOM.getOuterHTML with objectId=%s", evalResp.Result.ObjectID)
+		// Step 3: Use Runtime.callFunctionOn to get document.documentElement.
+		// This is Rod's approach (see page_eval.go:155-161).
+		// By targeting the window object directly, we avoid context creation delays.
+		d.debugf("html: calling Runtime.callFunctionOn for document.documentElement")
+		callStart := time.Now()
+		callResult, err := d.cdp.SendToSession(ctx, activeID, "Runtime.callFunctionOn", map[string]any{
+			"objectId":            windowResp.Result.ObjectID,
+			"functionDeclaration": "function() { return document.documentElement; }",
+			"returnByValue":       false,
+		})
+		d.debugf("html: Runtime.callFunctionOn completed in %v", time.Since(callStart))
+		if err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to get documentElement: %v", err))
+		}
+
+		var callResp struct {
+			Result struct {
+				ObjectID string `json:"objectId"`
+			} `json:"result"`
+			ExceptionDetails *struct {
+				Text string `json:"text"`
+			} `json:"exceptionDetails"`
+		}
+		if err := json.Unmarshal(callResult, &callResp); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to parse callFunctionOn response: %v", err))
+		}
+		if callResp.ExceptionDetails != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("JavaScript error: %s", callResp.ExceptionDetails.Text))
+		}
+		if callResp.Result.ObjectID == "" {
+			return ipc.ErrorResponse("documentElement objectId is empty")
+		}
+
+		// Step 4: Get outer HTML using DOM.getOuterHTML with the ObjectID.
+		// This is what Rod's element.HTML() does (see element.go:493).
+		d.debugf("html: calling DOM.getOuterHTML with objectId=%s", callResp.Result.ObjectID)
 		htmlStart := time.Now()
 		htmlResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
-			"objectId": evalResp.Result.ObjectID,
+			"objectId": callResp.Result.ObjectID,
 		})
 		d.debugf("html: DOM.getOuterHTML completed in %v", time.Since(htmlStart))
 		if err != nil {
@@ -1592,7 +1650,10 @@ func (d *Daemon) waitForLoadEvent(sessionID string, timeout time.Duration) error
 	}
 }
 
-// handleNavigate navigates to a URL and waits for navigation to commit.
+// handleNavigate navigates to a URL.
+// Like Rod, we return immediately after sending Page.navigate without waiting for frameNavigated.
+// This avoids Chrome's internal blocking that occurs when waiting for navigation events.
+// See: Rod's page.go Navigate() returns immediately after calling Page.navigate.
 func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 	d.debugf("handleNavigate called")
 	activeID := d.sessions.ActiveID()
@@ -1619,11 +1680,6 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 	d.navigating.Store(activeID, navDoneCh)
 	d.debugf("navigate: created navigating channel for session %s", activeID)
 
-	// Set up waiter before sending navigate command
-	ch := make(chan *frameNavigatedInfo, 1)
-	d.navWaiters.Store(activeID, ch)
-	defer d.navWaiters.Delete(activeID)
-
 	// Send navigate command
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -1638,23 +1694,19 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 	// Check for navigation errors in response
 	var navResp struct {
 		ErrorText string `json:"errorText"`
+		FrameID   string `json:"frameId"`
 	}
 	if err := json.Unmarshal(result, &navResp); err == nil && navResp.ErrorText != "" {
 		return ipc.ErrorResponse(navResp.ErrorText)
 	}
 
-	// Wait for frameNavigated event
-	select {
-	case info := <-ch:
-		return ipc.SuccessResponse(ipc.NavigateData{
-			URL:   info.URL,
-			Title: info.Title,
-		})
-	case <-time.After(30 * time.Second):
-		return ipc.ErrorResponse("timeout waiting for navigation")
-	case <-ctx.Done():
-		return ipc.ErrorResponse("navigation cancelled")
-	}
+	// Return immediately like Rod does - don't wait for frameNavigated.
+	// Chrome's Page.navigate response includes the URL we navigated to.
+	d.debugf("navigate: returning immediately (Rod-style), frameId=%s", navResp.FrameID)
+	return ipc.SuccessResponse(ipc.NavigateData{
+		URL:   params.URL,
+		Title: "", // Title not available until page loads
+	})
 }
 
 // handleReload reloads the current page.

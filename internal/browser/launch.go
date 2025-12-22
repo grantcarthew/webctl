@@ -30,7 +30,7 @@ const DefaultPort = 9222
 const UserDataDirDefault = "default"
 
 // buildArgs constructs the Chrome command line arguments.
-// Uses Rod's extensive flag set to match their behavior.
+// These flags match Rod's launcher for consistent automation behavior.
 // See: context/rod/lib/launcher/launcher.go:58-97
 func buildArgs(opts LaunchOptions) []string {
 	port := opts.Port
@@ -39,43 +39,39 @@ func buildArgs(opts LaunchOptions) []string {
 	}
 
 	args := []string{
+		// Required for CDP connection
 		fmt.Sprintf("--remote-debugging-port=%d", port),
 
-		// Basic flags
+		// Prevent first-run dialogs
 		"--no-first-run",
-		// NOTE: Don't use --no-startup-window - it prevents Chrome from creating
-		// the initial about:blank page that we attach to. Rod creates pages
-		// explicitly via Target.createTarget, but we rely on the initial page.
 		"--no-default-browser-check",
 
-		// Disable features that might affect timing/networking
-		"--disable-features=site-per-process,TranslateUI",
-		"--enable-features=NetworkService,NetworkServiceInProcess",
+		// Disable translate popup
+		"--disable-features=TranslateUI",
 
-		// Disable various background processes and timers
+		// Prevent background throttling (important for automation)
 		"--disable-background-networking",
 		"--disable-background-timer-throttling",
 		"--disable-backgrounding-occluded-windows",
 		"--disable-renderer-backgrounding",
 
-		// Disable other features
+		// Disable monitoring/crash reporting
 		"--disable-breakpad",
+		"--disable-hang-monitor",
+
+		// Disable unnecessary features
 		"--disable-client-side-phishing-detection",
 		"--disable-component-extensions-with-background-pages",
 		"--disable-default-apps",
-		"--disable-dev-shm-usage",
-		"--disable-hang-monitor",
-		"--disable-ipc-flooding-protection",
 		"--disable-popup-blocking",
 		"--disable-prompt-on-repost",
 		"--disable-sync",
-		"--disable-site-isolation-trials",
 
-		// Automation flags
-		"--enable-automation",
-		"--metrics-recording-only",
+		// Container/automation compatibility
+		"--disable-dev-shm-usage",
+		"--disable-ipc-flooding-protection",
 
-		// Color profile
+		// Consistent screenshot colors
 		"--force-color-profile=srgb",
 	}
 

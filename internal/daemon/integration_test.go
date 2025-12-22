@@ -433,7 +433,9 @@ func TestNetwork_Integration(t *testing.T) {
 		// Wait for page load and session to be established
 		time.Sleep(3 * time.Second)
 
-		// Clear network buffer and reload to capture Document request
+		// Enable Network domain by calling network command first (lazy enablement)
+		// Then clear buffer and reload to capture Document request
+		client.SendCmd("network") // This enables Network.enable lazily
 		client.Send(ipc.Request{Cmd: "clear", Target: "network"})
 
 		// Reload page (same-origin navigation captures Document request)
