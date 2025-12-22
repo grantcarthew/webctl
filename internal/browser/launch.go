@@ -43,7 +43,9 @@ func buildArgs(opts LaunchOptions) []string {
 
 		// Basic flags
 		"--no-first-run",
-		"--no-startup-window",
+		// NOTE: Don't use --no-startup-window - it prevents Chrome from creating
+		// the initial about:blank page that we attach to. Rod creates pages
+		// explicitly via Target.createTarget, but we rely on the initial page.
 		"--no-default-browser-check",
 
 		// Disable features that might affect timing/networking

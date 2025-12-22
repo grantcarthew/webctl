@@ -401,11 +401,84 @@ Understanding these failure modes is key to building robust solutions.
   - **Attempted**: Implemented Rod's comprehensive Chrome launch flags in `internal/browser/launch.go`
   - **Result**: Chrome failed to launch with Rod's flag set - needs investigation
   - **Status**: Project paused - need to debug Chrome launch issue with new flags before testing if they fix networkIdle blocking
+- 2025-12-22: Created automated test to reproduce BUG-003:
+  - **Fixed daemon startup**: Removed `--no-startup-window` flag from `internal/browser/launch.go` which was preventing Chrome from creating the initial about:blank page for attachment
+  - **Created test file**: `internal/daemon/html_timing_test.go` with `TestHTMLTiming_NetworkIdleBlocking` test
+  - **Fixed socket path issue**: Unix sockets have ~108 char limit; Go's `t.TempDir()` paths are too long. Changed to use `/tmp/webctl-test-*`
+  - **BUG-003 successfully reproduced**:
+    - Navigate + HTML: 20 seconds (expected <2s)
+    - Data URL HTML: 10 seconds (expected <500ms)
+    - Confirms `Runtime.evaluate` blocks until `networkIdle` lifecycle event
+  - **Test will verify fix**: Once fix is implemented, test should pass with all extraction times under 2 seconds
+  - **Files changed**:
+    - `internal/browser/launch.go`: Removed `--no-startup-window` flag
+    - `internal/daemon/html_timing_test.go`: Created new test file
+
+## Automated Test for BUG-003
+
+An automated test has been created to reproduce and verify fixes for the networkIdle blocking issue.
+
+### Test Location
+
+`internal/daemon/html_timing_test.go`
+
+### How to Run
+
+```bash
+# Run the HTML timing test
+go test -run TestHTMLTiming_NetworkIdleBlocking -v ./internal/daemon/
+
+# Run the benchmark (for performance comparison)
+go test -bench=BenchmarkHTMLExtraction -benchtime=5x ./internal/daemon/
+```
+
+### What the Test Does
+
+The `TestHTMLTiming_NetworkIdleBlocking` test reproduces BUG-003 by:
+
+1. **Starting a daemon** with headless Chrome
+2. **Navigating to example.com** and immediately requesting HTML (no wait)
+3. **Measuring the time** for HTML extraction
+4. **Failing if HTML takes >2 seconds** (expected <1 second, currently takes 10-20 seconds)
+
+The test includes three subtests:
+- `navigate_then_html_timing`: Navigate to example.com, measure immediate HTML extraction
+- `multiple_navigation_timing`: Test multiple URLs to verify consistent behavior
+- `data_url_timing`: Test data URLs (should be instant, but currently 10+ seconds due to bug)
+
+### Current Test Results (BUG-003 Confirmed)
+
+```
+=== RUN   TestHTMLTiming_NetworkIdleBlocking/navigate_then_html_timing
+    html_timing_test.go:104: HTML extraction took: 20.00372675s
+    html_timing_test.go:110: BUG-003 REPRODUCED: HTML extraction took 20.00372675s (expected <2s)
+    html_timing_test.go:111: This indicates Runtime.evaluate is blocking until networkIdle
+
+=== RUN   TestHTMLTiming_NetworkIdleBlocking/data_url_timing
+    html_timing_test.go:185: Data URL HTML extraction took: 10.001832333s
+    html_timing_test.go:189: Data URL HTML took 10.001832333s (expected <500ms)
+```
+
+### How the Test Will Be Used to Verify Fixes
+
+1. **Baseline established**: Current behavior shows 10-20 second delays
+2. **After implementing fix**: Run test - should pass with <2 second extraction
+3. **Success criteria**: All subtests pass with times under threshold:
+   - `navigate_then_html_timing`: <2 seconds
+   - `multiple_navigation_timing`: <2 seconds per URL
+   - `data_url_timing`: <500 milliseconds
+
+### Technical Notes
+
+- Uses short socket path (`/tmp/webctl-test-*`) to avoid Unix socket path length limit
+- Includes diagnostic function `waitForSocketWithDiag` for debugging startup issues
+- Port 0 means use default (9222) - tests may fail if another Chrome instance uses this port
 
 ## Current State
 
 - **Session management**: Successfully implemented Rod's pattern (manual attachToTarget with flatten: true)
 - **Double-attach bug**: Fixed
-- **Daemon startup**: Working
-- **Core issue remains**: Runtime.evaluate still blocks until networkIdle (~17+ seconds)
-- **Next session**: Debug Chrome launch failure with Rod's flags, or try flags incrementally to find which one causes the issue
+- **Daemon startup**: Fixed - removed `--no-startup-window` flag that prevented initial page creation
+- **Automated test**: Created `TestHTMLTiming_NetworkIdleBlocking` which successfully reproduces BUG-003
+- **Core issue remains**: Runtime.evaluate still blocks until networkIdle (~10-20 seconds)
+- **Next step**: Investigate why Rod's approach works but ours doesn't - likely in how Runtime.evaluate is called or Chrome's internal handling
