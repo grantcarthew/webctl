@@ -28,6 +28,7 @@ webctl html [selector] [flags]
 Arguments:
 
 selector (optional):
+
 - CSS selector to target specific element(s)
 - Examples: `.content`, `#main`, `div.card`, `section > p`
 - If omitted, returns full page HTML
@@ -59,6 +60,7 @@ Uses same title normalization as screenshot command for consistency.
 HTML content:
 
 Full page (no selector):
+
 ```html
 <!DOCTYPE html>
 <html lang="en">
@@ -73,6 +75,7 @@ Full page (no selector):
 ```
 
 Single element match:
+
 ```html
 <div class="content">
   <p>Text content</p>
@@ -80,6 +83,7 @@ Single element match:
 ```
 
 Multiple element matches:
+
 ```html
 <!-- Element 1 of 3: div.card -->
 <div class="card">...</div>
@@ -442,10 +446,12 @@ Gets outer HTML for a specific node.
 Returns outerHTML string for the node.
 
 Sequence for full page:
+
 1. DOM.getDocument → get root nodeId
 2. DOM.getOuterHTML with root nodeId → get full page HTML
 
 Sequence for selector:
+
 1. DOM.getDocument → get root nodeId
 2. DOM.querySelectorAll with selector → get array of nodeIds
 3. For each nodeId: DOM.getOuterHTML → get element HTML

@@ -256,16 +256,19 @@ CLI implementation:
 Daemon implementation:
 
 List:
+
 - Call Network.getCookies (no URL = current page)
 - Return all cookie objects as-is from CDP
 
 Set:
+
 - Call Network.setCookie with provided attributes
 - Domain defaults to current page URL's domain
 - Path defaults to "/"
 - Convert max-age to expires timestamp
 
 Delete:
+
 - First call Network.getCookies to find matches
 - If zero matches: return success (idempotent)
 - If one match: call Network.deleteCookies with name and domain
@@ -273,10 +276,12 @@ Delete:
 - If multiple matches with --domain: delete the specified one
 
 Network domain:
+
 - Cookies operations require Network domain enabled
 - Use existing lazy enablement pattern from network command
 
 REPL abbreviation:
+
 - Add "cookies" to webctlCommands list
 - "coo" expands to "cookies"
 

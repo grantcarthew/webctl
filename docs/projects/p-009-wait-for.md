@@ -64,11 +64,13 @@ webctl wait-for --eval "window.appLoaded === true" --timeout 60
 ### Output
 
 Success:
+
 ```json
 {"ok": true, "waited": 1.234}  // seconds waited
 ```
 
 Timeout:
+
 ```json
 {"ok": false, "error": "timeout waiting for: .content-loaded", "waited": 30.0}
 ```
@@ -76,6 +78,7 @@ Timeout:
 ### Element Wait Implementation
 
 Polling approach:
+
 ```go
 func waitForSelector(selector string, timeout time.Duration) error {
     deadline := time.Now().Add(timeout)
@@ -98,6 +101,7 @@ CDP: `DOM.querySelector` in a loop.
 ### Network Idle Implementation
 
 Track pending requests:
+
 ```go
 type NetworkTracker struct {
     pending map[string]bool  // requestId -> true
@@ -124,6 +128,7 @@ func (t *NetworkTracker) IsIdle() bool {
 ```
 
 Wait for idle:
+
 ```go
 func waitForNetworkIdle(timeout time.Duration, idleTime time.Duration) error {
     deadline := time.Now().Add(timeout)
@@ -203,6 +208,7 @@ CDP: `Runtime.evaluate` in a loop.
 Polling is simple and reliable. Event-based waiting (MutationObserver) is more efficient but adds complexity. Start with polling; optimise later if needed.
 
 Consider future enhancements:
+
 - `--visible` - wait for element to be visible (not just present)
 - `--hidden` - wait for element to disappear
 - `--enabled` - wait for element to be enabled

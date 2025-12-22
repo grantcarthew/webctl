@@ -215,67 +215,86 @@ Failed Request Entry:
 Field Descriptions:
 
 sessionId (string, required):
+
 - CDP session identifier
 - Identifies which page session produced this entry
 
 requestId (string, required):
+
 - CDP request identifier
 - Unique within a session
 
 url (string, required):
+
 - Full request URL
 
 method (string, required):
+
 - HTTP method (GET, POST, PUT, DELETE, etc.)
 
 type (string, optional):
+
 - CDP resource type: document, stylesheet, image, media, font, script, texttrack, xhr, fetch, prefetch, eventsource, websocket, manifest, other
 
 status (int, optional):
+
 - HTTP status code
 - 0 for failed requests that never received a response
 
 statusText (string, optional):
+
 - HTTP status text (OK, Created, Not Found, etc.)
 
 mimeType (string, optional):
+
 - Response MIME type
 
 requestTime (int64, required):
+
 - Unix timestamp in milliseconds when request was sent
 
 responseTime (int64, optional):
+
 - Unix timestamp in milliseconds when response headers were received
 - Absent for failed requests
 
 duration (float64, optional):
+
 - Request duration in seconds
 - Time from request sent to response headers received (or failure)
 
 size (int64, optional):
+
 - Response body size in bytes
 
 requestHeaders (map[string]string, optional):
+
 - Request headers sent to server
 
 responseHeaders (map[string]string, optional):
+
 - Response headers received from server
 
 body (string, optional):
+
 - Response body as string (for text content)
 - Omitted for binary content (use bodyPath)
 
 bodyTruncated (bool, optional):
+
 - True if body exceeded --max-body-size and was truncated
 
 bodyPath (string, optional):
+
 - Path to saved binary body file
 - Present instead of body for binary content types
 
 failed (bool, required):
+
 - True if request failed (network error, CORS, timeout, etc.)
 
 error (string, optional):
+
 - Error description for failed requests (net::ERR_*, CORS error text)
 
 ## Usage Examples

@@ -56,6 +56,7 @@ The browser package has 0% coverage on launch and lifecycle functions:
 This function fetches response bodies via CDP, which requires a connected CDP client.
 
 **Recommended approach**:
+
 1. Extract body fetching logic into a testable function
 2. Mock the CDP client's `SendContext` method
 3. Test both text and binary body handling paths

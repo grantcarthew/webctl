@@ -66,6 +66,7 @@ All navigation commands (navigate, reload, back, forward) wait for `Page.frameNa
 Wait for frameNavigated on navigation:
 
 The REPL prompt displays the current page title. Without waiting for `frameNavigated`, a race condition occurs:
+
 1. Navigate command returns immediately
 2. REPL displays prompt with old title
 3. `frameNavigated` event arrives after prompt is shown
@@ -76,10 +77,12 @@ Waiting for `frameNavigated` (which fires when browser commits to navigation, be
 CDP mouse events for click:
 
 Two approaches exist for clicking elements:
+
 1. CDP mouse events: `DOM.getBoxModel` + `Input.dispatchMouseEvent`
 2. JavaScript: `element.click()`
 
 CDP mouse events are preferred because:
+
 - True mouse simulation triggers full event chain (mouseenter, mouseover, mousedown, mouseup, click)
 - Matches rod/puppeteer/playwright implementations
 - More reliable for elements with complex event handlers
@@ -88,11 +91,13 @@ CDP mouse events are preferred because:
 Composable type/focus/key commands:
 
 Breaking text input into three commands provides flexibility:
+
 - `focus` - focus any element
 - `type` - insert text (optionally focus first)
 - `key` - send any key with modifiers
 
 This enables composable workflows:
+
 ```bash
 webctl focus "#input"
 webctl type "hello"
@@ -100,6 +105,7 @@ webctl key Enter
 ```
 
 Or convenient one-liners:
+
 ```bash
 webctl type "#input" "hello" --key Enter
 ```
@@ -113,6 +119,7 @@ For automation, scroll must complete before command returns. Smooth scrolling in
 Separate ready command:
 
 The `ready` command waits for `loadEventFired`, indicating the page's `load` event has fired. This is separate from navigation commands because:
+
 - Navigation commands wait for `frameNavigated` (fast, title available)
 - `ready` waits for `loadEventFired` (slower, page fully loaded)
 - Users compose as needed: `navigate url && ready && html`
@@ -195,16 +202,19 @@ webctl navigate <url>
 ```
 
 CDP sequence:
+
 1. `Page.navigate` with URL
 2. Wait for `Page.frameNavigated` event
 3. Return URL and title from frame info
 
 Success response:
+
 ```json
 {"ok": true, "url": "https://example.com/", "title": "Example Domain"}
 ```
 
 Error response (navigation failed):
+
 ```json
 {"ok": false, "error": "net::ERR_NAME_NOT_RESOLVED"}
 ```
@@ -237,6 +247,7 @@ webctl forward
 ```
 
 CDP sequence:
+
 1. `Page.getNavigationHistory` - get entries and currentIndex
 2. Calculate target index (current ± 1)
 3. Validate target exists (error if at beginning/end)
@@ -244,6 +255,7 @@ CDP sequence:
 5. Wait for `Page.frameNavigated`
 
 Error response (no history):
+
 ```json
 {"ok": false, "error": "no previous page in history"}
 ```
@@ -257,6 +269,7 @@ webctl click <selector>
 ```
 
 CDP sequence:
+
 1. `DOM.getDocument` - get document root
 2. `DOM.querySelector` - find element by selector
 3. `DOM.getBoxModel` - get element coordinates
@@ -265,11 +278,13 @@ CDP sequence:
 6. `Input.dispatchMouseEvent` type=mouseReleased, button=left, clickCount=1
 
 Error response (element not found):
+
 ```json
 {"ok": false, "error": "element not found: .missing-button"}
 ```
 
 v1 limitations (documented):
+
 - Element must be in main frame (no iframe support)
 - Element must be visible (not scrolled out of view)
 
@@ -282,6 +297,7 @@ webctl type [selector] <text> [--key <key>] [--clear]
 ```
 
 Arguments:
+
 - selector (optional): CSS selector to focus before typing
 - text: Text to insert
 
@@ -293,12 +309,14 @@ Flags:
 | --clear | Clear existing content before typing |
 
 CDP sequence:
+
 1. If selector provided: focus element (see focus command)
 2. If --clear: send Ctrl+A then Backspace
 3. `Input.insertText` with text
 4. If --key: send key event (see key command)
 
 Argument parsing:
+
 - One argument = text only (type into currently focused element)
 - Two arguments = selector + text
 
@@ -311,6 +329,7 @@ webctl focus <selector>
 ```
 
 CDP sequence:
+
 1. `DOM.getDocument` - get document root
 2. `DOM.querySelector` - find element
 3. `DOM.focus` - focus the element
@@ -324,15 +343,16 @@ webctl key <key> [--ctrl] [--alt] [--shift] [--meta]
 ```
 
 Arguments:
+
 - key: Key name (Enter, Tab, Escape, Backspace, ArrowUp, ArrowDown, etc.)
 
 Flags:
 
 | Flag | Description |
 |------|-------------|
-| --ctrl | Hold Ctrl modifier |
+| --Ctrl | Hold Ctrl modifier |
 | --alt | Hold Alt modifier |
-| --shift | Hold Shift modifier |
+| --Shift | Hold Shift modifier |
 | --meta | Hold Meta/Command modifier |
 
 CDP: `Input.dispatchKeyEvent` with type=keyDown then keyUp.
@@ -392,16 +412,19 @@ Flags:
 Implementation via JavaScript:
 
 Element into view:
+
 ```javascript
 document.querySelector(selector).scrollIntoView({block: "center", behavior: "instant"});
 ```
 
 Scroll to position:
+
 ```javascript
 window.scrollTo({left: x, top: y, behavior: "instant"});
 ```
 
 Scroll by offset:
+
 ```javascript
 window.scrollBy({left: x, top: y, behavior: "instant"});
 ```
@@ -423,6 +446,7 @@ Flags:
 | --timeout | 30s | Maximum wait time |
 
 Implementation sequence:
+
 1. Check `document.readyState` via `Runtime.evaluate`
 2. If already "complete", return immediately
 3. Otherwise, wait for `Page.loadEventFired` event
@@ -430,11 +454,13 @@ Implementation sequence:
 This approach handles the case where the page is already loaded - calling `ready` multiple times will succeed immediately rather than timing out.
 
 Success response:
+
 ```json
 {"ok": true}
 ```
 
 Timeout response:
+
 ```json
 {"ok": false, "error": "timeout waiting for page load"}
 ```
@@ -444,31 +470,37 @@ Timeout response:
 Common error responses:
 
 Daemon not running:
+
 ```json
 {"ok": false, "error": "daemon not running. Start with: webctl start"}
 ```
 
 No active session:
+
 ```json
 {"ok": false, "error": "no active session - use 'webctl target <id>' to select"}
 ```
 
 Element not found:
+
 ```json
 {"ok": false, "error": "element not found: .missing-selector"}
 ```
 
 Navigation failed:
+
 ```json
 {"ok": false, "error": "net::ERR_NAME_NOT_RESOLVED"}
 ```
 
 No history:
+
 ```json
 {"ok": false, "error": "no previous page in history"}
 ```
 
 Timeout:
+
 ```json
 {"ok": false, "error": "timeout waiting for page load"}
 ```
@@ -478,6 +510,7 @@ Timeout:
 CLI structure:
 
 Each command follows existing patterns:
+
 - Cobra command in `internal/cli/`
 - IPC request to daemon
 - Daemon handler in `handleRequest` switch
@@ -490,6 +523,7 @@ Add new command flags to `resetCommandFlags()` in root.go for REPL support.
 Waiting for events:
 
 Navigate, reload, back, forward, and ready commands need to wait for CDP events. Implementation options:
+
 1. Subscribe to event before sending command, wait with timeout
 2. Use a channel to signal event receipt
 3. Daemon maintains pending navigation state
@@ -521,6 +555,7 @@ Integration tests:
 Test page:
 
 Create test HTML page with:
+
 - Form inputs for type testing
 - Buttons for click testing
 - Select dropdowns for select testing
@@ -532,45 +567,59 @@ Create test HTML page with:
 Deferred from initial implementation:
 
 Hover command:
+
 ```bash
 webctl hover <selector>
 ```
+
 Mouse hover without click. Useful for tooltips and menus.
 
 Double-click:
+
 ```bash
 webctl click <selector> --double
 ```
+
 Double-click for specific interactions.
 
 Right-click:
+
 ```bash
 webctl click <selector> --right
 ```
+
 Context menu interactions.
 
 Drag and drop:
+
 ```bash
 webctl drag <from-selector> <to-selector>
 ```
+
 Complex drag interactions.
 
 File upload:
+
 ```bash
 webctl upload <selector> <file-path>
 ```
+
 File input handling.
 
 Wait for selector:
+
 ```bash
 webctl wait-for <selector> [--timeout 30s]
 ```
+
 Wait for element to appear (P-009 scope).
 
 Wait for network idle:
+
 ```bash
 webctl wait-for --network-idle
 ```
+
 Wait for network activity to settle (P-009 scope).
 
 ## Updates

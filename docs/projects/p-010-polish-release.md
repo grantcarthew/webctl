@@ -59,6 +59,7 @@ Out of Scope:
 ### Error Message Audit
 
 Review all error paths:
+
 - Element not found → clear selector in message
 - Daemon not running → suggest `webctl start`
 - Connection refused → check if Chrome crashed
@@ -119,12 +120,14 @@ docs/
 ### Performance Testing
 
 Test with realistic load:
+
 1. Navigate to complex page (many console logs)
 2. Trigger 10,000 console.log calls
 3. Verify buffer works correctly
 4. Check memory usage
 
 Same for network:
+
 1. Page that makes many requests
 2. Fill network buffer to 10,000
 3. Verify body retrieval works
@@ -133,6 +136,7 @@ Same for network:
 ### Known Limitations Documentation
 
 Document clearly:
+
 - Main frame only (no iframe support in v1)
 - Native `<select>` only for select command
 - Polling-based wait-for (not instant)
@@ -146,6 +150,7 @@ Document clearly:
 ## Testing Strategy
 
 Full integration test suite:
+
 1. Start daemon
 2. Navigate to test page
 3. Run all commands

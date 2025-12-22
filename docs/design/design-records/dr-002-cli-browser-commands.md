@@ -39,6 +39,7 @@ Launches Chrome with CDP enabled, then exits. No daemon.
 | --port | 9222 | CDP port for remote debugging |
 
 Behaviour:
+
 - Spawns Chrome with `--remote-debugging-port=PORT`
 - Prints CDP WebSocket URL to stdout
 - Exits (browser continues running)
@@ -57,12 +58,14 @@ Launches the daemon with event buffering.
 | --listen | - | Expose daemon on TCP port for remote CLI access |
 
 Behaviour without --attach:
+
 - Launches browser with CDP
 - Starts daemon
 - Daemon connects to browser via CDP
 - IPC via Unix socket (default) or TCP (if --listen)
 
 Behaviour with --attach:
+
 - Does not launch browser
 - Starts daemon
 - Daemon connects to specified CDP endpoint
@@ -71,10 +74,12 @@ Behaviour with --attach:
 ## Why
 
 Separation of concerns:
+
 - `webctl browser` deals only with browser launch (one concept: CDP port)
 - `webctl start` deals with daemon lifecycle (two concepts: attach to CDP, listen for CLI)
 
 Clear flag semantics:
+
 - `--port` only appears on `browser` command (CDP port)
 - `--attach` specifies CDP endpoint to connect to (not launch)
 - `--listen` specifies daemon's TCP port for remote CLI access
@@ -84,10 +89,12 @@ No ambiguous `--port` flag that could mean either CDP or daemon port.
 ## Trade-offs
 
 Accept:
+
 - Two commands instead of one (slightly more to learn)
 - Users must understand browser vs daemon distinction
 
 Gain:
+
 - No port confusion between CDP and daemon
 - Each command has single responsibility
 - Flags are unambiguous

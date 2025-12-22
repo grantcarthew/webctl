@@ -40,6 +40,7 @@ Only involve the user for final validation once the bug is confirmed fixed.
 These commands were implemented in P-008. Use them for testing:
 
 Navigation:
+
 ```bash
 webctl navigate <url>     # Navigate to URL, wait for frameNavigated
 webctl reload             # Reload page (--ignore-cache for hard reload)
@@ -49,6 +50,7 @@ webctl ready              # Wait for page load (checks readyState first)
 ```
 
 Interaction:
+
 ```bash
 webctl click <selector>                    # Click element
 webctl focus <selector>                    # Focus element
@@ -61,6 +63,7 @@ webctl scroll --by x,y                     # Scroll by offset
 ```
 
 Observation:
+
 ```bash
 webctl status             # Show daemon status and active session
 webctl console            # Show console logs
@@ -73,6 +76,7 @@ webctl target <id>        # Switch to session
 ```
 
 Test Sequences to Debug:
+
 ```bash
 # Sequence 1: Basic navigation + html
 navigate https://example.com
@@ -114,6 +118,7 @@ Symptom: When running `webctl html` in REPL after navigating to a page, DOM.getD
 Root Cause (Identified): `DOM.getDocument` blocks until the page's DOM is ready. If called during navigation (before page load completes), Chrome blocks the call. If navigation happens DURING the call, Chrome never responds.
 
 Approaches Already Tried:
+
 1. `Page.loadEventFired` / `Page.domContentEventFired` events - didn't fire reliably for some pages
 2. `Page.setLifecycleEventsEnabled` + `Page.lifecycleEvent` - works but some navigations still timeout
 3. Navigation-aware context cancellation - helps but doesn't solve core timing issue
@@ -121,6 +126,7 @@ Approaches Already Tried:
 5. JavaScript Promise-based wait (Rod's approach) - currently being tested
 
 Key Learnings:
+
 - CDP lifecycle events require `Page.setLifecycleEventsEnabled` to be called first
 - `DOM.getDocument` blocks until DOM is ready - it's not instantaneous
 - Puppeteer uses `LifecycleWatcher` with frame-level tracking
@@ -134,6 +140,7 @@ The `navigate`, `reload`, `back`, `forward` commands wait for `Page.frameNavigat
 ## Scope
 
 In Scope:
+
 - Debugging and fixing BUG-003 (HTML command)
 - Verifying all navigation commands work correctly
 - Verifying all observation commands work after navigation
@@ -142,6 +149,7 @@ In Scope:
 - Creating test cases for edge conditions
 
 Out of Scope:
+
 - New feature development
 - Performance optimization (beyond fixing timeouts)
 - Iframe support (documented v1 limitation)
@@ -158,6 +166,7 @@ Local documentation in `./context/` directory:
 | `context/docs/` | Fetched CDP domain documentation (Runtime, Network, Page, DOM, Input) |
 
 Key files to study:
+
 - `context/rod/page_navigate.go` - How Rod handles navigation
 - `context/rod/element.go` - How Rod waits for elements
 - `context/puppeteer/src/cdp/LifecycleWatcher.ts` - Puppeteer's lifecycle handling
@@ -186,30 +195,35 @@ Key files to study:
 ## Technical Approach
 
 Phase 1: Diagnosis
+
 1. Add verbose diagnostic logging to track CDP event flow
 2. Reproduce issues consistently with specific test URLs
 3. Identify exact sequence of events leading to failure
 4. Map out the timing relationships between events
 
 Phase 2: Research
+
 1. Study Rod's implementation of page navigation waiting
 2. Study Puppeteer's LifecycleWatcher implementation
 3. Identify patterns that work reliably across implementations
 4. Document the differences and trade-offs
 
 Phase 3: Implementation
+
 1. Implement fix based on research findings
 2. Test with various page types (static, SPA, slow-loading)
 3. Test edge cases (navigation during operation, rapid navigation)
 4. Verify all observation commands work
 
 Phase 4: Documentation
+
 1. Document the fix and why it works
 2. Update DR-013 if navigation behavior changes
 3. Create test cases for regression prevention
 4. Close BUG-003 in P-007
 
 Phase 5: Final User Validation
+
 1. Notify user that fixes are ready for testing
 2. User performs manual testing of all navigation sequences
 3. User confirms fixes work in real-world usage
@@ -224,6 +238,7 @@ Phase 5: Final User Validation
 ## Notes
 
 The core challenge is that CDP operations can fail in subtle ways during page transitions:
+
 - Session IDs can become invalid
 - Execution contexts get destroyed
 - DOM nodes get invalidated
@@ -311,12 +326,14 @@ Understanding these failure modes is key to building robust solutions.
     - **Conclusion**: Using ObjectID vs nodeId is NOT the difference
   - **ROOT CAUSE DISCOVERED** - CDP session setup is fundamentally different:
     - **Rod's approach** (`context/rod/browser.go:273-276`):
+
       ```go
       session, err := proto.TargetAttachToTarget{
           TargetID: targetID,
           Flatten:  true, // if it's not set no response will return
       }.Call(b)
       ```
+
     - **Our approach**:
       - We DON'T call `Target.attachToTarget` ourselves
       - We DON'T use `Flatten: true`
@@ -344,32 +361,38 @@ Understanding these failure modes is key to building robust solutions.
 **Goal**: Implement Rod's CDP session management pattern to eliminate `networkIdle` blocking.
 
 **Step 1: Add Target.setDiscoverTargets**
+
 - Location: `internal/daemon/daemon.go` in `New()` function after CDP client creation
 - Add call: `Target.setDiscoverTargets{Discover: true}`
 - This enables target discovery events from browser
 
 **Step 2: Implement Active Target Attachment**
+
 - Location: `internal/daemon/daemon.go` in target attachment handling
 - Currently: We passively receive `Target.attachedToTarget` events
 - Change to: Actively call `Target.attachToTarget{TargetID: ..., Flatten: true}`
 - Use the returned sessionID for all operations on that target
 
 **Step 3: Update Session Tracking**
+
 - Location: `internal/daemon/session.go`
 - Ensure sessions use the sessionID from `Target.attachToTarget` response
 - May need to refactor how we track and manage sessions
 
 **Step 4: Test**
+
 - Build and test `navigate` → `html` sequence
 - Verify HTML retrieval is <1 second (not 10+ seconds)
 - Check debug logs show no `networkIdle` waiting
 
 **Step 5: Verify Fix**
+
 - Test all navigation sequences from project goals
 - Test edge cases (rapid navigation, navigation during operations)
 - Confirm all observation commands work reliably
 
 **Reference Implementation** (from `./context/rod/`):
+
 - `browser.go:174` - `proto.TargetSetDiscoverTargets{Discover: true}.Call(b)` in Connect()
 - `browser.go:273-276` - `proto.TargetAttachToTarget{TargetID: targetID, Flatten: true}.Call(b)` in PageFromTarget()
 - `browser.go:275` - Comment: "if it's not set no response will return" (critical!)
@@ -378,6 +401,7 @@ Understanding these failure modes is key to building robust solutions.
 - `element.go:~2000` - HTML() method using `DOM.getOuterHTML{ObjectID: ...}`
 
 **Key Rod differences**:
+
 1. Active target attachment (line 273) vs our passive event listening
 2. Flatten: true parameter (line 275) vs our missing parameter
 3. SetDiscoverTargets on connect (line 174) vs our missing call
@@ -443,6 +467,7 @@ The `TestHTMLTiming_NetworkIdleBlocking` test reproduces BUG-003 by:
 4. **Failing if HTML takes >2 seconds** (expected <1 second, currently takes 10-20 seconds)
 
 The test includes three subtests:
+
 - `navigate_then_html_timing`: Navigate to example.com, measure immediate HTML extraction
 - `multiple_navigation_timing`: Test multiple URLs to verify consistent behavior
 - `data_url_timing`: Test data URLs (should be instant, but currently 10+ seconds due to bug)

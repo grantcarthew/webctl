@@ -19,11 +19,13 @@ The daemon must decide when to fetch this additional data: eagerly (at event tim
 Eager capture for both network bodies and console objects.
 
 Network Response Bodies:
+
 - Fetch body immediately when `Network.loadingFinished` fires
 - Store complete body in the network event buffer
 - Body is available instantly when `webctl network` is called
 
 Console Object Arguments:
+
 - Resolve object references immediately when `Runtime.consoleAPICalled` fires
 - Call `Runtime.getProperties` for each argument with an objectId
 - Store resolved values in the console event buffer
@@ -31,16 +33,19 @@ Console Object Arguments:
 ## Why
 
 Predictable behaviour:
+
 - Users always get complete data
 - No "body not available" errors due to navigation timing
 - No difference between immediate and delayed queries
 
 Simplicity:
+
 - Single code path for data retrieval
 - No lazy-loading state management
 - No retry logic or error handling for stale references
 
 PoC validation:
+
 - Tested during P-002: bodies available immediately after `loadingFinished`
 - No timing issues observed
 - Pattern works reliably
@@ -48,11 +53,13 @@ PoC validation:
 ## Trade-offs
 
 Accept:
+
 - Higher memory usage (bodies and resolved objects stored in buffer)
 - More CDP calls at event time (slight latency during page activity)
 - Large response bodies consume buffer space quickly
 
 Gain:
+
 - Complete data always available
 - Instant response to `webctl network` and `webctl console`
 - No "data expired" failure modes
@@ -81,11 +88,13 @@ Hybrid (eager for small, skip large):
 ## Implementation Notes
 
 Memory management via existing buffer limits:
+
 - 10,000 entries per buffer (console, network)
 - Ring buffer with oldest-first eviction
 - Large bodies evicted naturally as buffer fills
 
 Future options if memory becomes an issue:
+
 - Add `--max-body-size` flag to skip bodies over threshold
 - Add `--buffer-size` flag to adjust entry count
 - These would be explicit user choices, not hidden magic

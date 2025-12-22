@@ -17,6 +17,7 @@ The `html` command times out (30 seconds) when called immediately after `navigat
 ```
 
 Error message:
+
 ```json
 {"error":"timeout waiting for page load - try 'webctl ready' first","ok":false}
 ```
@@ -38,6 +39,7 @@ The `navigate` command returns after `Page.frameNavigated`. However, `Runtime.ev
 **Key Finding**: `Runtime.evaluate` blocks until Chrome considers the page ready for JavaScript execution.
 
 Even simple synchronous JavaScript like:
+
 ```javascript
 document.documentElement.outerHTML
 ```
@@ -47,6 +49,7 @@ Will block if called between `Page.frameNavigated` and when the page is ready.
 ### Timing Measurements (2024-12-19)
 
 From debug logs with example.com:
+
 ```
 [DEBUG] handleNavigate called
 [DEBUG] navigate: created navigating channel for session BE1E0F6D52309D86FD613ED480FB1D06
@@ -59,6 +62,7 @@ From debug logs with example.com:
 ```
 
 **Observations**:
+
 - `Runtime.evaluate` takes 15+ seconds for example.com in headless mode
 - The CDP events (`domContentEventFired`, `loadEventFired`) fire DURING the blocked `Runtime.evaluate` call
 - Once the page is loaded, subsequent `html` calls are instant (14ms)
@@ -72,6 +76,7 @@ From debug logs with example.com:
 Wait for `Page.loadEventFired` or `Page.domContentEventFired` to close a navigation channel.
 
 **Implementation**:
+
 ```go
 // On navigate: create channel
 navDoneCh := make(chan struct{})
@@ -94,6 +99,7 @@ if navCh, ok := d.navigating.Load(activeID); ok {
 ```
 
 **Result**: FAILED - The `loadEventFired` event fires, but the navigation channel is never closed in practice. Possible causes:
+
 - Race condition between storing channel and receiving event
 - Event sessionID mismatch
 - Event not being received for some pages
@@ -241,6 +247,7 @@ Earlier tests that showed snag working fast on abc.net.au were actually connecti
 ### 3. Headless Mode is Slower
 
 In headless mode, `Runtime.evaluate` blocking times are much longer:
+
 - example.com: ~15-20 seconds in headless, ~5 seconds in visible mode
 - abc.net.au: >30 seconds (timeout) in both modes
 
@@ -264,6 +271,7 @@ Once a page is loaded, subsequent `html` calls are instant (14ms):
 | `Page.loadEventFired` | window.onload | Yes (in message envelope) |
 
 Event params for `domContentEventFired` and `loadEventFired`:
+
 ```json
 {
     "timestamp": 12345.678
@@ -338,12 +346,15 @@ d.cdp.SendToSession(ctx, sessionID, "Page.setLifecycleEventsEnabled", map[string
 ## Debug Commands
 
 ### Run with Debug Logging
+
 ```bash
 ./webctl start --headless --debug
 ```
 
 ### Check Navigation State
+
 Look for these debug messages:
+
 ```
 [DEBUG] navigate: created navigating channel for session XXX
 [DEBUG] Page.domContentEventFired: sessionID=XXX
@@ -352,11 +363,13 @@ Look for these debug messages:
 ```
 
 ### Time HTML Command
+
 ```bash
 time ./webctl html
 ```
 
 ### Compare with Snag
+
 ```bash
 time snag -f html https://example.com/
 ```
