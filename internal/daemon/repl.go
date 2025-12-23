@@ -78,6 +78,20 @@ func (r *REPL) Run() error {
 	}
 }
 
+// cleanURLForDisplay removes protocol and trailing slash from URL for prompt display.
+func cleanURLForDisplay(url string) string {
+	// Remove https:// or http://
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "http://")
+
+	// Remove trailing slash only if no path
+	if strings.HasSuffix(url, "/") && strings.Count(url, "/") == 1 {
+		url = strings.TrimSuffix(url, "/")
+	}
+
+	return url
+}
+
 // prompt generates the REPL prompt with session context.
 func (r *REPL) prompt() string {
 	if r.sessionProv == nil {
@@ -89,23 +103,32 @@ func (r *REPL) prompt() string {
 		return "webctl> "
 	}
 
-	// Truncate title to 30 chars
-	title := active.Title
-	if len(title) > 30 {
-		title = title[:27] + "..."
+	// Use URL instead of title, clean it for display
+	displayURL := cleanURLForDisplay(active.URL)
+	if displayURL == "" {
+		displayURL = "no-url"
+	}
+
+	// Truncate URL to 40 chars (URLs can be longer than titles)
+	if len(displayURL) > 40 {
+		displayURL = displayURL[:37] + "..."
 	}
 
 	if count > 1 {
-		return fmt.Sprintf("webctl [%s](%d)> ", title, count)
+		return fmt.Sprintf("webctl [%s](%d)> ", displayURL, count)
 	}
-	return fmt.Sprintf("webctl [%s]> ", title)
+	return fmt.Sprintf("webctl [%s]> ", displayURL)
 }
 
 // replCommands lists REPL-specific commands for abbreviation matching.
 var replCommands = []string{"exit", "quit", "help", "history", "stop"}
 
 // webctlCommands lists webctl commands for abbreviation matching.
-var webctlCommands = []string{"status", "console", "network", "screenshot", "html", "target", "clear", "eval", "cookies"}
+var webctlCommands = []string{
+	"back", "clear", "click", "console", "cookies", "eval", "focus",
+	"forward", "html", "key", "navigate", "network", "ready", "reload",
+	"screenshot", "scroll", "select", "status", "target", "type",
+}
 
 // expandAbbreviation expands a command prefix to a full command name.
 // Returns the expanded command and true if exactly one match found.
@@ -261,19 +284,39 @@ func (r *REPL) outputResponse(resp ipc.Response) {
 // printHelp displays available commands.
 func (r *REPL) printHelp() {
 	help := `
-Commands (unique prefixes accepted: st=status, sc=screenshot, h=html, n=network, t=target, co=console, cl=clear):
-  status              Show daemon status
-  console [flags]     Show console log entries
-    --format text|json  Output format (default: json)
-    --type <type>       Filter by entry type (repeatable)
-    --head <n>          Return first N entries
-    --tail <n>          Return last N entries
-    --range <start-end> Return entries in range
-  network             Show network requests
-  screenshot          Capture screenshot of current page
-  html [selector]     Extract HTML from current page
-  target [query]      List sessions or switch to a session
-  clear [target]      Clear event buffers (console, network, or all)
+Commands (unique prefixes accepted: h=html, k=key, ba=back, na=navigate, ne=network, cli=click, foc=focus):
+  Navigation:
+    navigate <url>      Navigate to URL
+    reload              Reload current page
+    back                Go back in history
+    forward             Go forward in history
+
+  Interaction:
+    click <selector>    Click element
+    type <selector> <text>  Type text into element
+    select <selector> <value>  Select dropdown option
+    scroll <target>     Scroll to element or position
+    focus <selector>    Focus element
+    key <key>           Send keyboard key
+
+  Observation:
+    status              Show daemon status
+    console [flags]     Show console log entries
+      --format text|json  Output format (default: json)
+      --type <type>       Filter by entry type (repeatable)
+      --head <n>          Return first N entries
+      --tail <n>          Return last N entries
+      --range <start-end> Return entries in range
+    network             Show network requests
+    screenshot          Capture screenshot of current page
+    html [selector]     Extract HTML from current page
+    eval <expression>   Evaluate JavaScript expression
+    cookies             Show cookies for current page
+
+  Utility:
+    target [query]      List sessions or switch to a session
+    clear [target]      Clear event buffers (console, network, or all)
+    ready               Wait for page load
 
 REPL (unique prefixes accepted: he=help, hi=history, e=exit, q=quit):
   help, ?     Show this help

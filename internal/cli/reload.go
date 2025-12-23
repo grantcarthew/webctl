@@ -11,13 +11,14 @@ import (
 var reloadCmd = &cobra.Command{
 	Use:   "reload",
 	Short: "Reload current page",
-	Long:  "Reloads the current page in the active browser session. Waits for navigation to commit before returning.",
+	Long:  "Reloads the current page in the active browser session (hard reload, ignores cache). Returns immediately unless --wait is specified.",
 	Args:  cobra.NoArgs,
 	RunE:  runReload,
 }
 
 func init() {
-	reloadCmd.Flags().Bool("ignore-cache", false, "Bypass browser cache (hard reload)")
+	reloadCmd.Flags().Bool("wait", false, "Wait for page load completion")
+	reloadCmd.Flags().Int("timeout", 30000, "Timeout in milliseconds (used with --wait)")
 	rootCmd.AddCommand(reloadCmd)
 }
 
@@ -26,8 +27,9 @@ func runReload(cmd *cobra.Command, args []string) error {
 		return outputError("daemon not running. Start with: webctl start")
 	}
 
-	// Read flags from command
-	ignoreCache, _ := cmd.Flags().GetBool("ignore-cache")
+	// Read flags
+	wait, _ := cmd.Flags().GetBool("wait")
+	timeout, _ := cmd.Flags().GetInt("timeout")
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -35,8 +37,11 @@ func runReload(cmd *cobra.Command, args []string) error {
 	}
 	defer exec.Close()
 
+	// Always do hard reload (ignore cache)
 	params, err := json.Marshal(ipc.ReloadParams{
-		IgnoreCache: ignoreCache,
+		IgnoreCache: true,
+		Wait:        wait,
+		Timeout:     timeout,
 	})
 	if err != nil {
 		return outputError(err.Error())

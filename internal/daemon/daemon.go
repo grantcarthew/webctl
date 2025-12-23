@@ -330,9 +330,9 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 	case "reload":
 		return d.handleReload(req)
 	case "back":
-		return d.handleBack()
+		return d.handleBack(req)
 	case "forward":
-		return d.handleForward()
+		return d.handleForward(req)
 	case "ready":
 		return d.handleReady(req)
 	case "click":

@@ -59,6 +59,29 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 		return ipc.ErrorResponse(navResp.ErrorText)
 	}
 
+	// If wait requested, wait for page load
+	if params.Wait {
+		timeout := cdp.DefaultTimeout
+		if params.Timeout > 0 {
+			timeout = time.Duration(params.Timeout) * time.Millisecond
+		}
+		d.debugf("navigate: waiting for page load (timeout=%v)", timeout)
+		if err := d.waitForLoadEvent(activeID, timeout); err != nil {
+			return ipc.ErrorResponse(err.Error())
+		}
+		// Get title after page load
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel2()
+		title := d.getPageTitle(ctx2, activeID)
+		return ipc.SuccessResponse(ipc.NavigateData{
+			URL:   params.URL,
+			Title: title,
+		})
+	}
+
+	// Update session URL immediately so REPL prompt reflects the change
+	d.sessions.Update(activeID, params.URL, "")
+
 	// Return immediately - don't wait for frameNavigated.
 	// Chrome's Page.navigate response includes the URL we navigated to.
 	d.debugf("navigate: returning immediately, frameId=%s", navResp.FrameID)
@@ -69,6 +92,7 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 }
 
 // handleReload reloads the current page.
+// Returns immediately after sending Page.reload command.
 func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
@@ -84,15 +108,12 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 
 	// Mark session as navigating BEFORE sending command.
 	if oldCh, loaded := d.navigating.LoadAndDelete(activeID); loaded {
+		d.debugf("reload: closing old navigating channel for session %s", activeID)
 		close(oldCh.(chan struct{}))
 	}
 	navDoneCh := make(chan struct{})
 	d.navigating.Store(activeID, navDoneCh)
-
-	// Set up waiter before sending reload command
-	ch := make(chan *frameNavigatedInfo, 1)
-	d.navWaiters.Store(activeID, ch)
-	defer d.navWaiters.Delete(activeID)
+	d.debugf("reload: created navigating channel for session %s", activeID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -104,30 +125,73 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 		return ipc.ErrorResponse(fmt.Sprintf("reload failed: %v", err))
 	}
 
-	// Wait for frameNavigated event
-	select {
-	case info := <-ch:
+	// If wait requested, wait for page load
+	if params.Wait {
+		timeout := cdp.DefaultTimeout
+		if params.Timeout > 0 {
+			timeout = time.Duration(params.Timeout) * time.Millisecond
+		}
+		d.debugf("reload: waiting for page load (timeout=%v)", timeout)
+		if err := d.waitForLoadEvent(activeID, timeout); err != nil {
+			return ipc.ErrorResponse(err.Error())
+		}
+		// Get URL and title after page load
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel2()
+		title := d.getPageTitle(ctx2, activeID)
+		// Get current URL from session
+		session := d.sessions.Get(activeID)
+		url := ""
+		if session != nil {
+			url = session.URL
+		}
 		return ipc.SuccessResponse(ipc.NavigateData{
-			URL:   info.URL,
-			Title: info.Title,
+			URL:   url,
+			Title: title,
 		})
-	case <-time.After(cdp.DefaultTimeout):
-		return ipc.ErrorResponse("timeout waiting for reload")
 	}
+
+	// Get current URL from session for response
+	session := d.sessions.Get(activeID)
+	currentURL := ""
+	if session != nil {
+		currentURL = session.URL
+	}
+
+	// Return immediately - don't wait for frameNavigated
+	// Session URL stays the same for reload, so no need to update
+	d.debugf("reload: returning immediately")
+	return ipc.SuccessResponse(ipc.NavigateData{
+		URL:   currentURL,
+		Title: "", // Title not available until frameNavigated
+	})
 }
 
 // handleBack navigates to the previous history entry.
-func (d *Daemon) handleBack() ipc.Response {
-	return d.navigateHistory(-1)
+func (d *Daemon) handleBack(req ipc.Request) ipc.Response {
+	var params ipc.HistoryParams
+	if len(req.Params) > 0 {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("invalid back parameters: %v", err))
+		}
+	}
+	return d.navigateHistory(-1, params)
 }
 
 // handleForward navigates to the next history entry.
-func (d *Daemon) handleForward() ipc.Response {
-	return d.navigateHistory(1)
+func (d *Daemon) handleForward(req ipc.Request) ipc.Response {
+	var params ipc.HistoryParams
+	if len(req.Params) > 0 {
+		if err := json.Unmarshal(req.Params, &params); err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("invalid forward parameters: %v", err))
+		}
+	}
+	return d.navigateHistory(1, params)
 }
 
 // navigateHistory navigates forward or backward in history.
-func (d *Daemon) navigateHistory(delta int) ipc.Response {
+// Returns immediately after sending navigation command unless wait=true.
+func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams) ipc.Response {
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -163,15 +227,12 @@ func (d *Daemon) navigateHistory(delta int) ipc.Response {
 
 	// Mark session as navigating BEFORE sending command.
 	if oldCh, loaded := d.navigating.LoadAndDelete(activeID); loaded {
+		d.debugf("navigateHistory: closing old navigating channel for session %s", activeID)
 		close(oldCh.(chan struct{}))
 	}
 	navDoneCh := make(chan struct{})
 	d.navigating.Store(activeID, navDoneCh)
-
-	// Set up waiter before navigating
-	ch := make(chan *frameNavigatedInfo, 1)
-	d.navWaiters.Store(activeID, ch)
-	defer d.navWaiters.Delete(activeID)
+	d.debugf("navigateHistory: created navigating channel for session %s", activeID)
 
 	// Navigate to history entry
 	_, err = d.cdp.SendToSession(ctx, activeID, "Page.navigateToHistoryEntry", map[string]any{
@@ -181,16 +242,38 @@ func (d *Daemon) navigateHistory(delta int) ipc.Response {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to navigate history: %v", err))
 	}
 
-	// Wait for frameNavigated event
-	select {
-	case info := <-ch:
+	// If wait requested, wait for page load
+	if params.Wait {
+		timeout := cdp.DefaultTimeout
+		if params.Timeout > 0 {
+			timeout = time.Duration(params.Timeout) * time.Millisecond
+		}
+		d.debugf("navigateHistory: waiting for page load (timeout=%v)", timeout)
+		if err := d.waitForLoadEvent(activeID, timeout); err != nil {
+			return ipc.ErrorResponse(err.Error())
+		}
+		// Get title after page load
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel2()
+		title := d.getPageTitle(ctx2, activeID)
+		targetURL := history.Entries[targetIndex].URL
 		return ipc.SuccessResponse(ipc.NavigateData{
-			URL:   info.URL,
-			Title: info.Title,
+			URL:   targetURL,
+			Title: title,
 		})
-	case <-time.After(cdp.DefaultTimeout):
-		return ipc.ErrorResponse("timeout waiting for history navigation")
 	}
+
+	// Return immediately - don't wait for frameNavigated
+	targetURL := history.Entries[targetIndex].URL
+
+	// Update session URL immediately so REPL prompt reflects the change
+	d.sessions.Update(activeID, targetURL, "")
+
+	d.debugf("navigateHistory: returning immediately, target URL=%s", targetURL)
+	return ipc.SuccessResponse(ipc.NavigateData{
+		URL:   targetURL, // We know the target URL from history
+		Title: "",        // Title not available until frameNavigated
+	})
 }
 
 // handleReady waits for the page to finish loading.

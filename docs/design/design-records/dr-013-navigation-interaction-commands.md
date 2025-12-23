@@ -27,7 +27,7 @@ Requirements:
 - Select dropdown options
 - Scroll to elements or positions
 - Wait for page load completion
-- All commands must update REPL prompt with current page title
+- All commands must update REPL prompt with current page URL
 
 ## Decision
 
@@ -37,10 +37,10 @@ Navigation commands:
 
 | Command | Syntax | Description |
 |---------|--------|-------------|
-| navigate | `navigate <url>` | Navigate to URL |
-| reload | `reload [--ignore-cache]` | Reload current page |
-| back | `back` | Navigate to previous history entry |
-| forward | `forward` | Navigate to next history entry |
+| navigate | `navigate <url> [--wait] [--timeout <ms>]` | Navigate to URL |
+| reload | `reload [--wait] [--timeout <ms>]` | Reload current page (hard reload) |
+| back | `back [--wait] [--timeout <ms>]` | Navigate to previous history entry |
+| forward | `forward [--wait] [--timeout <ms>]` | Navigate to next history entry |
 
 Interaction commands:
 
@@ -59,20 +59,39 @@ Utility commands:
 |---------|--------|-------------|
 | ready | `ready [--timeout 30s]` | Wait for page load completion |
 
-All navigation commands (navigate, reload, back, forward) wait for `Page.frameNavigated` event before returning, ensuring the REPL prompt displays the correct page title.
+All navigation commands return immediately by default for fast feedback. Use `--wait` flag to wait for page load completion (`loadEventFired`). The REPL prompt displays the current page URL (not title), which is available immediately.
 
 ## Why
 
-Wait for frameNavigated on navigation:
+Immediate return for navigation commands:
 
-The REPL prompt displays the current page title. Without waiting for `frameNavigated`, a race condition occurs:
+Navigation commands return immediately for fast feedback and better automation performance:
 
-1. Navigate command returns immediately
-2. REPL displays prompt with old title
-3. `frameNavigated` event arrives after prompt is shown
-4. Title only updates on next command
+1. No blocking on page load - commands complete in <100ms
+2. Users compose wait behavior explicitly: `navigate url --wait` or `navigate url && ready`
+3. REPL prompt shows URL (not title), which is known immediately
+4. Title-based prompts caused blocking and Chrome issues
 
-Waiting for `frameNavigated` (which fires when browser commits to navigation, before resources load) ensures the title is correct with negligible delay (~10-100ms).
+URL in REPL prompt:
+
+The REPL prompt displays the current page URL (protocol and trailing slash stripped):
+- `https://example.com/` → `webctl [example.com]>`
+- `http://localhost:3000/api` → `webctl [localhost:3000/api]>`
+
+URLs are available immediately when navigating, unlike titles which require waiting for page load. For automation, the URL is more useful than the title.
+
+Auto-detect URL protocol:
+
+The navigate command automatically adds protocol if missing:
+- `example.com` → `https://example.com`
+- `localhost:3000` → `http://localhost:3000`
+- `127.0.0.1` → `http://127.0.0.1`
+
+Defaults to https for security, http for local development domains.
+
+Hard reload by default:
+
+The reload command always performs a hard reload (ignores cache) because automation and testing scenarios almost always want fresh content, not cached responses.
 
 CDP mouse events for click:
 
@@ -116,58 +135,84 @@ Instant scroll:
 
 For automation, scroll must complete before command returns. Smooth scrolling introduces timing uncertainty ("when is it done?"). Instant scroll (`behavior: "instant"`) ensures deterministic behavior.
 
-Separate ready command:
+Separate ready command and --wait flag:
 
-The `ready` command waits for `loadEventFired`, indicating the page's `load` event has fired. This is separate from navigation commands because:
+The `ready` command and `--wait` flag both wait for `loadEventFired`, indicating the page's `load` event has fired. Two ways to wait:
 
-- Navigation commands wait for `frameNavigated` (fast, title available)
-- `ready` waits for `loadEventFired` (slower, page fully loaded)
-- Users compose as needed: `navigate url && ready && html`
+1. Inline with navigation: `navigate url --wait`
+2. Separate command: `navigate url && ready`
 
-This avoids blocking all navigations on slow-loading pages while providing explicit load waiting when needed.
+Navigation commands return immediately by default, avoiding blocking on slow pages. Users explicitly request waiting when needed for commands that require page content (html, screenshot, etc).
 
 ## Trade-offs
 
 Accept:
 
-- Navigation commands block briefly for frameNavigated (~10-100ms)
+- No protocol in URL requires auto-detection heuristic
+- Reload always hard - no soft reload option (can add later if needed)
+- URL in prompt less "friendly" than title (but more useful for automation)
+- Users must explicitly wait when needed (--wait flag or ready command)
 - Click requires visible elements in main frame (v1 limitation)
 - Type requires element to be focusable
 - Select only works with native `<select>` elements
 - Scroll is instant only (no smooth option)
-- Ready may timeout on very slow pages
 
 Gain:
 
-- REPL prompt always shows correct title after navigation
+- Fast navigation commands (<100ms return time)
+- No blocking on slow page loads
+- URL available immediately in REPL prompt
+- Clear, composable wait behavior
+- Users type less (example.com vs https://example.com/)
+- Hard reload default matches automation use case
 - Reliable click via true mouse simulation
 - Composable input commands (focus/type/key)
-- Convenient one-liner with type --key flag
-- Explicit page load waiting with ready command
+- Convenient one-liner with type --key flag or --wait flag
 - Consistent error handling across all commands
 
 ## Alternatives
 
-Fire-and-forget navigation:
+Wait for frameNavigated on all navigation:
 
-Return immediately after sending `Page.navigate`, don't wait for any event.
+Wait for `frameNavigated` event before returning, which provides page title.
 
-- Pro: Fastest possible return
-- Pro: Simpler implementation
-- Con: REPL shows stale title until next command
-- Con: Poor user experience
-- Rejected: Correct REPL prompt worth the minimal delay
+- Pro: Title available for REPL prompt
+- Pro: Slightly more "complete" feeling (~10-100ms wait)
+- Con: Blocks navigation commands even when title not needed
+- Con: Caused Chrome internal blocking issues in testing
+- Con: Title less useful than URL for automation
+- Rejected: Immediate return with URL prompt is faster and more useful
 
-Wait for loadEventFired on all navigation:
+Always wait for loadEventFired (no --wait flag):
 
-Wait for full page load on every navigation.
+Make all navigation commands wait for full page load by default.
 
 - Pro: Page always ready after navigation
-- Pro: No need for separate ready command
+- Pro: Simpler for beginners - no need to understand wait
 - Con: Much slower (100ms → 1-5s on typical pages)
-- Con: Blocks on slow pages unnecessarily
-- Con: Heavy pages may never complete loading
-- Rejected: frameNavigated is sufficient for title, ready command handles load waiting
+- Con: Blocks on slow/heavy pages
+- Con: Forces waiting even when not needed
+- Rejected: Optional --wait flag gives users control
+
+Title in REPL prompt:
+
+Display page title instead of URL in REPL prompt.
+
+- Pro: More "friendly" and human-readable
+- Con: Requires waiting for page load to get title
+- Con: Title may change or be empty
+- Con: URL is more useful for automation (shows exact location)
+- Rejected: URL is available immediately and more useful
+
+Soft reload by default:
+
+Make reload use cache by default, add --ignore-cache for hard reload.
+
+- Pro: Matches browser behavior
+- Pro: Faster reload
+- Con: Automation/testing almost always wants fresh content
+- Con: Users would constantly use --ignore-cache flag
+- Rejected: Hard reload better matches automation use case
 
 JavaScript click:
 
@@ -626,3 +671,9 @@ Wait for network activity to settle (P-009 scope).
 
 - 2025-12-19: Initial version
 - 2025-12-19: Fixed `ready` command to check document.readyState before waiting for loadEventFired (prevents timeout when page already loaded)
+- 2025-12-23: Major revision based on P-009 design review:
+  - Navigation commands now return immediately (no frameNavigated wait)
+  - Added --wait and --timeout flags to all navigation commands for optional page load waiting
+  - Changed reload to always hard reload (removed --ignore-cache flag)
+  - Added URL protocol auto-detection to navigate command
+  - Changed REPL prompt to show URL instead of title (URL available immediately)
