@@ -3,7 +3,6 @@ package daemon
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -203,33 +202,6 @@ func TestHTMLTiming_NetworkIdleBlocking(t *testing.T) {
 	}
 }
 
-// TestHTMLTiming_CompareWithRod compares webctl's HTML extraction timing with Rod.
-// This test helps identify what Rod does differently.
-//
-// Run with: go test -run TestHTMLTiming_CompareWithRod -v ./internal/daemon/
-func TestHTMLTiming_CompareWithRod(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping Rod comparison test in short mode")
-	}
-
-	// This test requires Rod to be importable
-	// For now, we'll just document what we know from the research:
-	t.Log("Rod comparison baseline (from project research):")
-	t.Log("  - Rod MustNavigate(): ~18ms")
-	t.Log("  - Rod MustHTML(): ~25ms")
-	t.Log("  - Rod Total: ~100ms")
-	t.Log("")
-	t.Log("webctl with BUG-003:")
-	t.Log("  - navigate: variable")
-	t.Log("  - html: 10-17+ seconds (blocks on networkIdle)")
-	t.Log("")
-	t.Log("Key differences identified:")
-	t.Log("  1. Rod uses Target.setDiscoverTargets + Target.attachToTarget(flatten:true)")
-	t.Log("  2. Rod uses DOM.getOuterHTML with ObjectID (not nodeId)")
-	t.Log("  3. Rod's Element() uses querySelector to get element first")
-	t.Log("  4. Rod doesn't wait for networkIdle before executing JavaScript")
-}
-
 // BenchmarkHTMLExtraction benchmarks HTML extraction to quantify the issue.
 //
 // Run with: go test -bench=BenchmarkHTMLExtraction -benchtime=5x ./internal/daemon/
@@ -296,61 +268,6 @@ func BenchmarkHTMLExtraction(b *testing.B) {
 			b.Fatalf("html error: %s", resp.Error)
 		}
 	}
-}
-
-// TestHTMLTiming_RodDirectComparison uses Rod directly to establish baseline timing.
-// This requires Rod to be a dependency - add if needed for debugging.
-//
-// To enable this test:
-// 1. go get github.com/go-rod/rod
-// 2. Uncomment the test below
-// 3. Run: go test -run TestHTMLTiming_RodDirectComparison -v ./internal/daemon/
-func TestHTMLTiming_RodDirectComparison(t *testing.T) {
-	t.Skip("Rod not imported - uncomment and add dependency to enable")
-
-	// Uncomment when Rod is available:
-	/*
-		browser := rod.New().MustConnect()
-		defer browser.MustClose()
-
-		// Test 1: Navigate and get HTML timing
-		start := time.Now()
-		page := browser.MustPage("https://example.com")
-		navTime := time.Since(start)
-
-		start = time.Now()
-		html := page.MustHTML()
-		htmlTime := time.Since(start)
-
-		t.Logf("Rod navigate: %v", navTime)
-		t.Logf("Rod HTML: %v", htmlTime)
-		t.Logf("Rod HTML length: %d", len(html))
-
-		// Rod should complete HTML in <100ms
-		if htmlTime > 500*time.Millisecond {
-			t.Errorf("Rod HTML took longer than expected: %v", htmlTime)
-		}
-	*/
-}
-
-// printTimingReport prints a summary of timing measurements.
-func printTimingReport(t *testing.T, measurements map[string]time.Duration) {
-	t.Log("\n=== Timing Report ===")
-	for name, duration := range measurements {
-		status := "OK"
-		if duration > 2*time.Second {
-			status = "SLOW (BUG-003)"
-		}
-		t.Logf("  %s: %v [%s]", name, duration, status)
-	}
-}
-
-// Helper to format duration for comparison
-func formatDuration(d time.Duration) string {
-	if d > time.Second {
-		return fmt.Sprintf("%.2fs", d.Seconds())
-	}
-	return fmt.Sprintf("%dms", d.Milliseconds())
 }
 
 // waitForSocketWithDiag waits for socket with diagnostic output
