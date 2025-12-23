@@ -131,6 +131,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 	d.browser = b
 	defer d.browser.Close()
 
+	// Update config with actual port used (may differ from requested if auto-selected)
+	d.config.Port = b.Port()
+
 	// Connect to browser-level CDP WebSocket (not page target)
 	// This allows us to use Target.setAutoAttach for session management
 	version, err := d.browser.Version(ctx)
