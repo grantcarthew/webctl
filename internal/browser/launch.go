@@ -30,8 +30,7 @@ const DefaultPort = 9222
 const UserDataDirDefault = "default"
 
 // buildArgs constructs the Chrome command line arguments.
-// These flags match Rod's launcher for consistent automation behavior.
-// See: context/rod/lib/launcher/launcher.go:58-97
+// See DR-005 for rationale behind each flag.
 func buildArgs(opts LaunchOptions) []string {
 	port := opts.Port
 	if port == 0 {
@@ -46,33 +45,34 @@ func buildArgs(opts LaunchOptions) []string {
 		"--no-first-run",
 		"--no-default-browser-check",
 
-		// Disable translate popup
-		"--disable-features=TranslateUI",
-
-		// Prevent background throttling (important for automation)
+		// Reduce background network noise
 		"--disable-background-networking",
+		"--disable-sync",
+
+		// Prevent throttling that breaks CDP responsiveness
 		"--disable-background-timer-throttling",
 		"--disable-backgrounding-occluded-windows",
 		"--disable-renderer-backgrounding",
+		"--disable-hang-monitor",
+		"--disable-ipc-flooding-protection",
 
 		// Disable monitoring/crash reporting
 		"--disable-breakpad",
-		"--disable-hang-monitor",
-
-		// Disable unnecessary features
 		"--disable-client-side-phishing-detection",
-		"--disable-component-extensions-with-background-pages",
-		"--disable-default-apps",
-		"--disable-popup-blocking",
+
+		// Prevent blocking dialogs
 		"--disable-prompt-on-repost",
-		"--disable-sync",
 
-		// Container/automation compatibility
+		// Container/CI compatibility
 		"--disable-dev-shm-usage",
-		"--disable-ipc-flooding-protection",
 
-		// Consistent screenshot colors
+		// Consistent screenshot colours
 		"--force-color-profile=srgb",
+	}
+
+	// Allow popups in headed mode for debugging; block in headless (invisible anyway)
+	if !opts.Headless {
+		args = append(args, "--disable-popup-blocking")
 	}
 
 	// Platform-specific flags to avoid system dialogs
