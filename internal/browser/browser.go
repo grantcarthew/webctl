@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"time"
@@ -26,6 +27,31 @@ var ErrNoPageTarget = errors.New("no page target found")
 // ErrStartTimeout is returned when the browser fails to start in time.
 var ErrStartTimeout = errors.New("browser start timeout")
 
+// ErrPortInUse is returned when the requested port is already in use.
+var ErrPortInUse = errors.New("port is already in use")
+
+// isPortAvailable checks if a TCP port is available for binding.
+func isPortAvailable(port int) bool {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return false
+	}
+	listener.Close()
+	return true
+}
+
+// findFreePort finds an available port starting from the given port.
+// It tries up to 100 consecutive ports before giving up.
+func findFreePort(startPort int) (int, error) {
+	for port := startPort; port < startPort+100; port++ {
+		if isPortAvailable(port) {
+			return port, nil
+		}
+	}
+	return 0, fmt.Errorf("no free port found in range %d-%d", startPort, startPort+99)
+}
+
 // Start launches a new Chrome browser with CDP enabled.
 // It waits for the CDP endpoint to become available before returning.
 func Start(opts LaunchOptions) (*Browser, error) {
@@ -39,10 +65,29 @@ func Start(opts LaunchOptions) (*Browser, error) {
 
 // StartWithBinary launches Chrome using the specified binary path.
 func StartWithBinary(binPath string, opts LaunchOptions) (*Browser, error) {
-	port := opts.Port
-	if port == 0 {
-		port = DefaultPort
+	var port int
+	var err error
+
+	if opts.Port == 0 {
+		// Port not specified - find free port starting from default
+		port, err = findFreePort(DefaultPort)
+		if err != nil {
+			return nil, fmt.Errorf("failed to find free port: %w", err)
+		}
+		// Warn user if we're using a different port than default
+		if port != DefaultPort {
+			fmt.Fprintf(os.Stderr, "Port %d in use, using port %d instead\n", DefaultPort, port)
+		}
+	} else {
+		// Port explicitly specified - use it or fail
+		port = opts.Port
+		if !isPortAvailable(port) {
+			return nil, fmt.Errorf("%w: %d", ErrPortInUse, port)
+		}
 	}
+
+	// Update opts with the actual port to use
+	opts.Port = port
 
 	cmd, dataDir, err := spawnProcess(binPath, opts)
 	if err != nil {
