@@ -513,19 +513,12 @@ func TestRunConsole_Success(t *testing.T) {
 	})
 	defer restore()
 
-	// Reset flags to defaults
-	consoleFormat = ""
-	consoleTypes = nil
-	consoleHead = 0
-	consoleTail = 0
-	consoleRange = ""
-
 	// Capture stdout
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runConsole(nil, nil)
+	err := runConsole(consoleCmd, nil)
 
 	w.Close()
 	os.Stdout = old
@@ -584,19 +577,12 @@ func TestRunConsole_EmptyBuffer(t *testing.T) {
 	})
 	defer restore()
 
-	// Reset flags
-	consoleFormat = ""
-	consoleTypes = nil
-	consoleHead = 0
-	consoleTail = 0
-	consoleRange = ""
-
 	// Capture stdout
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runConsole(nil, nil)
+	err := runConsole(consoleCmd, nil)
 
 	w.Close()
 	os.Stdout = old
@@ -1493,9 +1479,9 @@ func TestRunScreenshot_Success(t *testing.T) {
 	})
 	defer restore()
 
-	// Set custom output path in temp dir
-	screenshotOutput = tmpDir + "/test-screenshot.png"
-	defer func() { screenshotOutput = "" }()
+	// Set custom output path in temp dir via flag
+	screenshotCmd.Flags().Set("output", tmpDir+"/test-screenshot.png")
+	defer screenshotCmd.Flags().Set("output", "")
 
 	old := os.Stdout
 	r, w, _ := os.Pipe()
@@ -1563,8 +1549,8 @@ func TestRunScreenshot_CustomOutput(t *testing.T) {
 	})
 	defer restore()
 
-	screenshotOutput = customPath
-	defer func() { screenshotOutput = "" }()
+	screenshotCmd.Flags().Set("output", customPath)
+	defer screenshotCmd.Flags().Set("output", "")
 
 	old := os.Stdout
 	r, w, _ := os.Pipe()
@@ -1621,11 +1607,11 @@ func TestRunScreenshot_FullPage(t *testing.T) {
 	defer restore()
 
 	tmpDir := t.TempDir()
-	screenshotOutput = tmpDir + "/test.png"
-	defer func() { screenshotOutput = "" }()
+	screenshotCmd.Flags().Set("output", tmpDir+"/test.png")
+	defer screenshotCmd.Flags().Set("output", "")
 
-	screenshotFullPage = true
-	defer func() { screenshotFullPage = false }()
+	screenshotCmd.Flags().Set("full-page", "true")
+	defer screenshotCmd.Flags().Set("full-page", "false")
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
@@ -1709,8 +1695,8 @@ func TestRunHTML_FullPage(t *testing.T) {
 	})
 	defer restore()
 
-	htmlOutput = tmpDir + "/test.html"
-	defer func() { htmlOutput = "" }()
+	htmlCmd.Flags().Set("output", tmpDir+"/test.html")
+	defer htmlCmd.Flags().Set("output", "")
 
 	old := os.Stdout
 	r, w, _ := os.Pipe()
@@ -1779,8 +1765,8 @@ func TestRunHTML_WithSelector(t *testing.T) {
 	})
 	defer restore()
 
-	htmlOutput = tmpDir + "/test.html"
-	defer func() { htmlOutput = "" }()
+	htmlCmd.Flags().Set("output", tmpDir+"/test.html")
+	defer htmlCmd.Flags().Set("output", "")
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
@@ -1819,8 +1805,8 @@ func TestRunHTML_CustomOutput(t *testing.T) {
 	})
 	defer restore()
 
-	htmlOutput = customPath
-	defer func() { htmlOutput = "" }()
+	htmlCmd.Flags().Set("output", customPath)
+	defer htmlCmd.Flags().Set("output", "")
 
 	old := os.Stdout
 	r, w, _ := os.Pipe()

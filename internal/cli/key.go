@@ -20,18 +20,11 @@ Single character keys can be used directly (e.g., "a", "A", "1").`,
 	RunE: runKey,
 }
 
-var (
-	keyCtrl  bool
-	keyAlt   bool
-	keyShift bool
-	keyMeta  bool
-)
-
 func init() {
-	keyCmd.Flags().BoolVar(&keyCtrl, "ctrl", false, "Hold Ctrl modifier")
-	keyCmd.Flags().BoolVar(&keyAlt, "alt", false, "Hold Alt modifier")
-	keyCmd.Flags().BoolVar(&keyShift, "shift", false, "Hold Shift modifier")
-	keyCmd.Flags().BoolVar(&keyMeta, "meta", false, "Hold Meta/Command modifier")
+	keyCmd.Flags().Bool("ctrl", false, "Hold Ctrl modifier")
+	keyCmd.Flags().Bool("alt", false, "Hold Alt modifier")
+	keyCmd.Flags().Bool("shift", false, "Hold Shift modifier")
+	keyCmd.Flags().Bool("meta", false, "Hold Meta/Command modifier")
 	rootCmd.AddCommand(keyCmd)
 }
 
@@ -39,6 +32,12 @@ func runKey(cmd *cobra.Command, args []string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
+
+	// Read flags from command
+	ctrl, _ := cmd.Flags().GetBool("ctrl")
+	alt, _ := cmd.Flags().GetBool("alt")
+	shift, _ := cmd.Flags().GetBool("shift")
+	meta, _ := cmd.Flags().GetBool("meta")
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -48,10 +47,10 @@ func runKey(cmd *cobra.Command, args []string) error {
 
 	params, err := json.Marshal(ipc.KeyParams{
 		Key:   args[0],
-		Ctrl:  keyCtrl,
-		Alt:   keyAlt,
-		Shift: keyShift,
-		Meta:  keyMeta,
+		Ctrl:  ctrl,
+		Alt:   alt,
+		Shift: shift,
+		Meta:  meta,
 	})
 	if err != nil {
 		return outputError(err.Error())

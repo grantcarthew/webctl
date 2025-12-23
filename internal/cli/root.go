@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"golang.org/x/term"
 )
 
@@ -56,74 +56,24 @@ func ExecuteArgs(args []string) (recognized bool, err error) {
 		return false, nil
 	}
 
-	// Reset flags to defaults before each REPL command execution.
-	// Cobra persists flag values between calls, so we must reset them.
-	resetCommandFlags()
-
 	rootCmd.SetArgs(args)
 	err = rootCmd.Execute()
+
+	// Reset flags to defaults AFTER each REPL command execution.
+	// Since we read flags from cmd.Flags() in RunE (which gets values from Cobra's parsing),
+	// we reset AFTER execution so the next call starts fresh.
+	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+		// For slice types with DefValue "[]", use empty string to properly reset.
+		// Using Set("[]") would incorrectly create a slice containing "[]" as a literal.
+		defVal := f.DefValue
+		if defVal == "[]" {
+			defVal = ""
+		}
+		_ = f.Value.Set(defVal)
+		f.Changed = false
+	})
+
 	return true, err
-}
-
-// resetCommandFlags resets all command flags to their default values.
-// This is necessary for REPL usage where commands are executed repeatedly.
-//
-// TODO: Consider a registration pattern where each command registers its own
-// reset function, rather than maintaining this central list.
-//
-// IMPORTANT: When adding new commands with flags, add their reset logic here.
-func resetCommandFlags() {
-	// Console command flags
-	consoleFormat = ""
-	consoleTypes = nil
-	consoleHead = 0
-	consoleTail = 0
-	consoleRange = ""
-
-	// Network command flags
-	networkFormat = ""
-	networkTypes = nil
-	networkMethods = nil
-	networkStatuses = nil
-	networkURL = ""
-	networkMimes = nil
-	networkMinDuration = 0
-	networkMinSize = 0
-	networkFailed = false
-	networkMaxBodySize = 102400
-	networkHead = 0
-	networkTail = 0
-	networkRange = ""
-
-	// Screenshot command flags
-	screenshotFullPage = false
-	screenshotOutput = ""
-
-	// HTML command flags
-	htmlOutput = ""
-
-	// Reload command flags
-	reloadIgnoreCache = false
-
-	// Ready command flags
-	readyTimeout = 30 * time.Second
-
-	// Key command flags
-	keyCtrl = false
-	keyAlt = false
-	keyShift = false
-	keyMeta = false
-
-	// Type command flags
-	typeKey = ""
-	typeClear = false
-
-	// Scroll command flags
-	scrollTo = ""
-	scrollBy = ""
-
-	// Eval command flags
-	evalTimeout = 30 * time.Second
 }
 
 // isStdoutTTY returns true if stdout is a terminal.

@@ -21,14 +21,9 @@ var screenshotCmd = &cobra.Command{
 	RunE:  runScreenshot,
 }
 
-var (
-	screenshotFullPage bool
-	screenshotOutput   string
-)
-
 func init() {
-	screenshotCmd.Flags().BoolVar(&screenshotFullPage, "full-page", false, "Capture entire scrollable page instead of viewport")
-	screenshotCmd.Flags().StringVarP(&screenshotOutput, "output", "o", "", "Save to specified path instead of temp directory")
+	screenshotCmd.Flags().Bool("full-page", false, "Capture entire scrollable page instead of viewport")
+	screenshotCmd.Flags().StringP("output", "o", "", "Save to specified path instead of temp directory")
 	rootCmd.AddCommand(screenshotCmd)
 }
 
@@ -36,6 +31,10 @@ func runScreenshot(cmd *cobra.Command, args []string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
+
+	// Read flags from command
+	fullPage, _ := cmd.Flags().GetBool("full-page")
+	output, _ := cmd.Flags().GetString("output")
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -45,7 +44,7 @@ func runScreenshot(cmd *cobra.Command, args []string) error {
 
 	// Send screenshot request with fullPage parameter
 	params, err := json.Marshal(ipc.ScreenshotParams{
-		FullPage: screenshotFullPage,
+		FullPage: fullPage,
 	})
 	if err != nil {
 		return outputError(err.Error())
@@ -71,8 +70,8 @@ func runScreenshot(cmd *cobra.Command, args []string) error {
 
 	// Determine output path
 	var outputPath string
-	if screenshotOutput != "" {
-		outputPath = screenshotOutput
+	if output != "" {
+		outputPath = output
 	} else {
 		// Generate filename in temp directory
 		outputPath, err = generateScreenshotPath(exec)

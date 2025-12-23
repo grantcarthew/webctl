@@ -16,10 +16,8 @@ var reloadCmd = &cobra.Command{
 	RunE:  runReload,
 }
 
-var reloadIgnoreCache bool
-
 func init() {
-	reloadCmd.Flags().BoolVar(&reloadIgnoreCache, "ignore-cache", false, "Bypass browser cache (hard reload)")
+	reloadCmd.Flags().Bool("ignore-cache", false, "Bypass browser cache (hard reload)")
 	rootCmd.AddCommand(reloadCmd)
 }
 
@@ -28,6 +26,9 @@ func runReload(cmd *cobra.Command, args []string) error {
 		return outputError("daemon not running. Start with: webctl start")
 	}
 
+	// Read flags from command
+	ignoreCache, _ := cmd.Flags().GetBool("ignore-cache")
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return outputError(err.Error())
@@ -35,7 +36,7 @@ func runReload(cmd *cobra.Command, args []string) error {
 	defer exec.Close()
 
 	params, err := json.Marshal(ipc.ReloadParams{
-		IgnoreCache: reloadIgnoreCache,
+		IgnoreCache: ignoreCache,
 	})
 	if err != nil {
 		return outputError(err.Error())

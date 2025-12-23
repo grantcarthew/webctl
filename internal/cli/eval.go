@@ -18,10 +18,8 @@ var evalCmd = &cobra.Command{
 	RunE:  runEval,
 }
 
-var evalTimeout time.Duration
-
 func init() {
-	evalCmd.Flags().DurationVarP(&evalTimeout, "timeout", "t", 30*time.Second, "Timeout for async expressions")
+	evalCmd.Flags().DurationP("timeout", "t", 30*time.Second, "Timeout for async expressions")
 	rootCmd.AddCommand(evalCmd)
 }
 
@@ -29,6 +27,9 @@ func runEval(cmd *cobra.Command, args []string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
+
+	// Read flags from command
+	timeout, _ := cmd.Flags().GetDuration("timeout")
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -41,7 +42,7 @@ func runEval(cmd *cobra.Command, args []string) error {
 
 	params, err := json.Marshal(ipc.EvalParams{
 		Expression: expression,
-		Timeout:    int(evalTimeout.Milliseconds()),
+		Timeout:    int(timeout.Milliseconds()),
 	})
 	if err != nil {
 		return outputError(err.Error())

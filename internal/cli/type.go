@@ -22,14 +22,9 @@ Use --clear to clear existing content before typing.`,
 	RunE: runType,
 }
 
-var (
-	typeKey   string
-	typeClear bool
-)
-
 func init() {
-	typeCmd.Flags().StringVar(&typeKey, "key", "", "Key to send after typing (e.g., Enter)")
-	typeCmd.Flags().BoolVar(&typeClear, "clear", false, "Clear existing content before typing")
+	typeCmd.Flags().String("key", "", "Key to send after typing (e.g., Enter)")
+	typeCmd.Flags().Bool("clear", false, "Clear existing content before typing")
 	rootCmd.AddCommand(typeCmd)
 }
 
@@ -37,6 +32,10 @@ func runType(cmd *cobra.Command, args []string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
+
+	// Read flags from command
+	key, _ := cmd.Flags().GetString("key")
+	clear, _ := cmd.Flags().GetBool("clear")
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -55,8 +54,8 @@ func runType(cmd *cobra.Command, args []string) error {
 	params, err := json.Marshal(ipc.TypeParams{
 		Selector: selector,
 		Text:     text,
-		Key:      typeKey,
-		Clear:    typeClear,
+		Key:      key,
+		Clear:    clear,
 	})
 	if err != nil {
 		return outputError(err.Error())

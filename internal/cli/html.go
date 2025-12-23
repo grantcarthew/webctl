@@ -19,10 +19,8 @@ var htmlCmd = &cobra.Command{
 	RunE:  runHTML,
 }
 
-var htmlOutput string
-
 func init() {
-	htmlCmd.Flags().StringVarP(&htmlOutput, "output", "o", "", "Save to specified path instead of temp directory")
+	htmlCmd.Flags().StringP("output", "o", "", "Save to specified path instead of temp directory")
 	rootCmd.AddCommand(htmlCmd)
 }
 
@@ -31,6 +29,9 @@ func runHTML(cmd *cobra.Command, args []string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
+
+	// Read flags from command
+	output, _ := cmd.Flags().GetString("output")
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -74,8 +75,8 @@ func runHTML(cmd *cobra.Command, args []string) error {
 
 	// Determine output path
 	var outputPath string
-	if htmlOutput != "" {
-		outputPath = htmlOutput
+	if output != "" {
+		outputPath = output
 	} else {
 		// Generate filename in temp directory
 		t2 := time.Now()
