@@ -214,8 +214,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 }
 
 // enableAutoAttach enables Target.setDiscoverTargets for target discovery.
-// Unlike Rod's auto-attach approach, we use manual Target.attachToTarget
-// with flatten:true for each discovered target (Rod's pattern).
+// We use manual Target.attachToTarget with flatten:true for each discovered target.
 func (d *Daemon) enableAutoAttach() error {
 	d.debugf("Calling Target.setDiscoverTargets...")
 	// Enable target discovery to receive targetCreated/targetInfoChanged/targetDestroyed events
@@ -229,8 +228,7 @@ func (d *Daemon) enableAutoAttach() error {
 
 	// NOTE: We do NOT use Target.setAutoAttach here.
 	// Instead, we manually call Target.attachToTarget for each target in handleTargetCreated.
-	// This follows Rod's approach which uses flatten:true in attachToTarget (not setAutoAttach).
-	// See: context/rod/browser.go:273-276
+	// Using flatten:true in attachToTarget (not setAutoAttach) avoids networkIdle blocking.
 
 	// Attach to any existing targets that were created before we enabled discovery
 	d.debugf("Calling Target.getTargets to find existing targets...")
@@ -287,8 +285,8 @@ func (d *Daemon) enableAutoAttach() error {
 // enableDomainsForSession enables CDP domains for a specific session.
 func (d *Daemon) enableDomainsForSession(sessionID string) error {
 	// NOTE: Enabling Network domain causes Chrome to track network activity
-	// and block Runtime.evaluate until networkIdle. Rod only enables Page.
-	// We enable minimal domains and add others only when needed.
+	// and block Runtime.evaluate until networkIdle.
+	// We enable minimal domains and add Network only when needed.
 	domains := []string{"Runtime.enable", "Page.enable", "DOM.enable"}
 	for _, method := range domains {
 		if _, err := d.cdp.SendToSession(context.Background(), sessionID, method, nil); err != nil {
@@ -702,7 +700,6 @@ func (d *Daemon) handleLoadingFailed(evt cdp.Event) {
 
 // handleTargetCreated handles Target.targetCreated event.
 // Manually attaches to page targets using Target.attachToTarget with flatten:true.
-// This follows Rod's approach (see context/rod/browser.go:273-276).
 func (d *Daemon) handleTargetCreated(evt cdp.Event) {
 	var params struct {
 		TargetInfo struct {
@@ -733,8 +730,8 @@ func (d *Daemon) handleTargetCreated(evt cdp.Event) {
 	// Attach asynchronously to avoid blocking the event loop
 	// (Critical: targetCreated events can fire while waiting for setDiscoverTargets response)
 	go func() {
-		// Manually attach to the target with flatten:true (Rod's pattern)
-		// This is critical - without flatten:true, CDP responses may be queued until networkIdle
+		// Manually attach to the target with flatten:true.
+		// This is critical - without flatten:true, CDP responses may be queued until networkIdle.
 		result, err := d.cdp.Send("Target.attachToTarget", map[string]any{
 			"targetId": params.TargetInfo.TargetID,
 			"flatten":  true,
@@ -1204,7 +1201,7 @@ func (d *Daemon) handleScreenshot(req ipc.Request) ipc.Response {
 }
 
 // handleHTML extracts HTML from the current page or specified selector.
-// Uses Rod's approach: get window ObjectID first, then use Runtime.callFunctionOn.
+// Gets window ObjectID first, then uses Runtime.callFunctionOn.
 // This avoids the networkIdle blocking that occurs with direct Runtime.evaluate.
 func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 	d.debugf("handleHTML called")
@@ -1232,7 +1229,6 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 		// The issue is that Chrome blocks CDP method calls during page load.
 
 		// Step 1: Get window ObjectID using Runtime.evaluate.
-		// Rod does this once and caches it (see page_eval.go:333).
 		// Chrome handles "window" specially - it's always available.
 		d.debugf("html: calling Runtime.evaluate for window")
 		windowResult, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
@@ -1261,8 +1257,7 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 			return ipc.ErrorResponse("window objectId is empty")
 		}
 
-		// Step 3: Use Runtime.callFunctionOn to get document.documentElement.
-		// This is Rod's approach (see page_eval.go:155-161).
+		// Step 2: Use Runtime.callFunctionOn to get document.documentElement.
 		// By targeting the window object directly, we avoid context creation delays.
 		d.debugf("html: calling Runtime.callFunctionOn for document.documentElement")
 		callStart := time.Now()
@@ -1294,8 +1289,7 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 			return ipc.ErrorResponse("documentElement objectId is empty")
 		}
 
-		// Step 4: Get outer HTML using DOM.getOuterHTML with the ObjectID.
-		// This is what Rod's element.HTML() does (see element.go:493).
+		// Step 3: Get outer HTML using DOM.getOuterHTML with the ObjectID.
 		d.debugf("html: calling DOM.getOuterHTML with objectId=%s", callResp.Result.ObjectID)
 		htmlStart := time.Now()
 		htmlResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
@@ -1653,9 +1647,8 @@ func (d *Daemon) waitForLoadEvent(sessionID string, timeout time.Duration) error
 }
 
 // handleNavigate navigates to a URL.
-// Like Rod, we return immediately after sending Page.navigate without waiting for frameNavigated.
+// Returns immediately after sending Page.navigate without waiting for frameNavigated.
 // This avoids Chrome's internal blocking that occurs when waiting for navigation events.
-// See: Rod's page.go Navigate() returns immediately after calling Page.navigate.
 func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 	d.debugf("handleNavigate called")
 	activeID := d.sessions.ActiveID()
@@ -1702,9 +1695,9 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 		return ipc.ErrorResponse(navResp.ErrorText)
 	}
 
-	// Return immediately like Rod does - don't wait for frameNavigated.
+	// Return immediately - don't wait for frameNavigated.
 	// Chrome's Page.navigate response includes the URL we navigated to.
-	d.debugf("navigate: returning immediately (Rod-style), frameId=%s", navResp.FrameID)
+	d.debugf("navigate: returning immediately, frameId=%s", navResp.FrameID)
 	return ipc.SuccessResponse(ipc.NavigateData{
 		URL:   params.URL,
 		Title: "", // Title not available until page loads

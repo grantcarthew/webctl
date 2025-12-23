@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test HTML timing with Rod's approach
+# Test HTML extraction timing after navigation
 
 # Start daemon in background
 ./webctl start --debug > /tmp/webctl_test.log 2>&1 &
