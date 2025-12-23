@@ -77,6 +77,7 @@ Proof-of-concept completed 2025-12-11. All core CDP assumptions validated.
 | `console.table()` | `Runtime.consoleAPICalled` type=table | Captured |
 
 **Notes:**
+
 - Primitive values (strings, numbers) returned directly in `args[].value`
 - Complex objects (objects, arrays) return `nil` in value - require `Runtime.getProperties` with the `objectId` for full inspection
 - Timestamps included as Unix epoch floats
@@ -91,6 +92,7 @@ Proof-of-concept completed 2025-12-11. All core CDP assumptions validated.
 | Unhandled Promise Rejection | `Runtime.exceptionThrown` | Captured with full stack trace |
 
 **Notes:**
+
 - Stack traces include file path and line numbers
 - Exception description includes error message and type
 
@@ -115,6 +117,7 @@ Proof-of-concept completed 2025-12-11. All core CDP assumptions validated.
 | CORS request | Works when page served via HTTP (fails from file://) |
 
 **Notes:**
+
 - Response bodies retrieved via `Network.getResponseBody` command after `loadingFinished` event
 - Must pass `requestId` from the event to retrieve corresponding body
 - Bodies available immediately after `loadingFinished` - no timing issues observed
@@ -151,11 +154,13 @@ Console.enable  - for legacy console.messageAdded events (optional)
    - Parse the returned property descriptors
 
 4. **Event Flow for Network**:
+
    ```
    requestWillBeSent → [requestWillBeSentExtraInfo] →
    responseReceived → [responseReceivedExtraInfo] →
    [dataReceived...] → loadingFinished
    ```
+
    The "ExtraInfo" events contain additional headers/security info.
 
 5. **Target Selection**: The `/json` endpoint returns multiple targets (pages, service workers, extensions). Filter by `type == "page"` for main page targets.
@@ -338,6 +343,7 @@ Complete mapping of webctl commands to CDP methods. Based on DR-001 command set.
 **Risk**: If page navigates while executing a command (e.g., `click` triggers navigation), subsequent commands may fail.
 
 **Recommendation**:
+
 - Commands should be atomic where possible
 - Document that users should `wait-for` after navigation-triggering actions
 - Consider adding `Page.frameNavigated` / `Page.loadEventFired` listeners
@@ -353,6 +359,7 @@ Based on findings, the implementation breaks into these projects:
 **Goal**: Minimal CDP client library in Go
 
 **Scope**:
+
 - WebSocket connection management (thread-safe writes)
 - Command/response correlation (ID tracking)
 - Event subscription and dispatch
@@ -360,6 +367,7 @@ Based on findings, the implementation breaks into these projects:
 - Error handling
 
 **Deliverables**:
+
 - `internal/cdp/` package
 - Connection, send command, receive events
 - Unit tests with mock WebSocket
@@ -373,12 +381,14 @@ Based on findings, the implementation breaks into these projects:
 **Goal**: Find, launch, and connect to Chrome
 
 **Scope**:
+
 - Chrome binary detection (macOS, Linux, Windows paths)
 - Launch with CDP flags (`--remote-debugging-port`, `--headless`, etc.)
 - Target discovery via `/json` endpoint
 - Page target selection and attachment
 
 **Deliverables**:
+
 - `internal/browser/` package
 - Cross-platform Chrome detection
 - Process lifecycle management
@@ -392,6 +402,7 @@ Based on findings, the implementation breaks into these projects:
 **Goal**: Persistent daemon with Unix socket IPC
 
 **Scope**:
+
 - Daemon process management (start, stop, status)
 - Unix socket server (XDG paths)
 - JSON request/response protocol
@@ -399,6 +410,7 @@ Based on findings, the implementation breaks into these projects:
 - Event buffer storage (ring buffers for console/network)
 
 **Deliverables**:
+
 - `internal/daemon/` package
 - `internal/ipc/` package
 - Socket communication working
@@ -412,12 +424,14 @@ Based on findings, the implementation breaks into these projects:
 **Goal**: CLI interface with lifecycle commands
 
 **Scope**:
+
 - CLI framework setup (cobra or stdlib)
 - `start`, `stop`, `status`, `clear` commands
 - Client-side IPC (connect to daemon socket)
 - JSON output formatting
 
 **Deliverables**:
+
 - `cmd/webctl/` main package
 - Lifecycle commands working end-to-end
 - Can start daemon, check status, stop
@@ -431,6 +445,7 @@ Based on findings, the implementation breaks into these projects:
 **Goal**: Console, network, screenshot, html, eval, cookies
 
 **Scope**:
+
 - `console` - query buffered events
 - `network` - query buffered events + response bodies
 - `screenshot` - `Page.captureScreenshot`
@@ -439,6 +454,7 @@ Based on findings, the implementation breaks into these projects:
 - `cookies` - `Network.getCookies`/`setCookie`
 
 **Deliverables**:
+
 - All observation commands working
 - JSON output for each
 
@@ -451,6 +467,7 @@ Based on findings, the implementation breaks into these projects:
 **Goal**: Navigate, reload, back, forward, click, type, select, scroll
 
 **Scope**:
+
 - Navigation commands (Page.navigate, history)
 - Click (coordinate calculation, mouse events)
 - Type (focus, text input)
@@ -458,6 +475,7 @@ Based on findings, the implementation breaks into these projects:
 - Scroll (JS-based or wheel events)
 
 **Deliverables**:
+
 - All navigation and interaction commands working
 
 **Dependencies**: P-007
@@ -469,6 +487,7 @@ Based on findings, the implementation breaks into these projects:
 **Goal**: Robust waiting/synchronisation
 
 **Scope**:
+
 - `wait-for <selector>` - poll DOM
 - `wait-for network-idle` - monitor network events
 - `wait-for <js-condition>` - poll Runtime.evaluate
@@ -476,6 +495,7 @@ Based on findings, the implementation breaks into these projects:
 - Configurable poll intervals
 
 **Deliverables**:
+
 - `wait-for` command with multiple condition types
 
 **Dependencies**: P-008
@@ -487,6 +507,7 @@ Based on findings, the implementation breaks into these projects:
 **Goal**: Production-ready release
 
 **Scope**:
+
 - Error messages and edge cases
 - Documentation (README, man page)
 - Cross-platform testing (macOS, Linux)
@@ -495,6 +516,7 @@ Based on findings, the implementation breaks into these projects:
 - Performance testing (10k event buffers)
 
 **Deliverables**:
+
 - v1.0.0 release
 - Published binaries
 

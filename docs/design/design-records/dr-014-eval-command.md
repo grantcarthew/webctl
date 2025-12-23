@@ -28,6 +28,7 @@ webctl eval <expression>
 Arguments:
 
 expression (required):
+
 - JavaScript expression to evaluate
 - Can be any valid JavaScript expression
 - Examples: `document.title`, `1+1`, `fetch('/api').then(r => r.json())`

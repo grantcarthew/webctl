@@ -18,7 +18,7 @@ Add a REPL interface to the daemon that activates when stdin is a TTY. Refactor 
 
 REPL activation:
 
-- When `webctl start` runs and stdin is a TTY, show `webctl> ` prompt
+- When `webctl start` runs and stdin is a TTY, show `webctl>` prompt
 - Accept commands interactively using liner for readline functionality
 - When stdin is not a TTY (pipe, background), daemon runs silently with IPC only
 
@@ -57,7 +57,7 @@ Output format:
 - Same as CLI (JSON, respects --format flags)
 - Pretty-printed when stdout is TTY
 
-Prompt: `webctl> `
+Prompt: `webctl>`
 
 ## Why
 
@@ -210,7 +210,7 @@ liner setup:
 
 - Create liner.State
 - Configure history (in-memory only)
-- Prompt: `webctl> `
+- Prompt: `webctl>`
 - Handle Ctrl+C (cancel current line, not exit)
 - Handle Ctrl+D (exit)
 

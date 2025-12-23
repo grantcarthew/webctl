@@ -64,12 +64,14 @@ internal/browser/
 ### Chrome Detection Paths
 
 **macOS:**
+
 ```
 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 /Applications/Chromium.app/Contents/MacOS/Chromium
 ```
 
 **Linux:**
+
 ```
 /usr/bin/google-chrome
 /usr/bin/google-chrome-stable
@@ -83,6 +85,7 @@ internal/browser/
 See DR-005 for full details.
 
 Required:
+
 ```
 --remote-debugging-port=PORT
 --no-first-run
@@ -93,17 +96,20 @@ Required:
 ```
 
 Platform-specific:
+
 ```
 --use-mock-keychain          # macOS
 --password-store=basic       # Linux
 ```
 
 Headless:
+
 ```
 --headless
 ```
 
 User data directory:
+
 ```
 --user-data-dir=TEMP_DIR     # Default: temp directory
                               # "default": use user's Chrome profile
@@ -155,6 +161,7 @@ func (b *Browser) Close() error
 ### User Data Directory
 
 Three modes (see DR-005):
+
 - Empty (default): Create temp directory, cleaned up on close
 - `default`: Use user's Chrome profile
 - Any path: Use that directory

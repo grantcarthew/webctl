@@ -23,12 +23,14 @@ Implement commands for navigating the browser and interacting with page elements
 In Scope (11 commands):
 
 Navigation:
+
 - `navigate` - Navigate to URL, wait for frameNavigated
 - `reload` - Reload page, optional cache bypass
 - `back` - Navigate to previous history entry
 - `forward` - Navigate to next history entry
 
 Interaction:
+
 - `click` - Click element by CSS selector (CDP mouse events)
 - `type` - Type text, optional selector/key/clear flags
 - `focus` - Focus element by CSS selector
@@ -37,9 +39,11 @@ Interaction:
 - `scroll` - Scroll element into view or to/by position
 
 Utility:
+
 - `ready` - Wait for page load (loadEventFired)
 
 Out of Scope:
+
 - Complex wait conditions (P-009: wait-for selector, network idle)
 - Complex interactions (drag-drop, hover, double-click, right-click)
 - File upload
@@ -71,6 +75,7 @@ Out of Scope:
 ## Deliverables
 
 CLI commands (internal/cli/):
+
 - `navigate.go`
 - `reload.go`
 - `back.go`
@@ -84,10 +89,12 @@ CLI commands (internal/cli/):
 - `ready.go`
 
 Daemon handlers:
+
 - Add cases to `handleRequest()` switch in daemon.go
 - Implement CDP sequences for each command
 
 IPC types (internal/ipc/):
+
 - Request/response types for new commands
 
 ## Technical Design
@@ -95,21 +102,25 @@ IPC types (internal/ipc/):
 See DR-013 for full design details. Key decisions:
 
 Navigation wait behavior:
+
 - All navigation commands wait for `Page.frameNavigated` (not loadEventFired)
 - Ensures REPL prompt displays correct title
 - `ready` command waits for `Page.loadEventFired` when full load needed
 
 Click implementation:
+
 - CDP mouse events (not JS click)
 - `DOM.getBoxModel` for coordinates
 - `Input.dispatchMouseEvent` mousePressed + mouseReleased
 
 Type command:
+
 - Optional selector (if omitted, types to focused element)
 - `--key` flag sends key after text
 - `--clear` flag clears content first (Ctrl+A + Backspace)
 
 Scroll behavior:
+
 - Instant only (no smooth animation)
 - `scrollIntoView({block: "center", behavior: "instant"})`
 
@@ -136,6 +147,7 @@ Scroll behavior:
 ## Testing Strategy
 
 Integration tests with real browser and test HTML page containing:
+
 - Form inputs for type/focus testing
 - Buttons for click testing
 - Select dropdowns for select testing
@@ -146,6 +158,7 @@ Integration tests with real browser and test HTML page containing:
 ## Notes
 
 v1 limitations (documented):
+
 - Elements must be in main frame (no iframe support)
 - Elements must be visible for click
 - Select only works with native `<select>` elements

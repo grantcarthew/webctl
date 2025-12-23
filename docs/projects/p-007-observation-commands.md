@@ -146,6 +146,7 @@ Implementation Files:
 ### Console Command
 
 Output format:
+
 ```json
 {
   "ok": true,
@@ -158,6 +159,7 @@ Output format:
 ```
 
 Implementation:
+
 - Daemon returns contents of console ring buffer
 - Includes both `consoleAPICalled` and `exceptionThrown` entries
 - Sorted by timestamp
@@ -165,6 +167,7 @@ Implementation:
 ### Network Command
 
 Output format:
+
 ```json
 {
   "ok": true,
@@ -187,6 +190,7 @@ Output format:
 ```
 
 Implementation:
+
 - Daemon returns contents of network ring buffer
 - Bodies fetched at `loadingFinished` time and stored
 - Large bodies may be truncated (configurable limit)
@@ -203,6 +207,7 @@ webctl screenshot --json  # {"ok": true, "data": "base64..."}
 CDP: `Page.captureScreenshot`
 
 Options:
+
 - `--full-page` - capture full scrollable page
 - `--selector ".foo"` - capture specific element (future)
 
@@ -214,12 +219,14 @@ webctl html ".content"         # Specific element
 ```
 
 Output:
+
 ```json
 {"ok": true, "html": "<!DOCTYPE html>..."}
 {"ok": true, "html": "<div class=\"content\">...</div>"}
 ```
 
 CDP:
+
 1. `DOM.getDocument` - get root node
 2. `DOM.querySelector` - find element (if selector)
 3. `DOM.getOuterHTML` - get HTML
@@ -233,6 +240,7 @@ webctl eval "fetch('/api').then(r => r.json())"  # async
 ```
 
 Output:
+
 ```json
 {"ok": true, "value": "Page Title"}
 {"ok": true, "value": 2}
@@ -240,6 +248,7 @@ Output:
 ```
 
 CDP: `Runtime.evaluate`
+
 - Use `awaitPromise: true` for async expressions
 - Use `returnByValue: true` for JSON-serializable results
 
@@ -251,6 +260,7 @@ webctl cookies --set "name=value"  # Set cookie (future)
 ```
 
 Output:
+
 ```json
 {
   "ok": true,
@@ -393,6 +403,7 @@ Symptom: After navigating to a second URL (different origin), `webctl network` s
 Root cause: The CDP WebSocket connection is to a page-level target. Cross-origin navigation with Chrome's Site Isolation creates a new renderer process and target, leaving the daemon connected to a stale target.
 
 Solution: DR-010 (Browser-Level CDP Sessions) addresses this by:
+
 1. Connecting to the browser-level WebSocket instead of page target
 2. Using Target.setAutoAttach with flatten: true for automatic session tracking
 3. Using Target.setDiscoverTargets for targetInfoChanged events (URL/title updates)
@@ -418,6 +429,7 @@ Root cause: Multiple issues identified:
 4. **Missing REPL abbreviations**: Added "html" to webctlCommands and updated abbreviation tests. Also added flag resets for screenshot and html commands.
 
 Solution applied (2025-12-18):
+
 - Changed `handleLoadingFinished` to use `d.cdp.SendToSession(ctx, evt.SessionID, ...)` for Network.getResponseBody
 - Added "DOM.enable" to the domains list in `enableDomainsForSession`
 - Added "html" to webctlCommands for REPL abbreviation support (h=html)
@@ -462,6 +474,7 @@ Approaches Tried:
    - Status: **Currently being tested**
 
 Current Implementation (in code, needs testing):
+
 ```go
 // waitForPageLoad uses JavaScript Promise (Rod's approach)
 js := `new Promise((resolve) => {
@@ -479,16 +492,19 @@ result, err := d.cdp.SendToSession(ctx, sessionID, "Runtime.evaluate", map[strin
 ```
 
 Files Modified:
+
 - `internal/daemon/session.go` - Added `loaded`, `loadCh`, `navCancel` fields; `SetLoading()`, `SetLoaded()`, `IsLoaded()`, `LoadCh()`, `NavContext()` methods
 - `internal/daemon/daemon.go` - Added lifecycle event handlers, `waitForPageLoad()`, navigation-aware context in `handleHTML()`
 
 Key Learnings:
+
 1. CDP lifecycle events require `Page.setLifecycleEventsEnabled` to be called
 2. `DOM.getDocument` blocks until DOM is ready - it's not instantaneous
 3. Puppeteer uses `LifecycleWatcher` with frame-level tracking; Rod uses JS Promise approach
 4. The "client closed" error often means the CDP call was sent to an invalid/stale session or navigation destroyed the execution context
 
 Next Steps:
+
 1. Test the JavaScript Promise approach (Rod's method)
 2. If that fails, investigate whether session ID becomes invalid during navigation
 3. Consider adding retry logic with exponential backoff

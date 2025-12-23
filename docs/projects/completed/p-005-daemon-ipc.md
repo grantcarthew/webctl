@@ -98,6 +98,7 @@ func (b *RingBuffer[T]) Clear()
 ### IPC Protocol
 
 Request:
+
 ```json
 {"cmd": "status"}
 {"cmd": "console"}
@@ -105,6 +106,7 @@ Request:
 ```
 
 Response:
+
 ```json
 {"ok": true, "data": {...}}
 {"ok": false, "error": "message"}
@@ -128,6 +130,7 @@ func (d *Daemon) Shutdown() error
 ### Event Subscription
 
 On startup, daemon:
+
 1. Launches browser (P-004)
 2. Connects via CDP (P-003)
 3. Enables domains: Runtime, Network, Page
@@ -141,6 +144,7 @@ On startup, daemon:
 ### Command Handlers
 
 Initial commands (lifecycle only):
+
 - `status` - return daemon status, current URL, title
 - `clear` - clear buffers
 

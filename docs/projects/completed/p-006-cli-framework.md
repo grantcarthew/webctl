@@ -70,6 +70,7 @@ webctl
 **Cobra** - Standard for Go CLIs, good subcommand support, auto-generates help.
 
 Minimal setup:
+
 ```go
 var rootCmd = &cobra.Command{
     Use:   "webctl",
@@ -94,6 +95,7 @@ All commands output JSON to stdout:
 ```
 
 Errors go to stderr as JSON:
+
 ```json
 {"error": "Failed to connect to daemon"}
 ```
