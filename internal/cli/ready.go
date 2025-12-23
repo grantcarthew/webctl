@@ -17,10 +17,8 @@ var readyCmd = &cobra.Command{
 	RunE:  runReady,
 }
 
-var readyTimeout time.Duration
-
 func init() {
-	readyCmd.Flags().DurationVar(&readyTimeout, "timeout", 30*time.Second, "Maximum time to wait for page load")
+	readyCmd.Flags().Duration("timeout", 30*time.Second, "Maximum time to wait for page load")
 	rootCmd.AddCommand(readyCmd)
 }
 
@@ -29,6 +27,9 @@ func runReady(cmd *cobra.Command, args []string) error {
 		return outputError("daemon not running. Start with: webctl start")
 	}
 
+	// Read flags from command
+	timeout, _ := cmd.Flags().GetDuration("timeout")
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return outputError(err.Error())
@@ -36,7 +37,7 @@ func runReady(cmd *cobra.Command, args []string) error {
 	defer exec.Close()
 
 	params, err := json.Marshal(ipc.ReadyParams{
-		Timeout: int(readyTimeout.Milliseconds()),
+		Timeout: int(timeout.Milliseconds()),
 	})
 	if err != nil {
 		return outputError(err.Error())

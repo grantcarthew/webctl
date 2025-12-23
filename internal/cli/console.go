@@ -20,20 +20,12 @@ var consoleCmd = &cobra.Command{
 	RunE:  runConsole,
 }
 
-var (
-	consoleFormat string
-	consoleTypes  []string
-	consoleHead   int
-	consoleTail   int
-	consoleRange  string
-)
-
 func init() {
-	consoleCmd.Flags().StringVar(&consoleFormat, "format", "", "Output format: json or text (auto-detect by default)")
-	consoleCmd.Flags().StringSliceVar(&consoleTypes, "type", nil, "Filter by entry type (repeatable, CSV-supported)")
-	consoleCmd.Flags().IntVar(&consoleHead, "head", 0, "Return first N entries")
-	consoleCmd.Flags().IntVar(&consoleTail, "tail", 0, "Return last N entries")
-	consoleCmd.Flags().StringVar(&consoleRange, "range", "", "Return entries in range (format: START-END)")
+	consoleCmd.Flags().String("format", "", "Output format: json or text (auto-detect by default)")
+	consoleCmd.Flags().StringSlice("type", nil, "Filter by entry type (repeatable, CSV-supported)")
+	consoleCmd.Flags().Int("head", 0, "Return first N entries")
+	consoleCmd.Flags().Int("tail", 0, "Return last N entries")
+	consoleCmd.Flags().String("range", "", "Return entries in range (format: START-END)")
 	consoleCmd.MarkFlagsMutuallyExclusive("head", "tail", "range")
 	rootCmd.AddCommand(consoleCmd)
 }
@@ -42,6 +34,13 @@ func runConsole(cmd *cobra.Command, args []string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
+
+	// Read flags from command
+	format, _ := cmd.Flags().GetString("format")
+	types, _ := cmd.Flags().GetStringSlice("type")
+	head, _ := cmd.Flags().GetInt("head")
+	tail, _ := cmd.Flags().GetInt("tail")
+	rangeStr, _ := cmd.Flags().GetString("range")
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -66,18 +65,17 @@ func runConsole(cmd *cobra.Command, args []string) error {
 	entries := data.Entries
 
 	// Apply type filter
-	if len(consoleTypes) > 0 {
-		entries = filterConsoleByType(entries, consoleTypes)
+	if len(types) > 0 {
+		entries = filterConsoleByType(entries, types)
 	}
 
 	// Apply limiting (head/tail/range)
-	entries, err = applyConsoleLimiting(entries, consoleHead, consoleTail, consoleRange)
+	entries, err = applyConsoleLimiting(entries, head, tail, rangeStr)
 	if err != nil {
 		return outputError(err.Error())
 	}
 
 	// Determine output format
-	format := consoleFormat
 	if format == "" {
 		format = "json"
 	}

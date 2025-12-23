@@ -23,14 +23,9 @@ With --by x,y: scrolls by the given offset.`,
 	RunE: runScroll,
 }
 
-var (
-	scrollTo string
-	scrollBy string
-)
-
 func init() {
-	scrollCmd.Flags().StringVar(&scrollTo, "to", "", "Scroll to absolute position (x,y)")
-	scrollCmd.Flags().StringVar(&scrollBy, "by", "", "Scroll by offset (x,y)")
+	scrollCmd.Flags().String("to", "", "Scroll to absolute position (x,y)")
+	scrollCmd.Flags().String("by", "", "Scroll by offset (x,y)")
 	rootCmd.AddCommand(scrollCmd)
 }
 
@@ -38,6 +33,10 @@ func runScroll(cmd *cobra.Command, args []string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
+
+	// Read flags from command
+	toCoords, _ := cmd.Flags().GetString("to")
+	byCoords, _ := cmd.Flags().GetString("by")
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -48,16 +47,16 @@ func runScroll(cmd *cobra.Command, args []string) error {
 	var params ipc.ScrollParams
 
 	// Determine scroll mode
-	if scrollTo != "" {
-		x, y, err := parseCoords(scrollTo)
+	if toCoords != "" {
+		x, y, err := parseCoords(toCoords)
 		if err != nil {
 			return outputError(fmt.Sprintf("invalid --to coordinates: %v", err))
 		}
 		params.Mode = "to"
 		params.ToX = x
 		params.ToY = y
-	} else if scrollBy != "" {
-		x, y, err := parseCoords(scrollBy)
+	} else if byCoords != "" {
+		x, y, err := parseCoords(byCoords)
 		if err != nil {
 			return outputError(fmt.Sprintf("invalid --by coordinates: %v", err))
 		}

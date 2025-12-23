@@ -36,36 +36,20 @@ and repeatable (--status 4xx --status 5xx) syntax.`,
 	RunE: runNetwork,
 }
 
-var (
-	networkFormat      string
-	networkTypes       []string
-	networkMethods     []string
-	networkStatuses    []string
-	networkURL         string
-	networkMimes       []string
-	networkMinDuration time.Duration
-	networkMinSize     int64
-	networkFailed      bool
-	networkMaxBodySize int
-	networkHead        int
-	networkTail        int
-	networkRange       string
-)
-
 func init() {
-	networkCmd.Flags().StringVar(&networkFormat, "format", "", "Output format: json or text (auto-detect by default)")
-	networkCmd.Flags().StringSliceVar(&networkTypes, "type", nil, "Filter by CDP resource type (repeatable, CSV-supported)")
-	networkCmd.Flags().StringSliceVar(&networkMethods, "method", nil, "Filter by HTTP method (repeatable, CSV-supported)")
-	networkCmd.Flags().StringSliceVar(&networkStatuses, "status", nil, "Filter by status code or range (repeatable, CSV-supported)")
-	networkCmd.Flags().StringVar(&networkURL, "url", "", "Filter by URL regex pattern")
-	networkCmd.Flags().StringSliceVar(&networkMimes, "mime", nil, "Filter by MIME type (repeatable, CSV-supported)")
-	networkCmd.Flags().DurationVar(&networkMinDuration, "min-duration", 0, "Filter by minimum request duration")
-	networkCmd.Flags().Int64Var(&networkMinSize, "min-size", 0, "Filter by minimum response size in bytes")
-	networkCmd.Flags().BoolVar(&networkFailed, "failed", false, "Show only failed requests")
-	networkCmd.Flags().IntVar(&networkMaxBodySize, "max-body-size", 102400, "Maximum body size in bytes before truncation (default 100KB)")
-	networkCmd.Flags().IntVar(&networkHead, "head", 0, "Return first N entries")
-	networkCmd.Flags().IntVar(&networkTail, "tail", 0, "Return last N entries")
-	networkCmd.Flags().StringVar(&networkRange, "range", "", "Return entries in range (format: START-END)")
+	networkCmd.Flags().String("format", "", "Output format: json or text (auto-detect by default)")
+	networkCmd.Flags().StringSlice("type", nil, "Filter by CDP resource type (repeatable, CSV-supported)")
+	networkCmd.Flags().StringSlice("method", nil, "Filter by HTTP method (repeatable, CSV-supported)")
+	networkCmd.Flags().StringSlice("status", nil, "Filter by status code or range (repeatable, CSV-supported)")
+	networkCmd.Flags().String("url", "", "Filter by URL regex pattern")
+	networkCmd.Flags().StringSlice("mime", nil, "Filter by MIME type (repeatable, CSV-supported)")
+	networkCmd.Flags().Duration("min-duration", 0, "Filter by minimum request duration")
+	networkCmd.Flags().Int64("min-size", 0, "Filter by minimum response size in bytes")
+	networkCmd.Flags().Bool("failed", false, "Show only failed requests")
+	networkCmd.Flags().Int("max-body-size", 102400, "Maximum body size in bytes before truncation (default 100KB)")
+	networkCmd.Flags().Int("head", 0, "Return first N entries")
+	networkCmd.Flags().Int("tail", 0, "Return last N entries")
+	networkCmd.Flags().String("range", "", "Return entries in range (format: START-END)")
 	networkCmd.MarkFlagsMutuallyExclusive("head", "tail", "range")
 	rootCmd.AddCommand(networkCmd)
 }
@@ -75,18 +59,33 @@ func runNetwork(cmd *cobra.Command, args []string) error {
 		return outputError("daemon not running. Start with: webctl start")
 	}
 
+	// Read flags from command
+	format, _ := cmd.Flags().GetString("format")
+	types, _ := cmd.Flags().GetStringSlice("type")
+	methods, _ := cmd.Flags().GetStringSlice("method")
+	statuses, _ := cmd.Flags().GetStringSlice("status")
+	urlPattern, _ := cmd.Flags().GetString("url")
+	mimes, _ := cmd.Flags().GetStringSlice("mime")
+	minDuration, _ := cmd.Flags().GetDuration("min-duration")
+	minSize, _ := cmd.Flags().GetInt64("min-size")
+	failed, _ := cmd.Flags().GetBool("failed")
+	maxBodySize, _ := cmd.Flags().GetInt("max-body-size")
+	head, _ := cmd.Flags().GetInt("head")
+	tail, _ := cmd.Flags().GetInt("tail")
+	rangeStr, _ := cmd.Flags().GetString("range")
+
 	// Validate URL regex if provided
 	var urlRegex *regexp.Regexp
-	if networkURL != "" {
+	if urlPattern != "" {
 		var err error
-		urlRegex, err = regexp.Compile(networkURL)
+		urlRegex, err = regexp.Compile(urlPattern)
 		if err != nil {
 			return outputError(fmt.Sprintf("invalid URL pattern: %v", err))
 		}
 	}
 
 	// Parse status patterns
-	statusMatchers, err := parseStatusPatterns(networkStatuses)
+	statusMatchers, err := parseStatusPatterns(statuses)
 	if err != nil {
 		return outputError(err.Error())
 	}
@@ -113,17 +112,26 @@ func runNetwork(cmd *cobra.Command, args []string) error {
 
 	entries := data.Entries
 
+	// Build filter options
+	filterOpts := networkFilterOptions{
+		types:       types,
+		methods:     methods,
+		mimes:       mimes,
+		minDuration: minDuration,
+		minSize:     minSize,
+		failed:      failed,
+	}
+
 	// Apply filters
-	entries = filterNetworkEntries(entries, urlRegex, statusMatchers)
+	entries = filterNetworkEntries(entries, urlRegex, statusMatchers, filterOpts)
 
 	// Apply limiting (head/tail/range)
-	entries, err = applyNetworkLimiting(entries, networkHead, networkTail, networkRange)
+	entries, err = applyNetworkLimiting(entries, head, tail, rangeStr)
 	if err != nil {
 		return outputError(err.Error())
 	}
 
 	// Determine output format
-	format := networkFormat
 	if format == "" {
 		format = "json"
 	}
@@ -131,7 +139,7 @@ func runNetwork(cmd *cobra.Command, args []string) error {
 	if format == "text" {
 		return outputNetworkText(entries)
 	}
-	return outputNetworkJSON(entries)
+	return outputNetworkJSON(entries, maxBodySize)
 }
 
 // statusMatcher represents a parsed status pattern.
@@ -209,17 +217,27 @@ func parseStatusPatterns(patterns []string) ([]statusMatcher, error) {
 	return matchers, nil
 }
 
+// networkFilterOptions holds filter parameters for network entries.
+type networkFilterOptions struct {
+	types       []string
+	methods     []string
+	mimes       []string
+	minDuration time.Duration
+	minSize     int64
+	failed      bool
+}
+
 // filterNetworkEntries applies all network filters.
-func filterNetworkEntries(entries []ipc.NetworkEntry, urlRegex *regexp.Regexp, statusMatchers []statusMatcher) []ipc.NetworkEntry {
-	if len(networkTypes) == 0 && len(networkMethods) == 0 && len(statusMatchers) == 0 &&
-		urlRegex == nil && len(networkMimes) == 0 && networkMinDuration == 0 &&
-		networkMinSize == 0 && !networkFailed {
+func filterNetworkEntries(entries []ipc.NetworkEntry, urlRegex *regexp.Regexp, statusMatchers []statusMatcher, opts networkFilterOptions) []ipc.NetworkEntry {
+	if len(opts.types) == 0 && len(opts.methods) == 0 && len(statusMatchers) == 0 &&
+		urlRegex == nil && len(opts.mimes) == 0 && opts.minDuration == 0 &&
+		opts.minSize == 0 && !opts.failed {
 		return entries
 	}
 
 	var filtered []ipc.NetworkEntry
 	for _, e := range entries {
-		if !matchesNetworkFilters(e, urlRegex, statusMatchers) {
+		if !matchesNetworkFilters(e, urlRegex, statusMatchers, opts) {
 			continue
 		}
 		filtered = append(filtered, e)
@@ -228,14 +246,14 @@ func filterNetworkEntries(entries []ipc.NetworkEntry, urlRegex *regexp.Regexp, s
 }
 
 // matchesNetworkFilters returns true if entry matches all specified filters.
-func matchesNetworkFilters(e ipc.NetworkEntry, urlRegex *regexp.Regexp, statusMatchers []statusMatcher) bool {
+func matchesNetworkFilters(e ipc.NetworkEntry, urlRegex *regexp.Regexp, statusMatchers []statusMatcher, opts networkFilterOptions) bool {
 	// Type filter
-	if len(networkTypes) > 0 && !matchesStringSlice(e.Type, networkTypes) {
+	if len(opts.types) > 0 && !matchesStringSlice(e.Type, opts.types) {
 		return false
 	}
 
 	// Method filter
-	if len(networkMethods) > 0 && !matchesStringSlice(e.Method, networkMethods) {
+	if len(opts.methods) > 0 && !matchesStringSlice(e.Method, opts.methods) {
 		return false
 	}
 
@@ -259,22 +277,22 @@ func matchesNetworkFilters(e ipc.NetworkEntry, urlRegex *regexp.Regexp, statusMa
 	}
 
 	// MIME filter
-	if len(networkMimes) > 0 && !matchesStringSlice(e.MimeType, networkMimes) {
+	if len(opts.mimes) > 0 && !matchesStringSlice(e.MimeType, opts.mimes) {
 		return false
 	}
 
 	// Min duration filter
-	if networkMinDuration > 0 && e.Duration < networkMinDuration.Seconds() {
+	if opts.minDuration > 0 && e.Duration < opts.minDuration.Seconds() {
 		return false
 	}
 
 	// Min size filter
-	if networkMinSize > 0 && e.Size < networkMinSize {
+	if opts.minSize > 0 && e.Size < opts.minSize {
 		return false
 	}
 
 	// Failed filter
-	if networkFailed && !e.Failed {
+	if opts.failed && !e.Failed {
 		return false
 	}
 
@@ -381,11 +399,11 @@ func outputNetworkText(entries []ipc.NetworkEntry) error {
 }
 
 // outputNetworkJSON outputs entries in JSON format.
-func outputNetworkJSON(entries []ipc.NetworkEntry) error {
+func outputNetworkJSON(entries []ipc.NetworkEntry, maxBodySize int) error {
 	// Apply body truncation based on max-body-size flag
 	for i := range entries {
-		if len(entries[i].Body) > networkMaxBodySize {
-			entries[i].Body = entries[i].Body[:networkMaxBodySize]
+		if len(entries[i].Body) > maxBodySize {
+			entries[i].Body = entries[i].Body[:maxBodySize]
 			entries[i].BodyTruncated = true
 		}
 	}
