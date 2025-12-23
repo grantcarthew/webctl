@@ -1180,3 +1180,541 @@ func TestHTML_Integration(t *testing.T) {
 		t.Error("daemon did not shut down in time")
 	}
 }
+
+// TestDaemon_EvalCommand tests JavaScript evaluation functionality.
+func TestDaemon_EvalCommand(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "webctl.sock")
+	pidPath := filepath.Join(tmpDir, "webctl.pid")
+
+	cfg := Config{
+		Headless:   true,
+		Port:       0,
+		SocketPath: socketPath,
+		PIDPath:    pidPath,
+		BufferSize: 100,
+	}
+
+	d := New(cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- d.Run(ctx)
+	}()
+
+	if !waitForSocket(socketPath, 30*time.Second) {
+		t.Fatal("daemon did not start in time")
+	}
+
+	client, err := ipc.DialPath(socketPath)
+	if err != nil {
+		t.Fatalf("failed to connect to daemon: %v", err)
+	}
+	defer client.Close()
+
+	// Navigate to a test page
+	params, _ := json.Marshal(map[string]any{
+		"url": "data:text/html,<html><head><title>Eval Test</title></head><body><h1>Test</h1></body></html>",
+	})
+	client.Send(ipc.Request{
+		Cmd:    "cdp",
+		Target: "Page.navigate",
+		Params: params,
+	})
+	time.Sleep(200 * time.Millisecond)
+
+	// Test: Basic arithmetic expression
+	t.Run("basic_arithmetic", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.EvalParams{
+			Expression: "1 + 1",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "eval",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("eval command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("eval returned error: %s", resp.Error)
+		}
+
+		var data ipc.EvalData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse eval data: %v", err)
+		}
+
+		if !data.HasValue {
+			t.Error("expected HasValue=true")
+		}
+
+		if data.Value != float64(2) {
+			t.Errorf("expected value=2, got %v", data.Value)
+		}
+	})
+
+	// Test: String expression
+	t.Run("string_expression", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.EvalParams{
+			Expression: "document.title",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "eval",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("eval command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("eval returned error: %s", resp.Error)
+		}
+
+		var data ipc.EvalData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse eval data: %v", err)
+		}
+
+		if !data.HasValue {
+			t.Error("expected HasValue=true")
+		}
+
+		if data.Value != "Eval Test" {
+			t.Errorf("expected value='Eval Test', got %v", data.Value)
+		}
+	})
+
+	// Test: Undefined value
+	t.Run("undefined_value", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.EvalParams{
+			Expression: "undefined",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "eval",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("eval command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("eval returned error: %s", resp.Error)
+		}
+
+		var data ipc.EvalData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse eval data: %v", err)
+		}
+
+		if data.HasValue {
+			t.Error("expected HasValue=false for undefined")
+		}
+	})
+
+	// Test: Promise resolution
+	t.Run("promise_resolution", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.EvalParams{
+			Expression: "Promise.resolve(42)",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "eval",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("eval command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("eval returned error: %s", resp.Error)
+		}
+
+		var data ipc.EvalData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse eval data: %v", err)
+		}
+
+		if !data.HasValue {
+			t.Error("expected HasValue=true")
+		}
+
+		if data.Value != float64(42) {
+			t.Errorf("expected value=42, got %v", data.Value)
+		}
+	})
+
+	// Test: JavaScript error
+	t.Run("javascript_error", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.EvalParams{
+			Expression: "nonexistent.property",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "eval",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("eval command failed: %v", err)
+		}
+		if resp.OK {
+			t.Fatal("expected error for invalid expression")
+		}
+
+		if !bytes.Contains([]byte(resp.Error), []byte("not defined")) {
+			t.Errorf("error should mention 'not defined', got: %s", resp.Error)
+		}
+	})
+
+	// Test: Complex object return
+	t.Run("complex_object", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.EvalParams{
+			Expression: "({foo: 'bar', num: 123})",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "eval",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("eval command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("eval returned error: %s", resp.Error)
+		}
+
+		var data ipc.EvalData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse eval data: %v", err)
+		}
+
+		if !data.HasValue {
+			t.Error("expected HasValue=true")
+		}
+
+		obj, ok := data.Value.(map[string]any)
+		if !ok {
+			t.Fatalf("expected object, got %T", data.Value)
+		}
+
+		if obj["foo"] != "bar" {
+			t.Errorf("expected foo='bar', got %v", obj["foo"])
+		}
+
+		if obj["num"] != float64(123) {
+			t.Errorf("expected num=123, got %v", obj["num"])
+		}
+	})
+
+	// Test: Empty expression error
+	t.Run("empty_expression", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.EvalParams{
+			Expression: "",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "eval",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("eval command failed: %v", err)
+		}
+		if resp.OK {
+			t.Fatal("expected error for empty expression")
+		}
+
+		if !bytes.Contains([]byte(resp.Error), []byte("expression is required")) {
+			t.Errorf("error should mention required expression, got: %s", resp.Error)
+		}
+	})
+
+	client.Close()
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != context.Canceled {
+			t.Errorf("daemon exited with error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("daemon did not shut down in time")
+	}
+}
+
+// TestDaemon_CookiesCommand tests cookie management functionality.
+func TestDaemon_CookiesCommand(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "webctl.sock")
+	pidPath := filepath.Join(tmpDir, "webctl.pid")
+
+	cfg := Config{
+		Headless:   true,
+		Port:       0,
+		SocketPath: socketPath,
+		PIDPath:    pidPath,
+		BufferSize: 100,
+	}
+
+	d := New(cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- d.Run(ctx)
+	}()
+
+	if !waitForSocket(socketPath, 30*time.Second) {
+		t.Fatal("daemon did not start in time")
+	}
+
+	client, err := ipc.DialPath(socketPath)
+	if err != nil {
+		t.Fatalf("failed to connect to daemon: %v", err)
+	}
+	defer client.Close()
+
+	// Navigate to a test page - use http://localhost for cookie support
+	params, _ := json.Marshal(map[string]any{
+		"url": "http://localhost/test",
+	})
+	client.Send(ipc.Request{
+		Cmd:    "cdp",
+		Target: "Page.navigate",
+		Params: params,
+	})
+	time.Sleep(200 * time.Millisecond)
+
+	// Test: List cookies when empty
+	t.Run("list_empty", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.CookiesParams{
+			Action: "list",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "cookies",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("cookies command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("cookies returned error: %s", resp.Error)
+		}
+
+		var data ipc.CookiesData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse cookies data: %v", err)
+		}
+
+		if data.Count != 0 {
+			t.Errorf("expected count=0, got %d", data.Count)
+		}
+	})
+
+	// Test: Set a cookie
+	t.Run("set_basic_cookie", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.CookiesParams{
+			Action: "set",
+			Name:   "test_session",
+			Value:  "abc123",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "cookies",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("cookies set failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("cookies set returned error: %s", resp.Error)
+		}
+	})
+
+	// Test: Verify cookie appears in list
+	t.Run("list_after_set", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.CookiesParams{
+			Action: "list",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "cookies",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("cookies command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("cookies returned error: %s", resp.Error)
+		}
+
+		var data ipc.CookiesData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse cookies data: %v", err)
+		}
+
+		if data.Count == 0 {
+			t.Fatal("expected at least one cookie")
+		}
+
+		found := false
+		for _, cookie := range data.Cookies {
+			if cookie.Name == "test_session" && cookie.Value == "abc123" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("expected to find test_session cookie")
+		}
+	})
+
+	// Test: Set cookie with flags
+	t.Run("set_cookie_with_flags", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.CookiesParams{
+			Action:   "set",
+			Name:     "secure_token",
+			Value:    "xyz789",
+			Secure:   true,
+			HTTPOnly: true,
+			MaxAge:   3600,
+			SameSite: "Strict",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "cookies",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("cookies set failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("cookies set returned error: %s", resp.Error)
+		}
+
+		// Verify it was set with correct attributes
+		listParams, _ := json.Marshal(ipc.CookiesParams{Action: "list"})
+		resp, err = client.Send(ipc.Request{
+			Cmd:    "cookies",
+			Params: listParams,
+		})
+		if err != nil {
+			t.Fatalf("cookies list failed: %v", err)
+		}
+
+		var data ipc.CookiesData
+		json.Unmarshal(resp.Data, &data)
+
+		found := false
+		for _, cookie := range data.Cookies {
+			if cookie.Name == "secure_token" {
+				found = true
+				if !cookie.Secure {
+					t.Error("expected secure=true")
+				}
+				if !cookie.HTTPOnly {
+					t.Error("expected httpOnly=true")
+				}
+				if cookie.SameSite != "Strict" {
+					t.Errorf("expected sameSite=Strict, got %s", cookie.SameSite)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Error("expected to find secure_token cookie")
+		}
+	})
+
+	// Test: Delete existing cookie
+	t.Run("delete_existing_cookie", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.CookiesParams{
+			Action: "delete",
+			Name:   "test_session",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "cookies",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("cookies delete failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("cookies delete returned error: %s", resp.Error)
+		}
+
+		// Verify it was deleted
+		listParams, _ := json.Marshal(ipc.CookiesParams{Action: "list"})
+		resp, err = client.Send(ipc.Request{
+			Cmd:    "cookies",
+			Params: listParams,
+		})
+		if err != nil {
+			t.Fatalf("cookies list failed: %v", err)
+		}
+
+		var data ipc.CookiesData
+		json.Unmarshal(resp.Data, &data)
+
+		for _, cookie := range data.Cookies {
+			if cookie.Name == "test_session" {
+				t.Error("cookie should have been deleted")
+			}
+		}
+	})
+
+	// Test: Delete non-existent cookie (idempotent)
+	t.Run("delete_nonexistent_cookie", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.CookiesParams{
+			Action: "delete",
+			Name:   "nonexistent",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "cookies",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("cookies delete failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("cookies delete should succeed for nonexistent cookie, got error: %s", resp.Error)
+		}
+	})
+
+	// Test: Empty cookie name error
+	t.Run("empty_name_error", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.CookiesParams{
+			Action: "set",
+			Name:   "",
+			Value:  "test",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "cookies",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("cookies command failed: %v", err)
+		}
+		if resp.OK {
+			t.Fatal("expected error for empty cookie name")
+		}
+
+		if !bytes.Contains([]byte(resp.Error), []byte("name is required")) {
+			t.Errorf("error should mention required name, got: %s", resp.Error)
+		}
+	})
+
+	client.Close()
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != context.Canceled {
+			t.Errorf("daemon exited with error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("daemon did not shut down in time")
+	}
+}
+

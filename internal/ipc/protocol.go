@@ -193,6 +193,45 @@ type EvalData struct {
 	HasValue bool `json:"hasValue,omitempty"`
 }
 
+// CookiesParams represents parameters for the "cookies" command.
+type CookiesParams struct {
+	Action   string `json:"action"` // "list", "set", or "delete"
+	Name     string `json:"name,omitempty"`
+	Value    string `json:"value,omitempty"`
+	Domain   string `json:"domain,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Secure   bool   `json:"secure,omitempty"`
+	HTTPOnly bool   `json:"httpOnly,omitempty"`
+	MaxAge   int    `json:"maxAge,omitempty"`   // seconds
+	SameSite string `json:"sameSite,omitempty"` // "Strict", "Lax", or "None"
+}
+
+// Cookie represents a browser cookie with all CDP attributes.
+type Cookie struct {
+	Name         string  `json:"name"`
+	Value        string  `json:"value"`
+	Domain       string  `json:"domain"`
+	Path         string  `json:"path"`
+	Expires      float64 `json:"expires"`
+	Size         int     `json:"size"`
+	HTTPOnly     bool    `json:"httpOnly"`
+	Secure       bool    `json:"secure"`
+	Session      bool    `json:"session"`
+	SameSite     string  `json:"sameSite,omitempty"`
+	Priority     string  `json:"priority,omitempty"`
+	SameParty    bool    `json:"sameParty,omitempty"`
+	SourceScheme string  `json:"sourceScheme,omitempty"`
+	SourcePort   int     `json:"sourcePort,omitempty"`
+}
+
+// CookiesData is the response data for the "cookies" command.
+type CookiesData struct {
+	Cookies []Cookie `json:"cookies,omitempty"`
+	Count   int      `json:"count,omitempty"`
+	// For ambiguous delete errors
+	Matches []Cookie `json:"matches,omitempty"`
+}
+
 // SuccessResponse creates a successful response with the given data.
 func SuccessResponse(data any) Response {
 	var raw json.RawMessage

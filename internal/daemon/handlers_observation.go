@@ -402,6 +402,193 @@ func (d *Daemon) handleEval(req ipc.Request) ipc.Response {
 	return ipc.SuccessResponse(ipc.EvalData{Value: cdpResp.Result.Value, HasValue: true})
 }
 
+// handleCookies manages browser cookies (list, set, delete).
+func (d *Daemon) handleCookies(req ipc.Request) ipc.Response {
+	activeID := d.sessions.ActiveID()
+	if activeID == "" {
+		return d.noActiveSessionError()
+	}
+
+	var params ipc.CookiesParams
+	if err := json.Unmarshal(req.Params, &params); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("invalid cookies parameters: %v", err))
+	}
+
+	switch params.Action {
+	case "list":
+		return d.handleCookiesList(activeID)
+	case "set":
+		return d.handleCookiesSet(activeID, params)
+	case "delete":
+		return d.handleCookiesDelete(activeID, params)
+	default:
+		return ipc.ErrorResponse(fmt.Sprintf("unknown cookies action: %s", params.Action))
+	}
+}
+
+// handleCookiesList retrieves all cookies for the active session.
+func (d *Daemon) handleCookiesList(sessionID string) ipc.Response {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result, err := d.cdp.SendToSession(ctx, sessionID, "Network.getCookies", map[string]any{})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to get cookies: %v", err))
+	}
+
+	var cdpResp struct {
+		Cookies []ipc.Cookie `json:"cookies"`
+	}
+	if err := json.Unmarshal(result, &cdpResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse cookies response: %v", err))
+	}
+
+	return ipc.SuccessResponse(ipc.CookiesData{
+		Cookies: cdpResp.Cookies,
+		Count:   len(cdpResp.Cookies),
+	})
+}
+
+// handleCookiesSet sets a cookie in the active session.
+func (d *Daemon) handleCookiesSet(sessionID string, params ipc.CookiesParams) ipc.Response {
+	if params.Name == "" {
+		return ipc.ErrorResponse("cookie name is required")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Get current URL from session - CDP requires either url or domain
+	session := d.sessions.Get(sessionID)
+	if session == nil || session.URL == "" {
+		return ipc.ErrorResponse("no active page URL")
+	}
+
+	// Build CDP params
+	cdpParams := map[string]any{
+		"name":  params.Name,
+		"value": params.Value,
+		"url":   session.URL, // CDP uses URL to determine the domain
+	}
+
+	// Override domain if explicitly provided
+	if params.Domain != "" {
+		cdpParams["domain"] = params.Domain
+	}
+
+	if params.Path != "" {
+		cdpParams["path"] = params.Path
+	}
+
+	if params.Secure {
+		cdpParams["secure"] = true
+	}
+
+	if params.HTTPOnly {
+		cdpParams["httpOnly"] = true
+	}
+
+	if params.SameSite != "" {
+		cdpParams["sameSite"] = params.SameSite
+	}
+
+	// Convert max-age to expires timestamp
+	if params.MaxAge > 0 {
+		cdpParams["expires"] = float64(time.Now().Unix() + int64(params.MaxAge))
+	}
+
+	result, err := d.cdp.SendToSession(ctx, sessionID, "Network.setCookie", cdpParams)
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to set cookie: %v", err))
+	}
+
+	var cdpResp struct {
+		Success bool `json:"success"`
+	}
+	if err := json.Unmarshal(result, &cdpResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse set cookie response: %v", err))
+	}
+
+	if !cdpResp.Success {
+		return ipc.ErrorResponse("failed to set cookie (CDP reported failure)")
+	}
+
+	return ipc.SuccessResponse(nil)
+}
+
+// handleCookiesDelete deletes a cookie from the active session.
+func (d *Daemon) handleCookiesDelete(sessionID string, params ipc.CookiesParams) ipc.Response {
+	if params.Name == "" {
+		return ipc.ErrorResponse("cookie name is required")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// First, get all cookies to find matches
+	result, err := d.cdp.SendToSession(ctx, sessionID, "Network.getCookies", map[string]any{})
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to get cookies: %v", err))
+	}
+
+	var cdpResp struct {
+		Cookies []ipc.Cookie `json:"cookies"`
+	}
+	if err := json.Unmarshal(result, &cdpResp); err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to parse cookies response: %v", err))
+	}
+
+	// Find matches by name
+	var matches []ipc.Cookie
+	for _, cookie := range cdpResp.Cookies {
+		if cookie.Name == params.Name {
+			matches = append(matches, cookie)
+		}
+	}
+
+	// No matches - idempotent success
+	if len(matches) == 0 {
+		return ipc.SuccessResponse(nil)
+	}
+
+	// Multiple matches without domain specified - error
+	if len(matches) > 1 && params.Domain == "" {
+		resp := ipc.ErrorResponse(fmt.Sprintf("multiple cookies named '%s' found", params.Name))
+		resp.Data, _ = json.Marshal(ipc.CookiesData{Matches: matches})
+		return resp
+	}
+
+	// Find the cookie to delete
+	var targetCookie *ipc.Cookie
+	if len(matches) == 1 {
+		targetCookie = &matches[0]
+	} else {
+		// Multiple matches with domain specified
+		for i := range matches {
+			if matches[i].Domain == params.Domain {
+				targetCookie = &matches[i]
+				break
+			}
+		}
+		if targetCookie == nil {
+			return ipc.ErrorResponse(fmt.Sprintf("no cookie named '%s' found with domain '%s'", params.Name, params.Domain))
+		}
+	}
+
+	// Delete the cookie
+	deleteParams := map[string]any{
+		"name":   targetCookie.Name,
+		"domain": targetCookie.Domain,
+	}
+
+	_, err = d.cdp.SendToSession(ctx, sessionID, "Network.deleteCookies", deleteParams)
+	if err != nil {
+		return ipc.ErrorResponse(fmt.Sprintf("failed to delete cookie: %v", err))
+	}
+
+	return ipc.SuccessResponse(nil)
+}
+
 // handleCDP forwards a raw CDP command to the browser.
 // Request format: {"cmd": "cdp", "target": "Method.name", "params": {...}}
 // Commands are sent to the active session. Use Target.* methods for browser-level commands.
