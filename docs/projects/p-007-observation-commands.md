@@ -445,69 +445,14 @@ BUG-003: HTML command extremely slow and times out in REPL - FIXED
 
 Symptom: When running `webctl html` in REPL after navigating to a page, DOM.getDocument takes ~10-12 seconds or times out entirely.
 
-Root Cause Identified: `DOM.getDocument` blocks until the page's DOM is ready. If called during navigation (before page load completes), Chrome blocks the call until the page is ready, causing long delays. If navigation happens DURING the call, Chrome never responds and the call times out.
+Root Cause: Enabling the Network domain causes Chrome to block CDP method calls until `networkIdle` lifecycle event fires. This affected all CDP operations including `Runtime.evaluate` and `DOM.getDocument`.
 
-Investigation (2025-12-18):
+Solution (2025-12-22):
 
-1. **Diagnostic logging confirmed**: Session ID is valid, session exists, but DOM.getDocument blocks for 10+ seconds when page is still loading.
+1. Removed `Network.enable` from initial domain enablement - Network domain is now enabled lazily on first `webctl network` command
+2. Changed `navigate` command to return immediately after `Page.navigate` without waiting for `frameNavigated`
+3. Updated Chrome launch flags to prevent background throttling
 
-2. **Key finding**: When user waits for page to fully load before running `html`, DOM.getDocument completes in <1ms. When run immediately after navigation, it takes 10+ seconds.
+Result: HTML extraction now completes in <10ms instead of 10-20 seconds.
 
-3. **Navigation during command**: If user navigates to another page while DOM.getDocument is in progress, Chrome never responds and the call times out after 30 seconds.
-
-Approaches Tried:
-
-1. **Page.loadEventFired / Page.domContentEventFired events** - Subscribed to these CDP events to track page load state. Added session `loaded` flag and `loadCh` channel to wait for load before DOM operations.
-   - Problem: Events didn't fire reliably for some pages (e.g., internode.on.net). Page would visibly load but events never arrived.
-
-2. **Page.setLifecycleEventsEnabled + Page.lifecycleEvent** - Discovered from Puppeteer source that lifecycle events require explicit enabling. Added `Page.setLifecycleEventsEnabled: {enabled: true}` to `enableDomainsForSession`.
-   - Result: Now receiving lifecycle events ("init", "commit", "DOMContentLoaded", "load", "networkIdle"). Works for about:blank but some navigations still don't receive DOMContentLoaded before timeout.
-
-3. **Navigation-aware context cancellation** - Added `NavContext()` to SessionManager that returns a context cancelled when navigation starts. This allows cancelling pending DOM operations if user navigates away.
-   - Implementation: `SetLoading()` now cancels any pending navCancel function when navigation starts.
-
-4. **Polling document.readyState** - Added fallback that polls `document.readyState` via `Runtime.evaluate` every 100ms if lifecycle event doesn't arrive within 2 seconds.
-   - Problem: `Runtime.evaluate` also fails with "client closed" error during navigation.
-
-5. **JavaScript Promise-based wait (Rod's approach)** - Studied Rod library source code. Rod uses `Runtime.evaluate` with `awaitPromise: true` to execute JavaScript that returns a Promise resolving when `document.readyState` is ready or `DOMContentLoaded` fires.
-   - Implementation: Added `waitForPageLoad()` function using this approach.
-   - Status: **Currently being tested**
-
-Current Implementation (in code, needs testing):
-
-```go
-// waitForPageLoad uses JavaScript Promise (Rod's approach)
-js := `new Promise((resolve) => {
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        resolve(document.readyState);
-    } else {
-        window.addEventListener('DOMContentLoaded', () => resolve(document.readyState));
-    }
-})`
-result, err := d.cdp.SendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
-    "expression":    js,
-    "awaitPromise":  true,
-    "returnByValue": true,
-})
-```
-
-Files Modified:
-
-- `internal/daemon/session.go` - Added `loaded`, `loadCh`, `navCancel` fields; `SetLoading()`, `SetLoaded()`, `IsLoaded()`, `LoadCh()`, `NavContext()` methods
-- `internal/daemon/daemon.go` - Added lifecycle event handlers, `waitForPageLoad()`, navigation-aware context in `handleHTML()`
-
-Key Learnings:
-
-1. CDP lifecycle events require `Page.setLifecycleEventsEnabled` to be called
-2. `DOM.getDocument` blocks until DOM is ready - it's not instantaneous
-3. Puppeteer uses `LifecycleWatcher` with frame-level tracking; Rod uses JS Promise approach
-4. The "client closed" error often means the CDP call was sent to an invalid/stale session or navigation destroyed the execution context
-
-Next Steps:
-
-1. Test the JavaScript Promise approach (Rod's method)
-2. If that fails, investigate whether session ID becomes invalid during navigation
-3. Consider adding retry logic with exponential backoff
-4. May need to detect "page is navigating" state and return early with informative error
-
-Status: In Progress. Multiple approaches tried, JavaScript Promise approach (from Rod) currently implemented and awaiting testing.
+Status: Fixed. See P-011 (completed) for full investigation details.
