@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/grantcarthew/webctl/internal/ipc"
@@ -228,9 +229,9 @@ func (m *SessionManager) FindByQuery(query string) []ipc.PageSession {
 	}
 
 	// Fall back to case-insensitive title substring match
-	queryLower := toLower(query)
+	queryLower := strings.ToLower(query)
 	for _, s := range m.sessions {
-		if containsIgnoreCase(s.Title, queryLower) {
+		if strings.Contains(strings.ToLower(s.Title), queryLower) {
 			matches = append(matches, ipc.PageSession{
 				ID:     s.SessionID,
 				Title:  s.Title,
@@ -241,26 +242,4 @@ func (m *SessionManager) FindByQuery(query string) []ipc.PageSession {
 	}
 
 	return matches
-}
-
-// toLower converts ASCII letters to lowercase (avoids strings import for simple case).
-func toLower(s string) string {
-	b := []byte(s)
-	for i := range b {
-		if b[i] >= 'A' && b[i] <= 'Z' {
-			b[i] += 'a' - 'A'
-		}
-	}
-	return string(b)
-}
-
-// containsIgnoreCase checks if haystack contains needle (needle should be lowercase).
-func containsIgnoreCase(haystack, needleLower string) bool {
-	haystackLower := toLower(haystack)
-	for i := 0; i <= len(haystackLower)-len(needleLower); i++ {
-		if haystackLower[i:i+len(needleLower)] == needleLower {
-			return true
-		}
-	}
-	return false
 }
