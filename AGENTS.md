@@ -12,7 +12,7 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-Active Project: docs/projects/p-009-wait-for.md
+Active Project: docs/projects/p-009-design-review-p008.md
 
 Completed projects are in docs/projects/completed/
 - P-008: Navigation & Interaction Commands (2025-12-23)
