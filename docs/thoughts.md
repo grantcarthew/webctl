@@ -9,3 +9,4 @@ This document is a space for brainstorming, capturing ideas, asking questions, a
 - Increase the page navigation timeout to 60 seconds.
 - The `html` command does not pretty print the html in the file. SHould it? I don't remember.
 - After navigate, the REPL terminal still shows the old address/title.
+- We should have a `find` command to find an element on the page.

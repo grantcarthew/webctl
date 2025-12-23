@@ -243,19 +243,52 @@ func TestExpandAbbreviation(t *testing.T) {
 		want     string
 		wantOK   bool
 	}{
-		// Webctl commands
-		{"s ambiguous", "s", webctlCommands, "", false}, // status and screenshot
+		// Webctl commands - single character (unique)
+		{"h -> html", "h", webctlCommands, "html", true},
+		{"k -> key", "k", webctlCommands, "key", true},
+
+		// Single character (ambiguous)
+		{"s ambiguous", "s", webctlCommands, "", false}, // status, screenshot, select, scroll
+		{"c ambiguous", "c", webctlCommands, "", false}, // clear, click, console, cookies
+		{"n ambiguous", "n", webctlCommands, "", false}, // navigate, network
+		{"t ambiguous", "t", webctlCommands, "", false}, // target, type
+		{"f ambiguous", "f", webctlCommands, "", false}, // focus, forward
+		{"r ambiguous", "r", webctlCommands, "", false}, // ready, reload
+
+		// Two character (unique)
+		{"ba -> back", "ba", webctlCommands, "back", true},
+		{"na -> navigate", "na", webctlCommands, "navigate", true},
+		{"ne -> network", "ne", webctlCommands, "network", true},
 		{"st -> status", "st", webctlCommands, "status", true},
-		{"sc -> screenshot", "sc", webctlCommands, "screenshot", true},
-		{"n -> network", "n", webctlCommands, "network", true},
-		{"t -> target", "t", webctlCommands, "target", true},
+		{"se -> select", "se", webctlCommands, "select", true},
+		{"ta -> target", "ta", webctlCommands, "target", true},
+		{"ty -> type", "ty", webctlCommands, "type", true},
+		{"ev -> eval", "ev", webctlCommands, "eval", true},
+
+		// Two character (ambiguous)
+		{"sc ambiguous", "sc", webctlCommands, "", false}, // screenshot, scroll
+		{"co ambiguous", "co", webctlCommands, "", false}, // console, cookies
+		{"cl ambiguous", "cl", webctlCommands, "", false}, // clear, click
+		{"fo ambiguous", "fo", webctlCommands, "", false}, // focus, forward
+		{"re ambiguous", "re", webctlCommands, "", false}, // ready, reload
+
+		// Three character (unique)
 		{"con -> console", "con", webctlCommands, "console", true},
 		{"coo -> cookies", "coo", webctlCommands, "cookies", true},
-		{"cl -> clear", "cl", webctlCommands, "clear", true},
-		{"c ambiguous", "c", webctlCommands, "", false},   // clear, console, cookies
-		{"co ambiguous", "co", webctlCommands, "", false}, // console, cookies
-		{"h -> html", "h", webctlCommands, "html", true},
+		{"cle -> clear", "cle", webctlCommands, "clear", true},
+		{"cli -> click", "cli", webctlCommands, "click", true},
+		{"foc -> focus", "foc", webctlCommands, "focus", true},
+		{"for -> forward", "for", webctlCommands, "forward", true},
+		{"rea -> ready", "rea", webctlCommands, "ready", true},
+		{"rel -> reload", "rel", webctlCommands, "reload", true},
+
+		// Four character (resolves screenshot/scroll ambiguity)
+		{"scre -> screenshot", "scre", webctlCommands, "screenshot", true},
+		{"scro -> scroll", "scro", webctlCommands, "scroll", true},
+
+		// Full command names
 		{"full status", "status", webctlCommands, "status", true},
+		{"full navigate", "navigate", webctlCommands, "navigate", true},
 		{"unknown", "xyz", webctlCommands, "", false},
 
 		// REPL commands
@@ -267,8 +300,9 @@ func TestExpandAbbreviation(t *testing.T) {
 		{"sto -> stop", "sto", replCommands, "stop", true},
 
 		// Case insensitivity
-		{"uppercase S ambiguous", "S", webctlCommands, "", false}, // status and screenshot
+		{"uppercase S ambiguous", "S", webctlCommands, "", false},
 		{"mixed case Sta", "Sta", webctlCommands, "status", true},
+		{"mixed case Nav", "Nav", webctlCommands, "navigate", true},
 	}
 
 	for _, tt := range tests {
@@ -335,15 +369,37 @@ func TestREPL_executeCommand_abbreviations(t *testing.T) {
 		line        string
 		wantCommand string
 	}{
+		// Single character (unique)
+		{"h -> html", "h", "html"},
+		{"k -> key", "k", "key"},
+
+		// Two character abbreviations
 		{"st -> status", "st", "status"},
-		{"sc -> screenshot", "sc", "screenshot"},
-		{"n -> network", "n", "network"},
-		{"t -> target", "t", "target"},
+		{"ba -> back", "ba", "back"},
+		{"na -> navigate", "na", "navigate"},
+		{"ne -> network", "ne", "network"},
+		{"se -> select", "se", "select"},
+		{"ta -> target", "ta", "target"},
+		{"ty -> type", "ty", "type"},
+		{"ev -> eval", "ev", "eval"},
+
+		// Three character abbreviations
 		{"con -> console", "con", "console"},
 		{"coo -> cookies", "coo", "cookies"},
-		{"cl -> clear", "cl", "clear"},
-		{"h -> html", "h", "html"},
-		{"n with args", "n --head 5", "network"},
+		{"cle -> clear", "cle", "clear"},
+		{"cli -> click", "cli", "click"},
+		{"foc -> focus", "foc", "focus"},
+		{"for -> forward", "for", "forward"},
+		{"rea -> ready", "rea", "ready"},
+		{"rel -> reload", "rel", "reload"},
+
+		// Four character abbreviations
+		{"scre -> screenshot", "scre", "screenshot"},
+		{"scro -> scroll", "scro", "scroll"},
+
+		// With arguments
+		{"ne with args", "ne --head 5", "network"},
+		{"na with args", "na https://example.com", "navigate"},
 	}
 
 	for _, tt := range tests {

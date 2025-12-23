@@ -119,7 +119,9 @@ type HTMLData struct {
 
 // NavigateParams represents parameters for the "navigate" command.
 type NavigateParams struct {
-	URL string `json:"url"`
+	URL     string `json:"url"`
+	Wait    bool   `json:"wait"`    // wait for page load completion
+	Timeout int    `json:"timeout"` // timeout in milliseconds (when wait=true)
 }
 
 // NavigateData is the response data for the "navigate" command.
@@ -131,6 +133,14 @@ type NavigateData struct {
 // ReloadParams represents parameters for the "reload" command.
 type ReloadParams struct {
 	IgnoreCache bool `json:"ignoreCache"`
+	Wait        bool `json:"wait"`    // wait for page load completion
+	Timeout     int  `json:"timeout"` // timeout in milliseconds (when wait=true)
+}
+
+// HistoryParams represents parameters for the "back" and "forward" commands.
+type HistoryParams struct {
+	Wait    bool `json:"wait"`    // wait for page load completion
+	Timeout int  `json:"timeout"` // timeout in milliseconds (when wait=true)
 }
 
 // ReadyParams represents parameters for the "ready" command.
