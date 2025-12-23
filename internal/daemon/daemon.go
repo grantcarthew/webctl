@@ -346,6 +346,8 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 		return d.handleScroll(req)
 	case "eval":
 		return d.handleEval(req)
+	case "cookies":
+		return d.handleCookies(req)
 	case "shutdown":
 		return d.handleShutdown()
 	default:

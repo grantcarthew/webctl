@@ -1837,3 +1837,580 @@ func TestRunHTML_CustomOutput(t *testing.T) {
 		t.Errorf("HTML not created at custom path: %v", err)
 	}
 }
+
+func TestRunEval_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: false,
+	})
+	defer restore()
+
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runEval(evalCmd, []string{"1+1"})
+
+	w.Close()
+	os.Stderr = old
+
+	if err == nil {
+		t.Fatal("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if !bytes.Contains([]byte(output), []byte("daemon not running")) {
+		t.Errorf("expected 'daemon not running' error, got: %s", output)
+	}
+}
+
+func TestRunEval_BasicExpression(t *testing.T) {
+	evalData := ipc.EvalData{Value: float64(2), HasValue: true}
+	evalJSON, _ := json.Marshal(evalData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "eval" {
+				return ipc.Response{OK: true, Data: evalJSON}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runEval(evalCmd, []string{"1+1"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	json.Unmarshal(buf.Bytes(), &result)
+
+	if result["ok"] != true {
+		t.Errorf("expected ok=true, got %v", result["ok"])
+	}
+
+	if result["value"] != float64(2) {
+		t.Errorf("expected value=2, got %v", result["value"])
+	}
+}
+
+func TestRunEval_Undefined(t *testing.T) {
+	evalData := ipc.EvalData{HasValue: false}
+	evalJSON, _ := json.Marshal(evalData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "eval" {
+				return ipc.Response{OK: true, Data: evalJSON}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runEval(evalCmd, []string{"undefined"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	json.Unmarshal(buf.Bytes(), &result)
+
+	if result["ok"] != true {
+		t.Errorf("expected ok=true, got %v", result["ok"])
+	}
+
+	// Should not have value field for undefined
+	if _, exists := result["value"]; exists {
+		t.Error("expected no 'value' field for undefined result")
+	}
+}
+
+func TestRunEval_MultipleArgs(t *testing.T) {
+	var capturedExpression string
+
+	evalData := ipc.EvalData{Value: "Hello World", HasValue: true}
+	evalJSON, _ := json.Marshal(evalData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "eval" {
+				var params ipc.EvalParams
+				json.Unmarshal(req.Params, &params)
+				capturedExpression = params.Expression
+				return ipc.Response{OK: true, Data: evalJSON}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runEval(evalCmd, []string{"'Hello'", "+", "'World'"})
+
+	w.Close()
+	os.Stdout = old
+
+	expected := "'Hello' + 'World'"
+	if capturedExpression != expected {
+		t.Errorf("expected expression=%q, got %q", expected, capturedExpression)
+	}
+}
+
+func TestRunEval_Error(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "eval" {
+				return ipc.Response{OK: false, Error: "ReferenceError: foo is not defined"}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runEval(evalCmd, []string{"foo"})
+
+	w.Close()
+	os.Stderr = old
+
+	if err == nil {
+		t.Fatal("expected error for undefined variable")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if !bytes.Contains([]byte(output), []byte("ReferenceError")) {
+		t.Errorf("expected ReferenceError in output, got: %s", output)
+	}
+}
+
+func TestRunEval_Timeout(t *testing.T) {
+	var capturedTimeout int
+
+	evalData := ipc.EvalData{Value: float64(42), HasValue: true}
+	evalJSON, _ := json.Marshal(evalData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "eval" {
+				var params ipc.EvalParams
+				json.Unmarshal(req.Params, &params)
+				capturedTimeout = params.Timeout
+				return ipc.Response{OK: true, Data: evalJSON}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	evalCmd.Flags().Set("timeout", "5s")
+	defer evalCmd.Flags().Set("timeout", "30s")
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runEval(evalCmd, []string{"42"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedTimeout != 5000 {
+		t.Errorf("expected timeout=5000ms, got %d", capturedTimeout)
+	}
+}
+
+func TestRunCookiesList_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: false,
+	})
+	defer restore()
+
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runCookiesList(cookiesCmd, []string{})
+
+	w.Close()
+	os.Stderr = old
+
+	if err == nil {
+		t.Fatal("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	if !bytes.Contains([]byte(output), []byte("daemon not running")) {
+		t.Errorf("expected 'daemon not running' error, got: %s", output)
+	}
+}
+
+func TestRunCookiesList_Success(t *testing.T) {
+	cookies := []ipc.Cookie{
+		{Name: "session", Value: "abc123", Domain: "example.com", Path: "/"},
+		{Name: "user", Value: "john", Domain: "example.com", Path: "/"},
+	}
+	cookiesData := ipc.CookiesData{Cookies: cookies, Count: 2}
+	cookiesJSON, _ := json.Marshal(cookiesData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "cookies" {
+				return ipc.Response{OK: true, Data: cookiesJSON}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runCookiesList(cookiesCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	json.Unmarshal(buf.Bytes(), &result)
+
+	if result["ok"] != true {
+		t.Errorf("expected ok=true, got %v", result["ok"])
+	}
+
+	if result["count"] != float64(2) {
+		t.Errorf("expected count=2, got %v", result["count"])
+	}
+}
+
+func TestRunCookiesSet_Basic(t *testing.T) {
+	var capturedParams ipc.CookiesParams
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "cookies" {
+				json.Unmarshal(req.Params, &capturedParams)
+				return ipc.Response{OK: true}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runCookiesSet(cookiesSetCmd, []string{"session", "xyz789"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.Action != "set" {
+		t.Errorf("expected action=set, got %s", capturedParams.Action)
+	}
+
+	if capturedParams.Name != "session" {
+		t.Errorf("expected name=session, got %s", capturedParams.Name)
+	}
+
+	if capturedParams.Value != "xyz789" {
+		t.Errorf("expected value=xyz789, got %s", capturedParams.Value)
+	}
+}
+
+func TestRunCookiesSet_WithFlags(t *testing.T) {
+	var capturedParams ipc.CookiesParams
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "cookies" {
+				json.Unmarshal(req.Params, &capturedParams)
+				return ipc.Response{OK: true}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	cookiesSetCmd.Flags().Set("domain", "example.com")
+	cookiesSetCmd.Flags().Set("secure", "true")
+	cookiesSetCmd.Flags().Set("httponly", "true")
+	cookiesSetCmd.Flags().Set("max-age", "3600")
+	cookiesSetCmd.Flags().Set("samesite", "Strict")
+	defer func() {
+		cookiesSetCmd.Flags().Set("domain", "")
+		cookiesSetCmd.Flags().Set("secure", "false")
+		cookiesSetCmd.Flags().Set("httponly", "false")
+		cookiesSetCmd.Flags().Set("max-age", "0")
+		cookiesSetCmd.Flags().Set("samesite", "")
+	}()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runCookiesSet(cookiesSetCmd, []string{"auth", "token123"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.Domain != "example.com" {
+		t.Errorf("expected domain=example.com, got %s", capturedParams.Domain)
+	}
+
+	if !capturedParams.Secure {
+		t.Error("expected secure=true")
+	}
+
+	if !capturedParams.HTTPOnly {
+		t.Error("expected httpOnly=true")
+	}
+
+	if capturedParams.MaxAge != 3600 {
+		t.Errorf("expected maxAge=3600, got %d", capturedParams.MaxAge)
+	}
+
+	if capturedParams.SameSite != "Strict" {
+		t.Errorf("expected sameSite=Strict, got %s", capturedParams.SameSite)
+	}
+}
+
+func TestRunCookiesDelete_Success(t *testing.T) {
+	var capturedParams ipc.CookiesParams
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "cookies" {
+				json.Unmarshal(req.Params, &capturedParams)
+				return ipc.Response{OK: true}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runCookiesDelete(cookiesDeleteCmd, []string{"session"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	json.Unmarshal(buf.Bytes(), &result)
+
+	if result["ok"] != true {
+		t.Errorf("expected ok=true, got %v", result["ok"])
+	}
+
+	if capturedParams.Action != "delete" {
+		t.Errorf("expected action=delete, got %s", capturedParams.Action)
+	}
+
+	if capturedParams.Name != "session" {
+		t.Errorf("expected name=session, got %s", capturedParams.Name)
+	}
+}
+
+func TestRunCookiesDelete_AmbiguousError(t *testing.T) {
+	matches := []ipc.Cookie{
+		{Name: "session", Domain: "example.com"},
+		{Name: "session", Domain: "api.example.com"},
+	}
+	matchData := ipc.CookiesData{Matches: matches}
+	matchJSON, _ := json.Marshal(matchData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "cookies" {
+				return ipc.Response{
+					OK:    false,
+					Error: "multiple cookies named 'session' found",
+					Data:  matchJSON,
+				}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	oldErr := os.Stderr
+	_, we, _ := os.Pipe()
+	os.Stderr = we
+
+	err := runCookiesDelete(cookiesDeleteCmd, []string{"session"})
+
+	w.Close()
+	os.Stdout = old
+
+	we.Close()
+	os.Stderr = oldErr
+
+	if err == nil {
+		t.Fatal("expected error for ambiguous delete")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	json.Unmarshal(buf.Bytes(), &result)
+
+	if result["ok"] != false {
+		t.Errorf("expected ok=false, got %v", result["ok"])
+	}
+
+	matchesResult, ok := result["matches"].([]any)
+	if !ok {
+		t.Fatal("expected matches array in result")
+	}
+
+	if len(matchesResult) != 2 {
+		t.Errorf("expected 2 matches, got %d", len(matchesResult))
+	}
+}
+
+func TestRunCookiesDelete_WithDomain(t *testing.T) {
+	var capturedParams ipc.CookiesParams
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd == "cookies" {
+				json.Unmarshal(req.Params, &capturedParams)
+				return ipc.Response{OK: true}, nil
+			}
+			return ipc.Response{OK: false}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	cookiesDeleteCmd.Flags().Set("domain", "api.example.com")
+	defer cookiesDeleteCmd.Flags().Set("domain", "")
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runCookiesDelete(cookiesDeleteCmd, []string{"session"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.Domain != "api.example.com" {
+		t.Errorf("expected domain=api.example.com, got %s", capturedParams.Domain)
+	}
+}

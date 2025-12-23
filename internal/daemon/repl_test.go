@@ -249,9 +249,11 @@ func TestExpandAbbreviation(t *testing.T) {
 		{"sc -> screenshot", "sc", webctlCommands, "screenshot", true},
 		{"n -> network", "n", webctlCommands, "network", true},
 		{"t -> target", "t", webctlCommands, "target", true},
-		{"co -> console", "co", webctlCommands, "console", true},
+		{"con -> console", "con", webctlCommands, "console", true},
+		{"coo -> cookies", "coo", webctlCommands, "cookies", true},
 		{"cl -> clear", "cl", webctlCommands, "clear", true},
-		{"c ambiguous", "c", webctlCommands, "", false}, // console and clear
+		{"c ambiguous", "c", webctlCommands, "", false},   // clear, console, cookies
+		{"co ambiguous", "co", webctlCommands, "", false}, // console, cookies
 		{"h -> html", "h", webctlCommands, "html", true},
 		{"full status", "status", webctlCommands, "status", true},
 		{"unknown", "xyz", webctlCommands, "", false},
@@ -337,7 +339,8 @@ func TestREPL_executeCommand_abbreviations(t *testing.T) {
 		{"sc -> screenshot", "sc", "screenshot"},
 		{"n -> network", "n", "network"},
 		{"t -> target", "t", "target"},
-		{"co -> console", "co", "console"},
+		{"con -> console", "con", "console"},
+		{"coo -> cookies", "coo", "cookies"},
 		{"cl -> clear", "cl", "clear"},
 		{"h -> html", "h", "html"},
 		{"n with args", "n --head 5", "network"},
