@@ -1,7 +1,7 @@
 # P-009: Wait-For & Synchronisation
 
-- Status: Proposed
-- Started: -
+- Status: In Progress
+- Started: 2025-12-23
 
 ## Overview
 
