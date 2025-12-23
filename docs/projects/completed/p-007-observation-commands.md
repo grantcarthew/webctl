@@ -1,7 +1,8 @@
 # P-007: Observation Commands
 
-- Status: In Progress
+- Status: Complete
 - Started: 2025-12-15
+- Completed: 2025-12-23
 
 ## Overview
 
@@ -101,14 +102,15 @@ Eval Command:
 - [x] DR-014 written documenting eval command interface
 - [x] `webctl eval "1+1"` returns `2`
 - [x] `webctl eval "Promise.resolve(42)"` handles async expressions
-- [ ] Eval command has unit and integration tests
+- [x] Eval command has unit and integration tests (6 unit + 7 integration)
 
 Cookies Command:
 
 - [x] DR-015 written documenting cookies command interface
-- [ ] `webctl cookies` returns all cookies as JSON
-- [ ] `webctl cookies set` and `webctl cookies delete` subcommands work
-- [ ] Cookies command has unit and integration tests
+- [x] `webctl cookies` returns all cookies as JSON
+- [x] `webctl cookies set` and `webctl cookies delete` subcommands work
+- [x] Cookies command has unit and integration tests (7 unit + 7 integration)
+- [x] Full implementation with smart delete behavior and all flags
 
 ## Deliverables
 
