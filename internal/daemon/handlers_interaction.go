@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 )
 
 // handleClick clicks an element by selector.
+// Scrolls element into view, checks visibility, then dispatches mouse events.
 func (d *Daemon) handleClick(req ipc.Request) ipc.Response {
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
@@ -29,15 +31,24 @@ func (d *Daemon) handleClick(req ipc.Request) ipc.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Get element coordinates using JavaScript
+	// Scroll element into view, get coordinates, and check if covered
 	js := fmt.Sprintf(`(() => {
 		const el = document.querySelector(%q);
-		if (!el) return null;
+		if (!el) return {error: 'not_found'};
+
+		// Scroll into view
+		el.scrollIntoView({block: 'center', behavior: 'instant'});
+
+		// Get center coordinates
 		const rect = el.getBoundingClientRect();
-		return {
-			x: rect.left + rect.width / 2,
-			y: rect.top + rect.height / 2
-		};
+		const x = rect.left + rect.width / 2;
+		const y = rect.top + rect.height / 2;
+
+		// Check if element is covered by something else
+		const topEl = document.elementFromPoint(x, y);
+		const isCovered = topEl !== el && !el.contains(topEl);
+
+		return {x, y, covered: isCovered};
 	})()`, params.Selector)
 
 	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
@@ -52,20 +63,23 @@ func (d *Daemon) handleClick(req ipc.Request) ipc.Response {
 		Result struct {
 			Type  string `json:"type"`
 			Value struct {
-				X float64 `json:"x"`
-				Y float64 `json:"y"`
+				Error   string  `json:"error"`
+				X       float64 `json:"x"`
+				Y       float64 `json:"y"`
+				Covered bool    `json:"covered"`
 			} `json:"value"`
 		} `json:"result"`
 	}
 	if err := json.Unmarshal(result, &evalResp); err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to parse element position: %v", err))
 	}
-	if evalResp.Result.Type == "undefined" || (evalResp.Result.Value.X == 0 && evalResp.Result.Value.Y == 0) {
+	if evalResp.Result.Type == "undefined" || evalResp.Result.Value.Error == "not_found" {
 		return ipc.ErrorResponse(fmt.Sprintf("element not found: %s", params.Selector))
 	}
 
 	x := evalResp.Result.Value.X
 	y := evalResp.Result.Value.Y
+	covered := evalResp.Result.Value.Covered
 
 	// Send mouse events
 	// mousePressed
@@ -90,6 +104,13 @@ func (d *Daemon) handleClick(req ipc.Request) ipc.Response {
 	})
 	if err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to click: %v", err))
+	}
+
+	// Return success with optional warning if element was covered
+	if covered {
+		return ipc.SuccessResponse(map[string]any{
+			"warning": fmt.Sprintf("element may be covered by another element: %s", params.Selector),
+		})
 	}
 
 	return ipc.SuccessResponse(nil)
@@ -173,12 +194,19 @@ func (d *Daemon) handleType(req ipc.Request) ipc.Response {
 		}
 	}
 
-	// If clear flag, send Ctrl+A then Backspace
+	// If clear flag, send select-all then Backspace
+	// Use Meta+A on macOS, Ctrl+A on Linux
 	if params.Clear {
-		// Select all
+		// Select all (OS-aware)
+		selectAllParams := ipc.KeyParams{Key: "a"}
+		if runtime.GOOS == "darwin" {
+			selectAllParams.Meta = true
+		} else {
+			selectAllParams.Ctrl = true
+		}
 		keyResp := d.handleKey(ipc.Request{
 			Params: func() json.RawMessage {
-				b, _ := json.Marshal(ipc.KeyParams{Key: "a", Ctrl: true})
+				b, _ := json.Marshal(selectAllParams)
 				return b
 			}(),
 		})

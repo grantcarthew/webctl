@@ -17,8 +17,69 @@ import (
 var screenshotCmd = &cobra.Command{
 	Use:   "screenshot",
 	Short: "Capture screenshot of current page",
-	Long:  "Captures a screenshot of the current page and saves it to a file. Returns JSON with the file path.",
-	RunE:  runScreenshot,
+	Long: `Captures a PNG screenshot of the current page and saves it to a file.
+
+By default captures the current viewport. Use --full-page to capture the
+entire scrollable page content.
+
+Flags:
+  --full-page       Capture entire scrollable page instead of viewport only
+  --output, -o      Save to specified path instead of temp directory
+
+File location:
+  Default: /tmp/webctl-screenshots/YY-MM-DD-HHMMSS-{title}.png
+  Custom:  Specified path with --output flag
+
+The filename includes a timestamp and normalised page title for easy
+identification when browsing the temp directory.
+
+Viewport screenshot (default):
+  screenshot                            # Current visible area
+  screenshot -o ./debug/page.png        # Save to specific location
+
+Full-page screenshot:
+  screenshot --full-page                # Entire scrollable content
+  screenshot --full-page -o ./full.png  # Full page to specific path
+
+Common patterns:
+  # Capture after navigation
+  navigate example.com --wait
+  screenshot
+
+  # Before/after comparison
+  screenshot -o ./before.png
+  click "#toggle-dark-mode"
+  screenshot -o ./after.png
+
+  # Document visual state
+  screenshot --full-page -o ./docs/homepage-full.png
+
+  # Debug layout issue
+  navigate localhost:3000 --wait
+  screenshot --full-page
+  # Examine the screenshot file for layout issues
+
+  # CI/CD test artifacts
+  screenshot --full-page -o ./test-results/homepage-${BUILD_ID}.png
+
+  # Multi-tab capture
+  target "Admin Panel"
+  screenshot -o ./admin.png
+  target "Dashboard"
+  screenshot -o ./dashboard.png
+
+Response:
+  {"ok": true, "path": "/tmp/webctl-screenshots/24-12-24-143052-example-domain.png"}
+
+Error cases:
+  - "failed to capture screenshot" - CDP capture failed
+  - "failed to write screenshot: permission denied" - cannot write to path
+  - "no active session" - no browser page open
+  - "daemon not running" - start daemon first with: webctl start
+
+Note: Screenshots are PNG format (lossless) for accurate debugging. Large
+full-page screenshots of complex pages may take a moment to capture.`,
+	RunE: runScreenshot,
 }
 
 func init() {

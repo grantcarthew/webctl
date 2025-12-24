@@ -1,7 +1,8 @@
 # P-009: Design Review & Validation of P-008 Commands
 
-- Status: In Progress
+- Status: Complete
 - Started: 2025-12-23
+- Completed: 2025-12-24
 
 ## Overview
 
@@ -119,6 +120,148 @@ Added comprehensive unit tests for all Group 1 navigation commands.
 
 All tests passing with race detection.
 
+### 2025-12-24: Group 2 Element Interaction Review & Refactor
+
+Completed review of `click`, `focus`, and `type` commands.
+
+**Design Decisions:**
+
+1. **click** - Refactored to:
+   - Auto-scroll element into view before clicking (`scrollIntoView({block: 'center'})`)
+   - Check if element is covered by another element using `elementFromPoint()`
+   - Return warning (not error) if element appears covered - still clicks
+   - Fixed false positive when element is at (0,0) coordinates
+
+2. **focus** - No changes needed, design is solid (simple JS `element.focus()`)
+
+3. **type** - Refactored `--clear` flag to be OS-aware:
+   - Uses `Meta+A` (Cmd+A) on macOS (darwin)
+   - Uses `Ctrl+A` on Linux
+   - Windows not supported
+
+**Implementation Changes:**
+- Modified: `internal/daemon/handlers_interaction.go` - click scrolling/visibility, type OS-detection
+- Modified: `internal/cli/click.go` - pass through warning from daemon response
+
+**Tests added to `internal/cli/cli_test.go`:**
+- `TestRunClick_DaemonNotRunning` - error handling
+- `TestRunClick_Success` - successful click with selector verification
+- `TestRunClick_WithWarning` - warning passed through when element covered
+- `TestRunClick_ElementNotFound` - element not found error
+- `TestRunFocus_DaemonNotRunning` - error handling
+- `TestRunFocus_Success` - successful focus
+- `TestRunFocus_ElementNotFound` - element not found error
+- `TestRunType_DaemonNotRunning` - error handling
+- `TestRunType_TextOnly` - type text without selector
+- `TestRunType_WithSelector` - type with selector (focuses first)
+- `TestRunType_WithKeyFlag` - --key flag (e.g., Enter)
+- `TestRunType_WithClearFlag` - --clear flag
+- `TestRunType_AllFlags` - combined flags
+
+**Status:**
+- Implementation: Complete ✓
+- Tests: Complete ✓ (13 new tests)
+
+### 2025-12-24: Group 3 Input Commands Review
+
+Completed review of `key` and `select` commands.
+
+**Design Decisions:**
+1. **key** - No code changes needed, design is solid
+   - Improved help text with comprehensive key list and examples
+   - Documented all supported special keys and modifiers
+   - Added practical examples for common operations
+
+2. **select** - No code changes needed, design is solid
+   - Improved help text with detailed examples
+   - Documented HTML example showing value vs display text distinction
+   - Added error case documentation
+
+**Implementation Changes:**
+- Modified: `internal/cli/key.go` - expanded help text
+- Modified: `internal/cli/selectcmd.go` - expanded help text with examples
+
+**Tests added to `internal/cli/cli_test.go`:**
+- `TestRunKey_DaemonNotRunning` - error handling
+- `TestRunKey_Success` - basic key press
+- `TestRunKey_WithCtrlModifier` - Ctrl modifier
+- `TestRunKey_WithMetaModifier` - Meta/Cmd modifier
+- `TestRunKey_AllModifiers` - all modifiers combined
+- `TestRunSelect_DaemonNotRunning` - error handling
+- `TestRunSelect_Success` - successful selection
+- `TestRunSelect_ElementNotFound` - missing element error
+- `TestRunSelect_NotASelectElement` - wrong element type error
+
+**Status:**
+- Implementation: Complete ✓
+- Tests: Complete ✓ (9 new tests)
+
+**Future Feature Noted:**
+- `find` or `search` command to locate elements on page - defer to future project
+
+### 2025-12-24: Group 4 Scroll Command Review
+
+Completed review of `scroll` command.
+
+**Design Decisions:**
+- No code changes needed, design is solid
+- Three modes work well: element, absolute (--to), relative (--by)
+- Coordinate parsing handles whitespace and negative values correctly
+
+**Improvements:**
+- Expanded help text with comprehensive examples for all three modes
+- Added HTML structure example for element scrolling
+- Documented common patterns (return to top, skip to content)
+- Also expanded `select` help text with more HTML examples and form automation patterns
+
+**Implementation Changes:**
+- Modified: `internal/cli/scroll.go` - expanded help text
+- Modified: `internal/cli/selectcmd.go` - further expanded help text
+
+**Tests added to `internal/cli/cli_test.go`:**
+- `TestParseCoords` - 11 table-driven tests for coordinate parsing
+- `TestRunScroll_DaemonNotRunning` - error handling
+- `TestRunScroll_ElementMode` - scroll to element
+- `TestRunScroll_ToMode` - absolute position scrolling
+- `TestRunScroll_ByMode` - relative offset scrolling
+- `TestRunScroll_InvalidToCoords` - invalid coordinate error
+- `TestRunScroll_NoModeSpecified` - missing mode error
+- `TestRunScroll_ElementNotFound` - missing element error
+
+**Status:**
+- Implementation: Complete ✓
+- Tests: Complete ✓ (18 new tests: 11 parseCoords + 7 runScroll)
+
+### 2025-12-24: Group 5 Ready Command Review
+
+Completed review of `ready` command (final group).
+
+**Design Decisions:**
+- No code changes needed, design is solid
+- Fast path for already-loaded pages (checks document.readyState first)
+- Waits for load event with configurable timeout
+
+**Improvements:**
+- Expanded help text with comprehensive documentation
+- Added timeout examples with Go duration format
+- Documented common patterns (navigate + ready, form submission)
+- Added guidance for SPA navigation (when to use eval instead)
+- Documented error cases
+
+**Implementation Changes:**
+- Modified: `internal/cli/ready.go` - expanded help text
+
+**Tests added to `internal/cli/cli_test.go`:**
+- `TestRunReady_DaemonNotRunning` - error handling
+- `TestRunReady_Success` - successful ready with default timeout
+- `TestRunReady_WithCustomTimeout` - custom timeout parameter
+- `TestRunReady_Timeout` - timeout error handling
+- `TestRunReady_NoActiveSession` - no session error handling
+
+**Status:**
+- Implementation: Complete ✓
+- Tests: Complete ✓ (5 new tests)
+
 ## Goals
 
 1. Review design of all 11 P-008 commands
@@ -173,11 +316,11 @@ For each command/group:
 
 ## Success Criteria
 
-- [x] All 5 command groups reviewed (Group 1: Navigation complete)
-- [x] Design decisions validated or corrected (Navigation commands refactored)
-- [x] Any necessary refactoring completed (Navigation commands refactored)
+- [x] All 5 command groups reviewed (ALL COMPLETE)
+- [x] Design decisions validated or corrected (Navigation refactored, click/type refactored, others validated)
+- [x] Any necessary refactoring completed (All groups complete)
 - [x] DR-013 updated with validated designs (Major revision 2025-12-23)
-- [x] All tests still passing after any refactoring (17 new tests added 2025-12-24)
+- [x] All tests still passing after any refactoring (62 new tests total)
 - [x] Patterns documented for future commands (Documented in DR-013)
 
 ## Deliverables

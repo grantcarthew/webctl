@@ -15,8 +15,75 @@ import (
 var htmlCmd = &cobra.Command{
 	Use:   "html [selector]",
 	Short: "Extract HTML from current page",
-	Long:  "Extracts HTML from the current page. Without selector, returns full page HTML. With selector, returns matching element(s) HTML.",
-	RunE:  runHTML,
+	Long: `Extracts HTML from the current page and saves it to a file.
+
+Without a selector, returns the complete page HTML (document.documentElement).
+With a selector, returns the outer HTML of matching element(s).
+
+The HTML is saved to a file (not returned inline) because pages are typically
+large. This allows incremental reading with offset/limit parameters.
+
+Flags:
+  --output, -o      Save to specified path instead of temp directory
+
+File location:
+  Default: /tmp/webctl-html/YY-MM-DD-HHMMSS-{title}.html
+  Custom:  Specified path with --output flag
+
+Full page extraction:
+  html                                  # Entire page HTML
+  html -o ./debug/page.html             # Save to specific location
+
+Selector extraction (outer HTML):
+  html "#main"                          # Element by ID
+  html ".content"                       # Element by class
+  html "article"                        # Element by tag
+  html "nav > ul > li"                  # Nested selector
+  html "[data-testid=results]"          # By test ID
+
+Multiple matches:
+When a selector matches multiple elements, all are included with comment
+separators showing the match count:
+
+  html "div.card"
+
+  Output file contains:
+  <!-- Element 1 of 3: div.card -->
+  <div class="card">...</div>
+
+  <!-- Element 2 of 3: div.card -->
+  <div class="card">...</div>
+
+  <!-- Element 3 of 3: div.card -->
+  <div class="card">...</div>
+
+Common patterns:
+  # Debug page structure
+  navigate example.com --wait
+  html
+  # Read the file to analyse structure
+
+  # Extract specific section
+  html "#main-content" -o ./content.html
+
+  # Compare before/after
+  html "#results" -o ./before.html
+  click "#load-more"
+  ready
+  html "#results" -o ./after.html
+
+  # Scrape multiple items
+  html ".product-card"                  # All product cards in one file
+
+Response:
+  {"ok": true, "path": "/tmp/webctl-html/24-12-24-143052-example-domain.html"}
+
+Error cases:
+  - "selector '.missing' matched no elements" - nothing matches
+  - "invalid CSS selector syntax" - malformed selector
+  - "failed to write HTML: permission denied" - cannot write to path
+  - "daemon not running" - start daemon first with: webctl start`,
+	RunE: runHTML,
 }
 
 func init() {
