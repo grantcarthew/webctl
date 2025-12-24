@@ -17,6 +17,8 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-009 | Wait-For Commands | Proposed | - | - |
 | P-010 | Polish & Release | Proposed | - | - |
 | P-011 | CDP Navigation Debugging | In Progress | 2025-12-19 | - |
+| P-012 | Text Output Format | Proposed | - | - |
+| P-013 | Find Command | Proposed | - | - |
 
 Note: Completed projects are in `completed/`
 

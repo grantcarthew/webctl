@@ -12,7 +12,7 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-Active Project: None
+Active Project: [P-012: Text Output Format](docs/projects/p-012-cli-text-output-format.md)
 
 Completed projects are in docs/projects/completed/
 - P-009: Design Review & Validation of P-008 Commands (2025-12-24)
