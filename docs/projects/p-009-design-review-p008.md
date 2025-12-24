@@ -86,7 +86,38 @@ webctl [localhost:3000/api]>   # port and path preserved
 **Status:**
 - Implementation: Complete ✓
 - DR-013 documentation: Complete ✓
-- Tests: Need updating (planned)
+- Tests: Complete ✓
+
+### 2025-12-24: Navigation Command Tests
+
+Added comprehensive unit tests for all Group 1 navigation commands.
+
+**Tests added to `internal/cli/cli_test.go`:**
+- `TestNormalizeURL` - 16 table-driven test cases for URL protocol auto-detection
+- `TestRunNavigate_DaemonNotRunning` - error handling when daemon not running
+- `TestRunNavigate_Success` - successful navigation with URL normalization
+- `TestRunNavigate_WithWaitFlag` - --wait and --timeout flag handling
+- `TestRunNavigate_LocalhostUsesHTTP` - localhost uses http:// protocol
+- `TestRunNavigate_Error` - navigation error handling
+- `TestRunReload_DaemonNotRunning` - error handling
+- `TestRunReload_Success` - hard reload (ignoreCache=true always)
+- `TestRunReload_WithWaitFlag` - --wait and --timeout flag handling
+- `TestRunBack_DaemonNotRunning` - error handling
+- `TestRunBack_Success` - successful back navigation
+- `TestRunBack_NoHistory` - "no previous page" error
+- `TestRunBack_WithWaitFlag` - --wait and --timeout flag handling
+- `TestRunForward_DaemonNotRunning` - error handling
+- `TestRunForward_Success` - successful forward navigation
+- `TestRunForward_NoHistory` - "no next page" error
+- `TestRunForward_WithWaitFlag` - --wait and --timeout flag handling
+
+**Test patterns followed (per DR-004):**
+- Mock executor with `executeFunc` callback
+- Mock factory with `daemonRunning` flag
+- Race detection enabled (`go test -race`)
+- goleak for goroutine leak detection (via main_test.go)
+
+All tests passing with race detection.
 
 ## Goals
 
@@ -146,7 +177,7 @@ For each command/group:
 - [x] Design decisions validated or corrected (Navigation commands refactored)
 - [x] Any necessary refactoring completed (Navigation commands refactored)
 - [x] DR-013 updated with validated designs (Major revision 2025-12-23)
-- [ ] All tests still passing after any refactoring (Tests need updating)
+- [x] All tests still passing after any refactoring (17 new tests added 2025-12-24)
 - [x] Patterns documented for future commands (Documented in DR-013)
 
 ## Deliverables
