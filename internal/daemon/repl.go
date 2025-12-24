@@ -268,12 +268,11 @@ func outputJSON(data any) {
 	enc.Encode(data)
 }
 
-// outputError writes an error response as JSON to stdout.
+// outputError writes an error response in text format to stderr.
+// The REPL uses text format for its own errors since it's interactive.
+// Individual commands respect the --json flag separately.
 func outputError(msg string) {
-	outputJSON(map[string]any{
-		"ok":    false,
-		"error": msg,
-	})
+	fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
 }
 
 // outputResponse writes the response as JSON to stdout.
@@ -302,7 +301,6 @@ Commands (unique prefixes accepted: h=html, k=key, ba=back, na=navigate, ne=netw
   Observation:
     status              Show daemon status
     console [flags]     Show console log entries
-      --format text|json  Output format (default: json)
       --type <type>       Filter by entry type (repeatable)
       --head <n>          Return first N entries
       --tail <n>          Return last N entries

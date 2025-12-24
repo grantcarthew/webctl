@@ -32,7 +32,13 @@ func runStop(cmd *cobra.Command, args []string) error {
 		return outputError(resp.Error)
 	}
 
-	return outputSuccess(map[string]string{
-		"message": "daemon stopped",
-	})
+	// JSON mode: include message
+	if JSONOutput {
+		return outputSuccess(map[string]string{
+			"message": "daemon stopped",
+		})
+	}
+
+	// Text mode: just output OK
+	return outputSuccess(nil)
 }

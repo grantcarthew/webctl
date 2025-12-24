@@ -1,7 +1,7 @@
 # DR-018: Text Output Format
 
 - Date: 2025-12-24
-- Status: Proposed
+- Status: Accepted
 - Category: CLI
 
 ## Problem

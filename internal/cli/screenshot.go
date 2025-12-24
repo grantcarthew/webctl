@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/executor"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
@@ -152,12 +153,17 @@ func runScreenshot(cmd *cobra.Command, args []string) error {
 		return outputError(fmt.Sprintf("failed to write screenshot: %v", err))
 	}
 
-	// Return JSON with file path
-	result := map[string]any{
-		"ok":   true,
-		"path": outputPath,
+	// JSON mode: return JSON with file path
+	if JSONOutput {
+		result := map[string]any{
+			"ok":   true,
+			"path": outputPath,
+		}
+		return outputJSON(os.Stdout, result)
 	}
-	return outputJSON(os.Stdout, result)
+
+	// Text mode: just output the file path
+	return format.FilePath(os.Stdout, outputPath)
 }
 
 // generateScreenshotPath generates a filename in /tmp/webctl-screenshots/

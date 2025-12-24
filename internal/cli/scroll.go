@@ -132,10 +132,16 @@ func runScroll(cmd *cobra.Command, args []string) error {
 		return outputError(resp.Error)
 	}
 
-	result := map[string]any{
-		"ok": true,
+	// JSON mode: output JSON
+	if JSONOutput {
+		result := map[string]any{
+			"ok": true,
+		}
+		return outputJSON(os.Stdout, result)
 	}
-	return outputJSON(os.Stdout, result)
+
+	// Text mode: just output OK
+	return outputSuccess(nil)
 }
 
 // parseCoords parses a "x,y" string into integers.
