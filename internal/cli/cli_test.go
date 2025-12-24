@@ -2414,3 +2414,698 @@ func TestRunCookiesDelete_WithDomain(t *testing.T) {
 		t.Errorf("expected domain=api.example.com, got %s", capturedParams.Domain)
 	}
 }
+
+// Navigation command tests
+
+func TestNormalizeURL(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		// Already has protocol
+		{"https already", "https://example.com", "https://example.com"},
+		{"http already", "http://example.com", "http://example.com"},
+		{"ftp already", "ftp://files.example.com", "ftp://files.example.com"},
+
+		// Localhost variants - should use http
+		{"localhost", "localhost", "http://localhost"},
+		{"localhost with port", "localhost:3000", "http://localhost:3000"},
+		{"localhost with path", "localhost:8080/api/v1", "http://localhost:8080/api/v1"},
+		{"LOCALHOST uppercase", "LOCALHOST:3000", "http://LOCALHOST:3000"},
+
+		// Local IPs - should use http
+		{"127.0.0.1", "127.0.0.1", "http://127.0.0.1"},
+		{"127.0.0.1 with port", "127.0.0.1:8080", "http://127.0.0.1:8080"},
+		{"0.0.0.0", "0.0.0.0:3000", "http://0.0.0.0:3000"},
+
+		// External domains - should use https
+		{"simple domain", "example.com", "https://example.com"},
+		{"domain with path", "example.com/path/to/page", "https://example.com/path/to/page"},
+		{"domain with port", "example.com:8443", "https://example.com:8443"},
+		{"subdomain", "api.example.com", "https://api.example.com"},
+		{"complex url", "api.example.com:8080/v1/users?id=123", "https://api.example.com:8080/v1/users?id=123"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeURL(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizeURL(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRunNavigate_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runNavigate(navigateCmd, []string{"example.com"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+
+	if resp["error"] != "daemon not running. Start with: webctl start" {
+		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}
+
+func TestRunNavigate_Success(t *testing.T) {
+	navData := ipc.NavigateData{URL: "https://example.com", Title: "Example Domain"}
+	navJSON, _ := json.Marshal(navData)
+
+	var capturedParams ipc.NavigateParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "navigate" {
+				t.Errorf("expected cmd=navigate, got %s", req.Cmd)
+			}
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true, Data: navJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runNavigate(navigateCmd, []string{"example.com"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify URL was normalized
+	if capturedParams.URL != "https://example.com" {
+		t.Errorf("expected URL=https://example.com, got %s", capturedParams.URL)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+	if result["url"] != "https://example.com" {
+		t.Errorf("expected url=https://example.com, got %v", result["url"])
+	}
+}
+
+func TestRunNavigate_WithWaitFlag(t *testing.T) {
+	navData := ipc.NavigateData{URL: "https://example.com", Title: "Example Domain"}
+	navJSON, _ := json.Marshal(navData)
+
+	var capturedParams ipc.NavigateParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true, Data: navJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	navigateCmd.Flags().Set("wait", "true")
+	navigateCmd.Flags().Set("timeout", "5000")
+	defer func() {
+		navigateCmd.Flags().Set("wait", "false")
+		navigateCmd.Flags().Set("timeout", "30000")
+	}()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runNavigate(navigateCmd, []string{"example.com"})
+
+	w.Close()
+	os.Stdout = old
+
+	if !capturedParams.Wait {
+		t.Error("expected Wait=true")
+	}
+	if capturedParams.Timeout != 5000 {
+		t.Errorf("expected Timeout=5000, got %d", capturedParams.Timeout)
+	}
+}
+
+func TestRunNavigate_LocalhostUsesHTTP(t *testing.T) {
+	navData := ipc.NavigateData{URL: "http://localhost:3000", Title: ""}
+	navJSON, _ := json.Marshal(navData)
+
+	var capturedParams ipc.NavigateParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true, Data: navJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runNavigate(navigateCmd, []string{"localhost:3000"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.URL != "http://localhost:3000" {
+		t.Errorf("expected URL=http://localhost:3000, got %s", capturedParams.URL)
+	}
+}
+
+func TestRunNavigate_Error(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: false, Error: "net::ERR_NAME_NOT_RESOLVED"}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runNavigate(navigateCmd, []string{"invalid.invalid"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error for failed navigation")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+	if resp["error"] != "net::ERR_NAME_NOT_RESOLVED" {
+		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}
+
+func TestRunReload_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runReload(reloadCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunReload_Success(t *testing.T) {
+	navData := ipc.NavigateData{URL: "https://example.com", Title: "Example Domain"}
+	navJSON, _ := json.Marshal(navData)
+
+	var capturedParams ipc.ReloadParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "reload" {
+				t.Errorf("expected cmd=reload, got %s", req.Cmd)
+			}
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true, Data: navJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runReload(reloadCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify hard reload (ignoreCache=true always)
+	if !capturedParams.IgnoreCache {
+		t.Error("expected IgnoreCache=true (hard reload)")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+}
+
+func TestRunReload_WithWaitFlag(t *testing.T) {
+	navData := ipc.NavigateData{URL: "https://example.com", Title: "Example Domain"}
+	navJSON, _ := json.Marshal(navData)
+
+	var capturedParams ipc.ReloadParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true, Data: navJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	reloadCmd.Flags().Set("wait", "true")
+	reloadCmd.Flags().Set("timeout", "10000")
+	defer func() {
+		reloadCmd.Flags().Set("wait", "false")
+		reloadCmd.Flags().Set("timeout", "30000")
+	}()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runReload(reloadCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if !capturedParams.Wait {
+		t.Error("expected Wait=true")
+	}
+	if capturedParams.Timeout != 10000 {
+		t.Errorf("expected Timeout=10000, got %d", capturedParams.Timeout)
+	}
+}
+
+func TestRunBack_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runBack(backCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunBack_Success(t *testing.T) {
+	navData := ipc.NavigateData{URL: "https://previous.com", Title: "Previous Page"}
+	navJSON, _ := json.Marshal(navData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "back" {
+				t.Errorf("expected cmd=back, got %s", req.Cmd)
+			}
+			return ipc.Response{OK: true, Data: navJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runBack(backCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+	if result["url"] != "https://previous.com" {
+		t.Errorf("expected url=https://previous.com, got %v", result["url"])
+	}
+}
+
+func TestRunBack_NoHistory(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: false, Error: "no previous page in history"}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runBack(backCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when no history")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+	if resp["error"] != "no previous page in history" {
+		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}
+
+func TestRunBack_WithWaitFlag(t *testing.T) {
+	navData := ipc.NavigateData{URL: "https://previous.com", Title: "Previous"}
+	navJSON, _ := json.Marshal(navData)
+
+	var capturedParams ipc.HistoryParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true, Data: navJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	backCmd.Flags().Set("wait", "true")
+	backCmd.Flags().Set("timeout", "15000")
+	defer func() {
+		backCmd.Flags().Set("wait", "false")
+		backCmd.Flags().Set("timeout", "30000")
+	}()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runBack(backCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if !capturedParams.Wait {
+		t.Error("expected Wait=true")
+	}
+	if capturedParams.Timeout != 15000 {
+		t.Errorf("expected Timeout=15000, got %d", capturedParams.Timeout)
+	}
+}
+
+func TestRunForward_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runForward(forwardCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunForward_Success(t *testing.T) {
+	navData := ipc.NavigateData{URL: "https://next.com", Title: "Next Page"}
+	navJSON, _ := json.Marshal(navData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "forward" {
+				t.Errorf("expected cmd=forward, got %s", req.Cmd)
+			}
+			return ipc.Response{OK: true, Data: navJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runForward(forwardCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+	if result["url"] != "https://next.com" {
+		t.Errorf("expected url=https://next.com, got %v", result["url"])
+	}
+}
+
+func TestRunForward_NoHistory(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: false, Error: "no next page in history"}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runForward(forwardCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when no forward history")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+	if resp["error"] != "no next page in history" {
+		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}
+
+func TestRunForward_WithWaitFlag(t *testing.T) {
+	navData := ipc.NavigateData{URL: "https://next.com", Title: "Next"}
+	navJSON, _ := json.Marshal(navData)
+
+	var capturedParams ipc.HistoryParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true, Data: navJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	forwardCmd.Flags().Set("wait", "true")
+	forwardCmd.Flags().Set("timeout", "20000")
+	defer func() {
+		forwardCmd.Flags().Set("wait", "false")
+		forwardCmd.Flags().Set("timeout", "30000")
+	}()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runForward(forwardCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if !capturedParams.Wait {
+		t.Error("expected Wait=true")
+	}
+	if capturedParams.Timeout != 20000 {
+		t.Errorf("expected Timeout=20000, got %d", capturedParams.Timeout)
+	}
+}
