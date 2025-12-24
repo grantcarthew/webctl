@@ -12,10 +12,83 @@ import (
 var selectCmd_ = &cobra.Command{
 	Use:   "select <selector> <value>",
 	Short: "Select a dropdown option",
-	Long: `Selects an option in a native <select> dropdown element.
+	Long: `Selects an option in a native HTML <select> dropdown element.
 
-The value should match the option's value attribute.
-Only works with native HTML <select> elements. For custom dropdowns, use click.`,
+The selector identifies the <select> element using CSS selector syntax.
+The value must match the option's value attribute (not the display text).
+
+Only works with native HTML <select> elements. For custom JavaScript dropdowns
+(like React Select, Material UI, etc.), use click and type commands instead.
+
+The command dispatches a 'change' event after selection, triggering any
+form validation or event handlers attached to the element.
+
+Selector examples:
+  select "#country" "AU"                    # By ID
+  select "select[name=language]" "en"       # By name attribute
+  select ".size-picker" "large"             # By class
+  select "form#checkout select" "express"   # Nested in form
+  select "[data-testid=region]" "asia"      # By test ID
+
+Given this HTML (country selector):
+  <select id="country" name="country">
+    <option value="">Choose country...</option>
+    <option value="US">United States</option>
+    <option value="AU">Australia</option>
+    <option value="UK">United Kingdom</option>
+    <option value="NZ">New Zealand</option>
+  </select>
+
+Use: select "#country" "AU"
+Note: Use "AU" (the value attribute), not "Australia" (the display text)
+
+Given this HTML (size selector):
+  <select class="product-size" name="size">
+    <option value="xs">Extra Small</option>
+    <option value="s">Small</option>
+    <option value="m">Medium</option>
+    <option value="l">Large</option>
+    <option value="xl">Extra Large</option>
+  </select>
+
+Use: select ".product-size" "m"
+
+Given this HTML (multi-select form):
+  <form id="order">
+    <select name="shipping">
+      <option value="standard">Standard (5-7 days)</option>
+      <option value="express">Express (2-3 days)</option>
+      <option value="overnight">Overnight</option>
+    </select>
+    <select name="payment">
+      <option value="credit">Credit Card</option>
+      <option value="paypal">PayPal</option>
+      <option value="bank">Bank Transfer</option>
+    </select>
+  </form>
+
+Use:
+  select "form#order select[name=shipping]" "express"
+  select "form#order select[name=payment]" "credit"
+
+Common form automation pattern:
+  type "#email" "user@example.com"
+  type "#name" "John Smith"
+  select "#country" "AU"
+  select "#state" "NSW"
+  click "#submit"
+
+For custom dropdowns (React, Vue, Material UI):
+  click ".custom-dropdown"           # Open dropdown
+  click ".option[data-value=AU]"     # Click option
+  # Or:
+  click ".custom-dropdown"
+  type "Australia"                   # Type to filter
+  key Enter                          # Select highlighted
+
+Error cases:
+  - "element not found" - selector doesn't match any element
+  - "element is not a select" - matched element is not a <select>`,
 	Args: cobra.ExactArgs(2),
 	RunE: runSelect,
 }

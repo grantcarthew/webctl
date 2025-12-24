@@ -3109,3 +3109,1406 @@ func TestRunForward_WithWaitFlag(t *testing.T) {
 		t.Errorf("expected Timeout=20000, got %d", capturedParams.Timeout)
 	}
 }
+
+// Click command tests
+
+func TestRunClick_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runClick(clickCmd, []string{"#button"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunClick_Success(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "click" {
+				t.Errorf("expected cmd=click, got %s", req.Cmd)
+			}
+			var params ipc.ClickParams
+			json.Unmarshal(req.Params, &params)
+			if params.Selector != "#submit-btn" {
+				t.Errorf("expected selector=#submit-btn, got %s", params.Selector)
+			}
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runClick(clickCmd, []string{"#submit-btn"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+}
+
+func TestRunClick_WithWarning(t *testing.T) {
+	warningData, _ := json.Marshal(map[string]any{
+		"warning": "element may be covered by another element: #hidden-btn",
+	})
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true, Data: warningData}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runClick(clickCmd, []string{"#hidden-btn"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+	if result["warning"] == nil {
+		t.Error("expected warning in response")
+	}
+}
+
+func TestRunClick_ElementNotFound(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: false, Error: "element not found: #missing"}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runClick(clickCmd, []string{"#missing"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error for missing element")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+	if resp["error"] != "element not found: #missing" {
+		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}
+
+// Focus command tests
+
+func TestRunFocus_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runFocus(focusCmd, []string{"#input"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunFocus_Success(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "focus" {
+				t.Errorf("expected cmd=focus, got %s", req.Cmd)
+			}
+			var params ipc.FocusParams
+			json.Unmarshal(req.Params, &params)
+			if params.Selector != "#email-input" {
+				t.Errorf("expected selector=#email-input, got %s", params.Selector)
+			}
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runFocus(focusCmd, []string{"#email-input"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+}
+
+func TestRunFocus_ElementNotFound(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: false, Error: "element not found: #missing"}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runFocus(focusCmd, []string{"#missing"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error for missing element")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+}
+
+// Type command tests
+
+func TestRunType_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runType(typeCmd, []string{"hello"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunType_TextOnly(t *testing.T) {
+	var capturedParams ipc.TypeParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "type" {
+				t.Errorf("expected cmd=type, got %s", req.Cmd)
+			}
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runType(typeCmd, []string{"hello world"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// With one arg, selector should be empty, text should be the arg
+	if capturedParams.Selector != "" {
+		t.Errorf("expected empty selector, got %s", capturedParams.Selector)
+	}
+	if capturedParams.Text != "hello world" {
+		t.Errorf("expected text='hello world', got %s", capturedParams.Text)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+}
+
+func TestRunType_WithSelector(t *testing.T) {
+	var capturedParams ipc.TypeParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runType(typeCmd, []string{"#input", "test text"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.Selector != "#input" {
+		t.Errorf("expected selector=#input, got %s", capturedParams.Selector)
+	}
+	if capturedParams.Text != "test text" {
+		t.Errorf("expected text='test text', got %s", capturedParams.Text)
+	}
+}
+
+func TestRunType_WithKeyFlag(t *testing.T) {
+	var capturedParams ipc.TypeParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	typeCmd.Flags().Set("key", "Enter")
+	defer typeCmd.Flags().Set("key", "")
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runType(typeCmd, []string{"#search", "query"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.Key != "Enter" {
+		t.Errorf("expected key=Enter, got %s", capturedParams.Key)
+	}
+}
+
+func TestRunType_WithClearFlag(t *testing.T) {
+	var capturedParams ipc.TypeParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	typeCmd.Flags().Set("clear", "true")
+	defer typeCmd.Flags().Set("clear", "false")
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runType(typeCmd, []string{"#input", "new value"})
+
+	w.Close()
+	os.Stdout = old
+
+	if !capturedParams.Clear {
+		t.Error("expected Clear=true")
+	}
+}
+
+func TestRunType_AllFlags(t *testing.T) {
+	var capturedParams ipc.TypeParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	typeCmd.Flags().Set("key", "Tab")
+	typeCmd.Flags().Set("clear", "true")
+	defer func() {
+		typeCmd.Flags().Set("key", "")
+		typeCmd.Flags().Set("clear", "false")
+	}()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runType(typeCmd, []string{"#form-field", "updated"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.Selector != "#form-field" {
+		t.Errorf("expected selector=#form-field, got %s", capturedParams.Selector)
+	}
+	if capturedParams.Text != "updated" {
+		t.Errorf("expected text='updated', got %s", capturedParams.Text)
+	}
+	if capturedParams.Key != "Tab" {
+		t.Errorf("expected key=Tab, got %s", capturedParams.Key)
+	}
+	if !capturedParams.Clear {
+		t.Error("expected Clear=true")
+	}
+}
+
+// Key command tests
+
+func TestRunKey_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runKey(keyCmd, []string{"Enter"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunKey_Success(t *testing.T) {
+	var capturedParams ipc.KeyParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "key" {
+				t.Errorf("expected cmd=key, got %s", req.Cmd)
+			}
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runKey(keyCmd, []string{"Enter"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capturedParams.Key != "Enter" {
+		t.Errorf("expected key=Enter, got %s", capturedParams.Key)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+}
+
+func TestRunKey_WithCtrlModifier(t *testing.T) {
+	var capturedParams ipc.KeyParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	keyCmd.Flags().Set("ctrl", "true")
+	defer keyCmd.Flags().Set("ctrl", "false")
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runKey(keyCmd, []string{"a"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.Key != "a" {
+		t.Errorf("expected key=a, got %s", capturedParams.Key)
+	}
+	if !capturedParams.Ctrl {
+		t.Error("expected Ctrl=true")
+	}
+}
+
+func TestRunKey_WithMetaModifier(t *testing.T) {
+	var capturedParams ipc.KeyParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	keyCmd.Flags().Set("meta", "true")
+	defer keyCmd.Flags().Set("meta", "false")
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runKey(keyCmd, []string{"c"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.Key != "c" {
+		t.Errorf("expected key=c, got %s", capturedParams.Key)
+	}
+	if !capturedParams.Meta {
+		t.Error("expected Meta=true")
+	}
+}
+
+func TestRunKey_AllModifiers(t *testing.T) {
+	var capturedParams ipc.KeyParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	keyCmd.Flags().Set("ctrl", "true")
+	keyCmd.Flags().Set("alt", "true")
+	keyCmd.Flags().Set("shift", "true")
+	keyCmd.Flags().Set("meta", "true")
+	defer func() {
+		keyCmd.Flags().Set("ctrl", "false")
+		keyCmd.Flags().Set("alt", "false")
+		keyCmd.Flags().Set("shift", "false")
+		keyCmd.Flags().Set("meta", "false")
+	}()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runKey(keyCmd, []string{"Delete"})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.Key != "Delete" {
+		t.Errorf("expected key=Delete, got %s", capturedParams.Key)
+	}
+	if !capturedParams.Ctrl {
+		t.Error("expected Ctrl=true")
+	}
+	if !capturedParams.Alt {
+		t.Error("expected Alt=true")
+	}
+	if !capturedParams.Shift {
+		t.Error("expected Shift=true")
+	}
+	if !capturedParams.Meta {
+		t.Error("expected Meta=true")
+	}
+}
+
+// Select command tests
+
+func TestRunSelect_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runSelect(selectCmd_, []string{"#dropdown", "value1"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunSelect_Success(t *testing.T) {
+	var capturedParams ipc.SelectParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "select" {
+				t.Errorf("expected cmd=select, got %s", req.Cmd)
+			}
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runSelect(selectCmd_, []string{"#country", "AU"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capturedParams.Selector != "#country" {
+		t.Errorf("expected selector=#country, got %s", capturedParams.Selector)
+	}
+	if capturedParams.Value != "AU" {
+		t.Errorf("expected value=AU, got %s", capturedParams.Value)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+}
+
+func TestRunSelect_ElementNotFound(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: false, Error: "element not found: #missing"}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runSelect(selectCmd_, []string{"#missing", "value"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error for missing element")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+	if resp["error"] != "element not found: #missing" {
+		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}
+
+func TestRunSelect_NotASelectElement(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: false, Error: "element is not a select: #div"}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runSelect(selectCmd_, []string{"#div", "value"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error for non-select element")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+	if resp["error"] != "element is not a select: #div" {
+		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}
+
+// Scroll command tests
+
+func TestParseCoords(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantX   int
+		wantY   int
+		wantErr bool
+	}{
+		{"basic", "100,200", 100, 200, false},
+		{"zeros", "0,0", 0, 0, false},
+		{"negative", "-100,-200", -100, -200, false},
+		{"mixed", "50,-100", 50, -100, false},
+		{"with spaces", " 100 , 200 ", 100, 200, false},
+		{"large numbers", "10000,20000", 10000, 20000, false},
+		{"missing comma", "100200", 0, 0, true},
+		{"too many parts", "100,200,300", 0, 0, true},
+		{"invalid x", "abc,200", 0, 0, true},
+		{"invalid y", "100,xyz", 0, 0, true},
+		{"empty", "", 0, 0, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			x, y, err := parseCoords(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("parseCoords(%q) expected error, got nil", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("parseCoords(%q) unexpected error: %v", tt.input, err)
+				return
+			}
+			if x != tt.wantX || y != tt.wantY {
+				t.Errorf("parseCoords(%q) = (%d, %d), want (%d, %d)", tt.input, x, y, tt.wantX, tt.wantY)
+			}
+		})
+	}
+}
+
+func TestRunScroll_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runScroll(scrollCmd, []string{"#element"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunScroll_ElementMode(t *testing.T) {
+	var capturedParams ipc.ScrollParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "scroll" {
+				t.Errorf("expected cmd=scroll, got %s", req.Cmd)
+			}
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runScroll(scrollCmd, []string{"#footer"})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capturedParams.Mode != "element" {
+		t.Errorf("expected mode=element, got %s", capturedParams.Mode)
+	}
+	if capturedParams.Selector != "#footer" {
+		t.Errorf("expected selector=#footer, got %s", capturedParams.Selector)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+}
+
+func TestRunScroll_ToMode(t *testing.T) {
+	var capturedParams ipc.ScrollParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	scrollCmd.Flags().Set("to", "100,500")
+	defer scrollCmd.Flags().Set("to", "")
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runScroll(scrollCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.Mode != "to" {
+		t.Errorf("expected mode=to, got %s", capturedParams.Mode)
+	}
+	if capturedParams.ToX != 100 {
+		t.Errorf("expected ToX=100, got %d", capturedParams.ToX)
+	}
+	if capturedParams.ToY != 500 {
+		t.Errorf("expected ToY=500, got %d", capturedParams.ToY)
+	}
+}
+
+func TestRunScroll_ByMode(t *testing.T) {
+	var capturedParams ipc.ScrollParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	scrollCmd.Flags().Set("by", "0,-100")
+	defer scrollCmd.Flags().Set("by", "")
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runScroll(scrollCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if capturedParams.Mode != "by" {
+		t.Errorf("expected mode=by, got %s", capturedParams.Mode)
+	}
+	if capturedParams.ByX != 0 {
+		t.Errorf("expected ByX=0, got %d", capturedParams.ByX)
+	}
+	if capturedParams.ByY != -100 {
+		t.Errorf("expected ByY=-100, got %d", capturedParams.ByY)
+	}
+}
+
+func TestRunScroll_InvalidToCoords(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	scrollCmd.Flags().Set("to", "invalid")
+	defer scrollCmd.Flags().Set("to", "")
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runScroll(scrollCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error for invalid coordinates")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+}
+
+func TestRunScroll_NoModeSpecified(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runScroll(scrollCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when no mode specified")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+	if resp["error"] != "provide a selector, --to x,y, or --by x,y" {
+		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}
+
+func TestRunScroll_ElementNotFound(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: false, Error: "element not found: #missing"}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runScroll(scrollCmd, []string{"#missing"})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error for missing element")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+	if resp["error"] != "element not found: #missing" {
+		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}
+
+// Ready command tests
+
+func TestRunReady_DaemonNotRunning(t *testing.T) {
+	restore := setMockFactory(&mockFactory{daemonRunning: false})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runReady(readyCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when daemon not running")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false in error response")
+	}
+}
+
+func TestRunReady_Success(t *testing.T) {
+	var capturedParams ipc.ReadyParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "ready" {
+				t.Errorf("expected cmd=ready, got %s", req.Cmd)
+			}
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runReady(readyCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Default timeout should be 30 seconds = 30000ms
+	if capturedParams.Timeout != 30000 {
+		t.Errorf("expected Timeout=30000, got %d", capturedParams.Timeout)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+}
+
+func TestRunReady_WithCustomTimeout(t *testing.T) {
+	var capturedParams ipc.ReadyParams
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			json.Unmarshal(req.Params, &capturedParams)
+			return ipc.Response{OK: true}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	readyCmd.Flags().Set("timeout", "10s")
+	defer readyCmd.Flags().Set("timeout", "30s")
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	runReady(readyCmd, []string{})
+
+	w.Close()
+	os.Stdout = old
+
+	// 10 seconds = 10000ms
+	if capturedParams.Timeout != 10000 {
+		t.Errorf("expected Timeout=10000, got %d", capturedParams.Timeout)
+	}
+}
+
+func TestRunReady_Timeout(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: false, Error: "timeout waiting for page load"}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runReady(readyCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error on timeout")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+	if resp["error"] != "timeout waiting for page load" {
+		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}
+
+func TestRunReady_NoActiveSession(t *testing.T) {
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: false, Error: "no active session"}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	err := runReady(readyCmd, []string{})
+
+	w.Close()
+	os.Stderr = oldStderr
+
+	if err == nil {
+		t.Error("expected error when no active session")
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var resp map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse error response: %v", err)
+	}
+
+	if resp["ok"] != false {
+		t.Error("expected ok=false")
+	}
+	if resp["error"] != "no active session" {
+		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}

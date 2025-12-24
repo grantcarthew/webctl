@@ -11,22 +11,163 @@ import (
 var cookiesCmd = &cobra.Command{
 	Use:   "cookies",
 	Short: "Manage browser cookies",
-	Long:  "List, set, or delete cookies in the active browser session.",
-	RunE:  runCookiesList,
+	Long: `List, set, or delete cookies in the active browser session.
+
+Without subcommands, lists all cookies for the current page with full
+CDP attributes (domain, path, expiry, secure, httpOnly, sameSite, etc.).
+
+Subcommands:
+  cookies             List all cookies (default)
+  cookies set         Set a cookie with optional attributes
+  cookies delete      Delete a cookie by name
+
+List all cookies:
+  cookies
+
+  Response includes all CDP cookie attributes:
+  {
+    "ok": true,
+    "cookies": [
+      {
+        "name": "session",
+        "value": "abc123",
+        "domain": "example.com",
+        "path": "/",
+        "expires": 1735084800,
+        "httpOnly": true,
+        "secure": true,
+        "sameSite": "Lax"
+      }
+    ],
+    "count": 1
+  }
+
+Common patterns:
+  # Inspect authentication state
+  navigate example.com --wait
+  cookies                               # Check session cookies
+
+  # Clear and set test cookie
+  cookies delete test_flag
+  cookies set test_flag enabled --max-age 3600
+  reload --wait
+  cookies                               # Verify cookie is set
+
+  # Debug login issues
+  navigate myapp.com/login --wait
+  cookies                               # Check pre-login cookies
+  type "#email" "user@example.com"
+  type "#password" "secret" --key Enter
+  ready
+  cookies                               # Check post-login session cookie
+
+Error cases:
+  - "daemon not running" - start daemon first with: webctl start
+  - "no active session" - no browser page open`,
+	RunE: runCookiesList,
 }
 
 var cookiesSetCmd = &cobra.Command{
 	Use:   "set <name> <value>",
 	Short: "Set a cookie",
-	Args:  cobra.ExactArgs(2),
-	RunE:  runCookiesSet,
+	Long: `Sets a cookie with the specified name and value.
+
+Without flags, creates a session cookie for the current page's domain.
+Use flags to control cookie attributes for persistent or secure cookies.
+
+Flags:
+  --domain      Cookie domain (defaults to current page domain)
+  --path        Cookie path (defaults to "/")
+  --secure      Require HTTPS connection
+  --httponly    Prevent JavaScript access (document.cookie)
+  --max-age     Expiry in seconds from now (0 = session cookie)
+  --samesite    SameSite policy: Strict, Lax, or None
+
+Session cookie (expires when browser closes):
+  cookies set session abc123
+
+Persistent cookie (expires in 1 hour):
+  cookies set remember_me yes --max-age 3600
+
+Persistent cookie (expires in 24 hours):
+  cookies set auth_token xyz789 --max-age 86400
+
+Secure cookie (HTTPS only, no JS access):
+  cookies set session abc123 --secure --httponly
+
+Cookie with specific domain:
+  cookies set tracking id123 --domain .example.com
+
+Cookie with SameSite policy:
+  cookies set csrf_token xyz --samesite Strict
+  cookies set analytics id --samesite None --secure
+
+Full example with all attributes:
+  cookies set auth_token abc123 \
+    --domain example.com \
+    --path /api \
+    --secure \
+    --httponly \
+    --max-age 86400 \
+    --samesite Strict
+
+Response:
+  {"ok": true}
+
+SameSite values:
+  Strict  Cookie only sent in first-party context
+  Lax     Cookie sent with top-level navigations (default in browsers)
+  None    Cookie sent in all contexts (requires --secure)`,
+	Args: cobra.ExactArgs(2),
+	RunE: runCookiesSet,
 }
 
 var cookiesDeleteCmd = &cobra.Command{
 	Use:   "delete <name>",
 	Short: "Delete a cookie",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runCookiesDelete,
+	Long: `Deletes a cookie by name.
+
+If only one cookie matches the name, it is deleted immediately.
+If multiple cookies match (same name, different domains), you must
+specify --domain to disambiguate.
+
+Deleting a non-existent cookie returns success (idempotent).
+
+Flags:
+  --domain      Cookie domain (required if multiple cookies match)
+
+Delete a cookie (unambiguous):
+  cookies delete session
+
+Delete a cookie (with domain):
+  cookies delete session --domain api.example.com
+
+Response (success):
+  {"ok": true}
+
+Response (ambiguous - multiple matches):
+  {
+    "ok": false,
+    "error": "multiple cookies named 'session' found",
+    "matches": [
+      {"name": "session", "domain": "example.com"},
+      {"name": "session", "domain": "api.example.com"}
+    ]
+  }
+
+  Then specify: cookies delete session --domain api.example.com
+
+Common patterns:
+  # Clear all auth cookies
+  cookies delete session
+  cookies delete auth_token
+  cookies delete remember_me
+
+  # Reset to logged-out state
+  cookies delete session
+  reload --wait`,
+	Args: cobra.ExactArgs(1),
+	RunE: runCookiesDelete,
 }
 
 func init() {

@@ -12,9 +12,53 @@ import (
 var navigateCmd = &cobra.Command{
 	Use:   "navigate <url>",
 	Short: "Navigate to URL",
-	Long:  "Navigates the active browser session to the specified URL. Returns immediately unless --wait is specified.",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runNavigate,
+	Long: `Navigates the active browser session to the specified URL.
+
+Returns immediately by default for fast feedback (<100ms). The page continues
+loading in the background. Use --wait to block until the page fully loads.
+
+URL protocol auto-detection:
+  - URLs without protocol get https:// added automatically
+  - localhost, 127.0.0.1, and 0.0.0.0 get http:// (local development)
+  - Explicit protocols (http://, https://, file://) are preserved
+
+Flags:
+  --wait              Wait for page load completion (load event fired)
+  --timeout <ms>      Timeout in milliseconds when using --wait (default 30000)
+
+Examples:
+  # Basic navigation (fast return, page loads in background)
+  navigate example.com                    # https://example.com
+  navigate www.google.com/search?q=test   # https://www.google.com/search?q=test
+
+  # Local development (auto-detects http://)
+  navigate localhost:3000                 # http://localhost:3000
+  navigate 127.0.0.1:8080/api             # http://127.0.0.1:8080/api
+  navigate 0.0.0.0:5000                   # http://0.0.0.0:5000
+
+  # Explicit protocol
+  navigate http://insecure-site.com       # Preserves http://
+  navigate file:///tmp/test.html          # Local file
+
+  # Wait for page load (blocks until load event)
+  navigate example.com --wait
+  navigate slow-site.com --wait --timeout 60000
+
+  # Common workflow patterns
+  navigate example.com && ready           # Equivalent to --wait
+  navigate example.com && screenshot      # Capture after navigation
+  navigate example.com --wait && html     # Get HTML after full load
+
+Response:
+  {"ok": true, "url": "https://example.com/", "title": "Example Domain"}
+
+Error cases:
+  - "net::ERR_NAME_NOT_RESOLVED" - domain does not exist
+  - "net::ERR_CONNECTION_REFUSED" - server not responding
+  - "timeout waiting for page load" - page didn't load within timeout (--wait)
+  - "daemon not running" - start daemon first with: webctl start`,
+	Args: cobra.ExactArgs(1),
+	RunE: runNavigate,
 }
 
 func init() {

@@ -11,13 +11,68 @@ import (
 var typeCmd = &cobra.Command{
 	Use:   "type [selector] <text>",
 	Short: "Type text into an element",
-	Long: `Types text into an element. If selector is provided, focuses the element first.
+	Long: `Types text into an element using CDP keyboard input simulation.
 
 With one argument: types into the currently focused element.
 With two arguments: focuses the element matching the selector, then types.
 
-Use --key to send a key after typing (e.g., Enter to submit a form).
-Use --clear to clear existing content before typing.`,
+Flags:
+  --key <key>     Send a key after typing (e.g., Enter, Tab)
+  --clear         Clear existing content before typing (select all + delete)
+
+The --clear flag is OS-aware:
+  - macOS: Uses Cmd+A (Meta+A) to select all
+  - Linux: Uses Ctrl+A to select all
+
+Selector examples:
+  type "#username" "john_doe"           # Type into element by ID
+  type ".search-input" "query"          # Type into element by class
+  type "input[name=email]" "a@b.com"    # Type into element by name
+  type "[data-testid=search]" "test"    # Type into element by test ID
+
+Without selector (types into focused element):
+  focus "#input"
+  type "hello world"                    # Types into already-focused element
+
+With --key flag (send key after typing):
+  type "#search" "query" --key Enter    # Type and submit
+  type "#field1" "value" --key Tab      # Type and move to next field
+
+With --clear flag (replace existing content):
+  type "#email" "new@email.com" --clear # Clear first, then type
+
+Combined flags:
+  type "#search" "new query" --clear --key Enter
+
+Given this HTML:
+  <form id="login">
+    <input type="text" id="username" value="old_user">
+    <input type="password" id="password">
+    <button type="submit">Login</button>
+  </form>
+
+Login form automation:
+  type "#username" "new_user" --clear   # Replace existing username
+  type "#password" "secret123"
+  click "button[type=submit]"
+
+Or with --key for keyboard submission:
+  type "#username" "new_user" --clear
+  type "#password" "secret123" --key Enter
+
+Search form patterns:
+  type "#search" "my query" --key Enter
+  type ".search-box" "term" --clear --key Enter
+
+Multi-field form with Tab navigation:
+  type "#field1" "value1" --key Tab
+  type "value2" --key Tab               # No selector, uses focused element
+  type "value3" --key Enter             # Submit on last field
+
+Error cases:
+  - "element not found: .missing" - selector doesn't match any element
+  - "element is not focusable" - cannot focus the target element
+  - "daemon not running" - start daemon first with: webctl start`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: runType,
 }
