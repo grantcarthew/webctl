@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
@@ -20,6 +21,9 @@ var Debug bool
 // JSONOutput enables JSON output format (default is text).
 var JSONOutput bool
 
+// NoColor disables color output.
+var NoColor bool
+
 var rootCmd = &cobra.Command{
 	Use:           "webctl",
 	Short:         "Browser automation CLI for AI agents",
@@ -32,6 +36,7 @@ var rootCmd = &cobra.Command{
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&Debug, "debug", false, "Enable verbose debug output")
 	rootCmd.PersistentFlags().BoolVar(&JSONOutput, "json", false, "Output in JSON format (default is text)")
+	rootCmd.PersistentFlags().BoolVar(&NoColor, "no-color", false, "Disable color output")
 }
 
 // debugf logs a debug message if debug mode is enabled.
@@ -111,8 +116,12 @@ func outputSuccess(data any) error {
 
 	// Text mode: just "OK" for action commands (no data)
 	if data == nil {
-		_, err := fmt.Fprintln(os.Stdout, "OK")
-		return err
+		if shouldUseColor() {
+			color.New(color.FgGreen).Fprintln(os.Stdout, "OK")
+		} else {
+			fmt.Fprintln(os.Stdout, "OK")
+		}
+		return nil
 	}
 
 	// For commands with data, they should use their own formatters
@@ -131,7 +140,27 @@ func outputError(msg string) error {
 		}
 		outputJSON(os.Stderr, resp)
 	} else {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
+		// Apply color to error prefix if colors are enabled
+		if shouldUseColor() {
+			color.New(color.FgRed).Fprint(os.Stderr, "Error:")
+			fmt.Fprintf(os.Stderr, " %s\n", msg)
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
+		}
 	}
 	return fmt.Errorf("%s", msg)
+}
+
+// shouldUseColor determines if color output should be used based on flags and environment.
+func shouldUseColor() bool {
+	if JSONOutput {
+		return false
+	}
+	if NoColor {
+		return false
+	}
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	return term.IsTerminal(int(os.Stderr.Fd()))
 }

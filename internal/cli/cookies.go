@@ -236,7 +236,7 @@ func runCookiesList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Text mode: use text formatter
-	return format.Cookies(os.Stdout, data.Cookies, format.DefaultOptions())
+	return format.Cookies(os.Stdout, data.Cookies, format.NewOutputOptions(JSONOutput, NoColor))
 }
 
 func runCookiesSet(cmd *cobra.Command, args []string) error {

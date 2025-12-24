@@ -7,9 +7,22 @@ import (
 	"os"
 	"testing"
 
+	"github.com/fatih/color"
 	"github.com/grantcarthew/webctl/internal/executor"
 	"github.com/grantcarthew/webctl/internal/ipc"
 )
+
+func init() {
+	// Disable colors in tests to avoid ANSI codes in output assertions
+	color.NoColor = true
+}
+
+// enableJSONOutput sets JSONOutput to true for the duration of the test.
+func enableJSONOutput(t *testing.T) {
+	old := JSONOutput
+	JSONOutput = true
+	t.Cleanup(func() { JSONOutput = old })
+}
 
 // mockExecutor implements executor.Executor for testing.
 type mockExecutor struct {
@@ -55,6 +68,7 @@ func setMockFactory(f ExecutorFactory) func() {
 }
 
 func TestOutputSuccess(t *testing.T) {
+	enableJSONOutput(t)
 
 	// Capture stdout
 	old := os.Stdout
@@ -94,6 +108,7 @@ func TestOutputSuccess(t *testing.T) {
 }
 
 func TestOutputError(t *testing.T) {
+	enableJSONOutput(t)
 
 	// Capture stderr
 	old := os.Stderr
@@ -131,6 +146,11 @@ func TestOutputError(t *testing.T) {
 }
 
 func TestRunStatus_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
+	// Set JSON output mode for test
+	oldJSON := JSONOutput
+	JSONOutput = true
+	defer func() { JSONOutput = oldJSON }()
 
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
@@ -172,6 +192,7 @@ func TestRunStatus_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunStatus_DaemonRunning(t *testing.T) {
+	enableJSONOutput(t)
 
 	statusData := ipc.StatusData{
 		Running: true,
@@ -236,6 +257,7 @@ func TestRunStatus_DaemonRunning(t *testing.T) {
 }
 
 func TestRunStop_Success(t *testing.T) {
+	enableJSONOutput(t)
 
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -284,6 +306,7 @@ func TestRunStop_Success(t *testing.T) {
 }
 
 func TestRunStop_NewExecutorError(t *testing.T) {
+	enableJSONOutput(t)
 
 	restore := setMockFactory(&mockFactory{
 		newErr: errors.New("daemon is not running"),
@@ -318,6 +341,7 @@ func TestRunStop_NewExecutorError(t *testing.T) {
 }
 
 func TestRunClear_AllBuffers(t *testing.T) {
+	enableJSONOutput(t)
 
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -366,6 +390,7 @@ func TestRunClear_AllBuffers(t *testing.T) {
 }
 
 func TestRunClear_ConsoleOnly(t *testing.T) {
+	enableJSONOutput(t)
 
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -411,6 +436,7 @@ func TestRunClear_ConsoleOnly(t *testing.T) {
 }
 
 func TestRunClear_InvalidTarget(t *testing.T) {
+	enableJSONOutput(t)
 
 	exec := &mockExecutor{}
 
@@ -440,6 +466,7 @@ func TestRunClear_InvalidTarget(t *testing.T) {
 }
 
 func TestRunStart_DaemonAlreadyRunning(t *testing.T) {
+	enableJSONOutput(t)
 
 	restore := setMockFactory(&mockFactory{daemonRunning: true})
 	defer restore()
@@ -464,6 +491,7 @@ func TestRunStart_DaemonAlreadyRunning(t *testing.T) {
 }
 
 func TestRunConsole_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
@@ -488,6 +516,7 @@ func TestRunConsole_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunConsole_Success(t *testing.T) {
+	enableJSONOutput(t)
 
 	consoleData := ipc.ConsoleData{
 		Entries: []ipc.ConsoleEntry{
@@ -558,6 +587,7 @@ func TestRunConsole_Success(t *testing.T) {
 }
 
 func TestRunConsole_EmptyBuffer(t *testing.T) {
+	enableJSONOutput(t)
 
 	consoleData := ipc.ConsoleData{
 		Entries: []ipc.ConsoleEntry{},
@@ -824,12 +854,12 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 	})
 	defer restore()
 
-	// First call with --tail 2
+	// First call with --tail 2 --json
 	old := os.Stdout
 	r1, w1, _ := os.Pipe()
 	os.Stdout = w1
 
-	ExecuteArgs([]string{"console", "--tail", "2"})
+	ExecuteArgs([]string{"console", "--json", "--tail", "2"})
 
 	w1.Close()
 	os.Stdout = old
@@ -849,7 +879,7 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 	r2, w2, _ := os.Pipe()
 	os.Stdout = w2
 
-	ExecuteArgs([]string{"console"})
+	ExecuteArgs([]string{"console", "--json"})
 
 	w2.Close()
 	os.Stdout = old
@@ -993,6 +1023,7 @@ func TestApplyNetworkLimiting(t *testing.T) {
 }
 
 func TestRunNetwork_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{
 		daemonRunning: false,
 	})
@@ -1027,6 +1058,7 @@ func TestRunNetwork_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunNetwork_Success(t *testing.T) {
+	enableJSONOutput(t)
 	networkData := ipc.NetworkData{
 		Entries: []ipc.NetworkEntry{
 			{
@@ -1100,6 +1132,7 @@ func TestRunNetwork_Success(t *testing.T) {
 // Target command tests
 
 func TestRunTarget_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{
 		daemonRunning: false,
 	})
@@ -1132,6 +1165,7 @@ func TestRunTarget_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunTarget_ListSessions(t *testing.T) {
+	enableJSONOutput(t)
 	targetData := ipc.TargetData{
 		ActiveSession: "session-abc",
 		Sessions: []ipc.PageSession{
@@ -1194,6 +1228,7 @@ func TestRunTarget_ListSessions(t *testing.T) {
 }
 
 func TestRunTarget_SwitchSession(t *testing.T) {
+	enableJSONOutput(t)
 	targetData := ipc.TargetData{
 		ActiveSession: "session-def",
 		Sessions: []ipc.PageSession{
@@ -1251,6 +1286,7 @@ func TestRunTarget_SwitchSession(t *testing.T) {
 }
 
 func TestRunTarget_AmbiguousMatch(t *testing.T) {
+	enableJSONOutput(t)
 	// Daemon returns error with multiple matches
 	matchData := struct {
 		Error   string            `json:"error"`
@@ -1408,6 +1444,7 @@ func TestNormalizeTitle(t *testing.T) {
 }
 
 func TestRunScreenshot_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -1438,6 +1475,7 @@ func TestRunScreenshot_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunScreenshot_Success(t *testing.T) {
+	enableJSONOutput(t)
 	// Create temp directory for screenshots
 	tmpDir := t.TempDir()
 
@@ -1525,6 +1563,7 @@ func TestRunScreenshot_Success(t *testing.T) {
 }
 
 func TestRunScreenshot_CustomOutput(t *testing.T) {
+	enableJSONOutput(t)
 	tmpDir := t.TempDir()
 	customPath := tmpDir + "/custom/screenshot.png"
 
@@ -1583,6 +1622,7 @@ func TestRunScreenshot_CustomOutput(t *testing.T) {
 }
 
 func TestRunScreenshot_FullPage(t *testing.T) {
+	enableJSONOutput(t)
 	pngData := []byte{0x89, 0x50, 0x4E, 0x47}
 	screenshotData := ipc.ScreenshotData{Data: pngData}
 	screenshotJSON, _ := json.Marshal(screenshotData)
@@ -1630,6 +1670,7 @@ func TestRunScreenshot_FullPage(t *testing.T) {
 // HTML command tests
 
 func TestRunHTML_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -1660,6 +1701,7 @@ func TestRunHTML_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunHTML_FullPage(t *testing.T) {
+	enableJSONOutput(t)
 	tmpDir := t.TempDir()
 
 	htmlContent := "<!DOCTYPE html><html><head><title>Test</title></head><body><h1>Hello</h1></body></html>"
@@ -1740,6 +1782,7 @@ func TestRunHTML_FullPage(t *testing.T) {
 }
 
 func TestRunHTML_WithSelector(t *testing.T) {
+	enableJSONOutput(t)
 	tmpDir := t.TempDir()
 
 	htmlContent := `<div class="content">Test Content</div>`
@@ -1783,6 +1826,7 @@ func TestRunHTML_WithSelector(t *testing.T) {
 }
 
 func TestRunHTML_CustomOutput(t *testing.T) {
+	enableJSONOutput(t)
 	tmpDir := t.TempDir()
 	customPath := tmpDir + "/custom/page.html"
 
@@ -1839,6 +1883,7 @@ func TestRunHTML_CustomOutput(t *testing.T) {
 }
 
 func TestRunEval_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{
 		daemonRunning: false,
 	})
@@ -1867,6 +1912,7 @@ func TestRunEval_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunEval_BasicExpression(t *testing.T) {
+	enableJSONOutput(t)
 	evalData := ipc.EvalData{Value: float64(2), HasValue: true}
 	evalJSON, _ := json.Marshal(evalData)
 
@@ -1914,6 +1960,7 @@ func TestRunEval_BasicExpression(t *testing.T) {
 }
 
 func TestRunEval_Undefined(t *testing.T) {
+	enableJSONOutput(t)
 	evalData := ipc.EvalData{HasValue: false}
 	evalJSON, _ := json.Marshal(evalData)
 
@@ -1962,6 +2009,7 @@ func TestRunEval_Undefined(t *testing.T) {
 }
 
 func TestRunEval_MultipleArgs(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedExpression string
 
 	evalData := ipc.EvalData{Value: "Hello World", HasValue: true}
@@ -2001,6 +2049,7 @@ func TestRunEval_MultipleArgs(t *testing.T) {
 }
 
 func TestRunEval_Error(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd == "eval" {
@@ -2039,6 +2088,7 @@ func TestRunEval_Error(t *testing.T) {
 }
 
 func TestRunEval_Timeout(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedTimeout int
 
 	evalData := ipc.EvalData{Value: float64(42), HasValue: true}
@@ -2080,6 +2130,7 @@ func TestRunEval_Timeout(t *testing.T) {
 }
 
 func TestRunCookiesList_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{
 		daemonRunning: false,
 	})
@@ -2108,6 +2159,7 @@ func TestRunCookiesList_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunCookiesList_Success(t *testing.T) {
+	enableJSONOutput(t)
 	cookies := []ipc.Cookie{
 		{Name: "session", Value: "abc123", Domain: "example.com", Path: "/"},
 		{Name: "user", Value: "john", Domain: "example.com", Path: "/"},
@@ -2159,6 +2211,7 @@ func TestRunCookiesList_Success(t *testing.T) {
 }
 
 func TestRunCookiesSet_Basic(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.CookiesParams
 
 	exec := &mockExecutor{
@@ -2200,6 +2253,7 @@ func TestRunCookiesSet_Basic(t *testing.T) {
 }
 
 func TestRunCookiesSet_WithFlags(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.CookiesParams
 
 	exec := &mockExecutor{
@@ -2262,6 +2316,7 @@ func TestRunCookiesSet_WithFlags(t *testing.T) {
 }
 
 func TestRunCookiesDelete_Success(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.CookiesParams
 
 	exec := &mockExecutor{
@@ -2313,6 +2368,7 @@ func TestRunCookiesDelete_Success(t *testing.T) {
 }
 
 func TestRunCookiesDelete_AmbiguousError(t *testing.T) {
+	enableJSONOutput(t)
 	matches := []ipc.Cookie{
 		{Name: "session", Domain: "example.com"},
 		{Name: "session", Domain: "api.example.com"},
@@ -2380,6 +2436,7 @@ func TestRunCookiesDelete_AmbiguousError(t *testing.T) {
 }
 
 func TestRunCookiesDelete_WithDomain(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.CookiesParams
 
 	exec := &mockExecutor{
@@ -2458,6 +2515,7 @@ func TestNormalizeURL(t *testing.T) {
 }
 
 func TestRunNavigate_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -2492,6 +2550,7 @@ func TestRunNavigate_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunNavigate_Success(t *testing.T) {
+	enableJSONOutput(t)
 	navData := ipc.NavigateData{URL: "https://example.com", Title: "Example Domain"}
 	navJSON, _ := json.Marshal(navData)
 
@@ -2547,6 +2606,7 @@ func TestRunNavigate_Success(t *testing.T) {
 }
 
 func TestRunNavigate_WithWaitFlag(t *testing.T) {
+	enableJSONOutput(t)
 	navData := ipc.NavigateData{URL: "https://example.com", Title: "Example Domain"}
 	navJSON, _ := json.Marshal(navData)
 
@@ -2589,6 +2649,7 @@ func TestRunNavigate_WithWaitFlag(t *testing.T) {
 }
 
 func TestRunNavigate_LocalhostUsesHTTP(t *testing.T) {
+	enableJSONOutput(t)
 	navData := ipc.NavigateData{URL: "http://localhost:3000", Title: ""}
 	navJSON, _ := json.Marshal(navData)
 
@@ -2621,6 +2682,7 @@ func TestRunNavigate_LocalhostUsesHTTP(t *testing.T) {
 }
 
 func TestRunNavigate_Error(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: false, Error: "net::ERR_NAME_NOT_RESOLVED"}, nil
@@ -2663,6 +2725,7 @@ func TestRunNavigate_Error(t *testing.T) {
 }
 
 func TestRunReload_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -2693,6 +2756,7 @@ func TestRunReload_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunReload_Success(t *testing.T) {
+	enableJSONOutput(t)
 	navData := ipc.NavigateData{URL: "https://example.com", Title: "Example Domain"}
 	navJSON, _ := json.Marshal(navData)
 
@@ -2745,6 +2809,7 @@ func TestRunReload_Success(t *testing.T) {
 }
 
 func TestRunReload_WithWaitFlag(t *testing.T) {
+	enableJSONOutput(t)
 	navData := ipc.NavigateData{URL: "https://example.com", Title: "Example Domain"}
 	navJSON, _ := json.Marshal(navData)
 
@@ -2787,6 +2852,7 @@ func TestRunReload_WithWaitFlag(t *testing.T) {
 }
 
 func TestRunBack_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -2817,6 +2883,7 @@ func TestRunBack_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunBack_Success(t *testing.T) {
+	enableJSONOutput(t)
 	navData := ipc.NavigateData{URL: "https://previous.com", Title: "Previous Page"}
 	navJSON, _ := json.Marshal(navData)
 
@@ -2865,6 +2932,7 @@ func TestRunBack_Success(t *testing.T) {
 }
 
 func TestRunBack_NoHistory(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: false, Error: "no previous page in history"}, nil
@@ -2907,6 +2975,7 @@ func TestRunBack_NoHistory(t *testing.T) {
 }
 
 func TestRunBack_WithWaitFlag(t *testing.T) {
+	enableJSONOutput(t)
 	navData := ipc.NavigateData{URL: "https://previous.com", Title: "Previous"}
 	navJSON, _ := json.Marshal(navData)
 
@@ -2949,6 +3018,7 @@ func TestRunBack_WithWaitFlag(t *testing.T) {
 }
 
 func TestRunForward_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -2979,6 +3049,7 @@ func TestRunForward_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunForward_Success(t *testing.T) {
+	enableJSONOutput(t)
 	navData := ipc.NavigateData{URL: "https://next.com", Title: "Next Page"}
 	navJSON, _ := json.Marshal(navData)
 
@@ -3027,6 +3098,7 @@ func TestRunForward_Success(t *testing.T) {
 }
 
 func TestRunForward_NoHistory(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: false, Error: "no next page in history"}, nil
@@ -3069,6 +3141,7 @@ func TestRunForward_NoHistory(t *testing.T) {
 }
 
 func TestRunForward_WithWaitFlag(t *testing.T) {
+	enableJSONOutput(t)
 	navData := ipc.NavigateData{URL: "https://next.com", Title: "Next"}
 	navJSON, _ := json.Marshal(navData)
 
@@ -3113,6 +3186,7 @@ func TestRunForward_WithWaitFlag(t *testing.T) {
 // Click command tests
 
 func TestRunClick_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -3143,6 +3217,7 @@ func TestRunClick_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunClick_Success(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd != "click" {
@@ -3190,6 +3265,7 @@ func TestRunClick_Success(t *testing.T) {
 }
 
 func TestRunClick_WithWarning(t *testing.T) {
+	enableJSONOutput(t)
 	warningData, _ := json.Marshal(map[string]any{
 		"warning": "element may be covered by another element: #hidden-btn",
 	})
@@ -3236,6 +3312,7 @@ func TestRunClick_WithWarning(t *testing.T) {
 }
 
 func TestRunClick_ElementNotFound(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: false, Error: "element not found: #missing"}, nil
@@ -3280,6 +3357,7 @@ func TestRunClick_ElementNotFound(t *testing.T) {
 // Focus command tests
 
 func TestRunFocus_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -3310,6 +3388,7 @@ func TestRunFocus_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunFocus_Success(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd != "focus" {
@@ -3357,6 +3436,7 @@ func TestRunFocus_Success(t *testing.T) {
 }
 
 func TestRunFocus_ElementNotFound(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: false, Error: "element not found: #missing"}, nil
@@ -3398,6 +3478,7 @@ func TestRunFocus_ElementNotFound(t *testing.T) {
 // Type command tests
 
 func TestRunType_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -3428,6 +3509,7 @@ func TestRunType_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunType_TextOnly(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.TypeParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -3480,6 +3562,7 @@ func TestRunType_TextOnly(t *testing.T) {
 }
 
 func TestRunType_WithSelector(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.TypeParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -3512,6 +3595,7 @@ func TestRunType_WithSelector(t *testing.T) {
 }
 
 func TestRunType_WithKeyFlag(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.TypeParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -3544,6 +3628,7 @@ func TestRunType_WithKeyFlag(t *testing.T) {
 }
 
 func TestRunType_WithClearFlag(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.TypeParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -3576,6 +3661,7 @@ func TestRunType_WithClearFlag(t *testing.T) {
 }
 
 func TestRunType_AllFlags(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.TypeParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -3623,6 +3709,7 @@ func TestRunType_AllFlags(t *testing.T) {
 // Key command tests
 
 func TestRunKey_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -3653,6 +3740,7 @@ func TestRunKey_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunKey_Success(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.KeyParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -3701,6 +3789,7 @@ func TestRunKey_Success(t *testing.T) {
 }
 
 func TestRunKey_WithCtrlModifier(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.KeyParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -3736,6 +3825,7 @@ func TestRunKey_WithCtrlModifier(t *testing.T) {
 }
 
 func TestRunKey_WithMetaModifier(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.KeyParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -3771,6 +3861,7 @@ func TestRunKey_WithMetaModifier(t *testing.T) {
 }
 
 func TestRunKey_AllModifiers(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.KeyParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -3825,6 +3916,7 @@ func TestRunKey_AllModifiers(t *testing.T) {
 // Select command tests
 
 func TestRunSelect_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -3855,6 +3947,7 @@ func TestRunSelect_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunSelect_Success(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.SelectParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -3906,6 +3999,7 @@ func TestRunSelect_Success(t *testing.T) {
 }
 
 func TestRunSelect_ElementNotFound(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: false, Error: "element not found: #missing"}, nil
@@ -3948,6 +4042,7 @@ func TestRunSelect_ElementNotFound(t *testing.T) {
 }
 
 func TestRunSelect_NotASelectElement(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: false, Error: "element is not a select: #div"}, nil
@@ -4033,6 +4128,7 @@ func TestParseCoords(t *testing.T) {
 }
 
 func TestRunScroll_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -4063,6 +4159,7 @@ func TestRunScroll_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunScroll_ElementMode(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.ScrollParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -4114,6 +4211,7 @@ func TestRunScroll_ElementMode(t *testing.T) {
 }
 
 func TestRunScroll_ToMode(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.ScrollParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -4152,6 +4250,7 @@ func TestRunScroll_ToMode(t *testing.T) {
 }
 
 func TestRunScroll_ByMode(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.ScrollParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -4190,6 +4289,7 @@ func TestRunScroll_ByMode(t *testing.T) {
 }
 
 func TestRunScroll_InvalidToCoords(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: true}, nil
@@ -4232,6 +4332,7 @@ func TestRunScroll_InvalidToCoords(t *testing.T) {
 }
 
 func TestRunScroll_NoModeSpecified(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: true}, nil
@@ -4274,6 +4375,7 @@ func TestRunScroll_NoModeSpecified(t *testing.T) {
 }
 
 func TestRunScroll_ElementNotFound(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: false, Error: "element not found: #missing"}, nil
@@ -4318,6 +4420,7 @@ func TestRunScroll_ElementNotFound(t *testing.T) {
 // Ready command tests
 
 func TestRunReady_DaemonNotRunning(t *testing.T) {
+	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{daemonRunning: false})
 	defer restore()
 
@@ -4348,6 +4451,7 @@ func TestRunReady_DaemonNotRunning(t *testing.T) {
 }
 
 func TestRunReady_Success(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.ReadyParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -4397,6 +4501,7 @@ func TestRunReady_Success(t *testing.T) {
 }
 
 func TestRunReady_WithCustomTimeout(t *testing.T) {
+	enableJSONOutput(t)
 	var capturedParams ipc.ReadyParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
@@ -4430,6 +4535,7 @@ func TestRunReady_WithCustomTimeout(t *testing.T) {
 }
 
 func TestRunReady_Timeout(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: false, Error: "timeout waiting for page load"}, nil
@@ -4472,6 +4578,7 @@ func TestRunReady_Timeout(t *testing.T) {
 }
 
 func TestRunReady_NoActiveSession(t *testing.T) {
+	enableJSONOutput(t)
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			return ipc.Response{OK: false, Error: "no active session"}, nil

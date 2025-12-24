@@ -19,7 +19,7 @@ Add a REPL interface to the daemon that activates when stdin is a TTY. Refactor 
 REPL activation:
 
 - When `webctl start` runs and stdin is a TTY, show `webctl>` prompt
-- Accept commands interactively using liner for readline functionality
+- Accept commands interactively using readline library for line editing functionality
 - When stdin is not a TTY (pipe, background), daemon runs silently with IPC only
 
 Executor interface:
@@ -89,10 +89,11 @@ TTY-only activation:
 - Non-TTY (pipe, background, CI): silent daemon, IPC only
 - Avoids complexity of stdin exhaustion in pipelines
 
-liner for readline:
+readline library (chzyer/readline):
 
-- Simple, focused library
+- Pure Go readline implementation
 - Provides arrow key history navigation
+- Supports ANSI escape sequences in prompts (for colored prompts)
 - MIT licensed
 - No heavy TUI framework needed
 
@@ -100,7 +101,7 @@ liner for readline:
 
 Accept:
 
-- New dependency (liner)
+- New dependency (chzyer/readline)
 - Refactoring commands to use Executor interface
 - Two code paths for command execution (though unified by interface)
 - REPL output interleaved with any daemon log messages
@@ -201,18 +202,18 @@ Command refactoring:
 
 REPL loop location: `internal/daemon/repl.go`
 
-- Uses liner for input
+- Uses chzyer/readline for input
 - Parses input line as Cobra command
 - Executes via DirectExecutor
 - Handles special commands (help, exit, history)
 
-liner setup:
+readline setup:
 
-- Create liner.State
-- Configure history (in-memory only)
-- Prompt: `webctl>`
-- Handle Ctrl+C (cancel current line, not exit)
-- Handle Ctrl+D (exit)
+- Create readline.Instance with Config
+- Configure history (in-memory only, no file persistence)
+- Prompt: `webctl>` (supports ANSI colors)
+- Handle Ctrl+C via InterruptPrompt (cancel current line, not exit)
+- Handle Ctrl+D via EOFPrompt (exit)
 
 Help command output:
 
@@ -238,3 +239,4 @@ REPL:
 ## Updates
 
 - 2025-12-15: Initial version
+- 2025-12-24: Replaced peterh/liner with chzyer/readline to support ANSI colored prompts (DR-019). The liner library rejected prompts containing control characters (ANSI escape codes), while readline explicitly supports them.

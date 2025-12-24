@@ -15,6 +15,7 @@ Projects are stored in the docs/projects/ directory. Update this when starting a
 Active Project: None
 
 Completed projects are in docs/projects/completed/
+- P-014: Terminal Colors (2025-12-24)
 - P-012: Text Output Format (2025-12-24)
 - P-009: Design Review & Validation of P-008 Commands (2025-12-24)
 - P-008: Navigation & Interaction Commands (2025-12-23)
