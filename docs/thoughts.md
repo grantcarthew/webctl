@@ -11,4 +11,7 @@ This document is a space for brainstorming, capturing ideas, asking questions, a
 - After navigate, the REPL terminal still shows the old address/title.
 - We should have a `find` command to find an element on the page.
 - The default timeout needs to be extended to 60 seconds or more (abc.net.au times out at 30 sec).
-
+- What about color for the cookies?
+- With output commands, we should check if the page is ready, if not, stderr a message saying "waiting for ready" or the like.
+- tesla.com -> html failed `Error: failed to get window: request timed out: context deadline exceeded`, then a reload hung. The site has a "Select region" dialog.
+- What about CSS?
