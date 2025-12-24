@@ -75,7 +75,7 @@ func runTarget(cmd *cobra.Command, args []string) error {
 	}
 
 	// Text mode: use text formatter
-	return format.Target(os.Stdout, data, format.DefaultOptions())
+	return format.Target(os.Stdout, data, format.NewOutputOptions(JSONOutput, NoColor))
 }
 
 // outputTargetError outputs an error response that includes session data.
@@ -109,7 +109,7 @@ func outputTargetError(resp ipc.Response) error {
 	}
 
 	// Text mode: use text formatter
-	return format.TargetError(os.Stderr, resp.Error, errData.Sessions, errData.Matches, format.DefaultOptions())
+	return format.TargetError(os.Stderr, resp.Error, errData.Sessions, errData.Matches, format.NewOutputOptions(JSONOutput, NoColor))
 }
 
 // outputTargetJSON outputs target data in JSON format.

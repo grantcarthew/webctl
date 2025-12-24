@@ -10,3 +10,5 @@ This document is a space for brainstorming, capturing ideas, asking questions, a
 - The `html` command does not pretty print the html in the file. SHould it? I don't remember.
 - After navigate, the REPL terminal still shows the old address/title.
 - We should have a `find` command to find an element on the page.
+- The default timeout needs to be extended to 60 seconds or more (abc.net.au times out at 30 sec).
+

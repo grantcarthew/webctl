@@ -24,5 +24,6 @@ Design Records (DRs) document significant technical decisions made during develo
 | DR-016 | [Browser Port Conflict Handling](dr-016-browser-port-conflict-handling.md) | Accepted | 2025-12-23 |
 | DR-017 | [Find Command Interface](dr-017-find-command.md) | Proposed | 2025-12-24 |
 | DR-018 | [Text Output Format](dr-018-text-output-format.md) | Proposed | 2025-12-24 |
+| DR-019 | [Terminal Colors](dr-019-cli-terminal-colors.md) | Accepted | 2025-12-24 |
 
 Note: Superseded design records are in `superseded/`

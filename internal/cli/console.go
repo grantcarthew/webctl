@@ -78,7 +78,7 @@ func runConsole(cmd *cobra.Command, args []string) error {
 	}
 
 	// Text mode: use text formatter
-	return format.Console(os.Stdout, entries, format.DefaultOptions())
+	return format.Console(os.Stdout, entries, format.NewOutputOptions(JSONOutput, NoColor))
 }
 
 // filterConsoleByType filters entries to only include those with matching types.

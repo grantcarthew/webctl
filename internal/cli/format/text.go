@@ -8,16 +8,55 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"golang.org/x/term"
 )
+
+// Color helper functions that respect color.NoColor flag
+func colorize(c color.Attribute, s string) string {
+	return color.New(c).Sprint(s)
+}
+
+func colorFprint(w io.Writer, c color.Attribute, s string) {
+	color.New(c).Fprint(w, s)
+}
+
+func colorFprintf(w io.Writer, c color.Attribute, format string, args ...interface{}) {
+	color.New(c).Fprintf(w, format, args...)
+}
 
 // OutputOptions controls text formatting behavior.
 type OutputOptions struct {
 	UseColor bool // Enable ANSI color codes
 }
 
+// NewOutputOptions returns output options based on flags and environment.
+// Priority: jsonOutput > noColorFlag > NO_COLOR env > TTY detection.
+func NewOutputOptions(jsonOutput bool, noColorFlag bool) OutputOptions {
+	// JSON output never has colors
+	if jsonOutput {
+		return OutputOptions{UseColor: false}
+	}
+
+	// --no-color flag disables colors
+	if noColorFlag {
+		return OutputOptions{UseColor: false}
+	}
+
+	// NO_COLOR environment variable disables colors
+	if os.Getenv("NO_COLOR") != "" {
+		return OutputOptions{UseColor: false}
+	}
+
+	// Enable colors if stdout is a TTY
+	return OutputOptions{
+		UseColor: term.IsTerminal(int(os.Stdout.Fd())),
+	}
+}
+
 // DefaultOptions returns default output options based on TTY detection.
+// Deprecated: Use NewOutputOptions instead for proper color detection.
 func DefaultOptions() OutputOptions {
 	return OutputOptions{
 		UseColor: term.IsTerminal(int(os.Stdout.Fd())),
@@ -31,22 +70,35 @@ func ActionSuccess(w io.Writer) error {
 }
 
 // ActionError outputs "Error: <message>" for failed action commands.
-func ActionError(w io.Writer, msg string) error {
-	_, err := fmt.Fprintf(w, "Error: %s\n", msg)
-	return err
+func ActionError(w io.Writer, msg string, opts OutputOptions) error {
+	if opts.UseColor {
+		colorFprint(w, color.FgRed, "Error:")
+		fmt.Fprintf(w, " %s\n", msg)
+	} else {
+		fmt.Fprintf(w, "Error: %s\n", msg)
+	}
+	return nil
 }
 
 // Status outputs daemon status in text format.
 func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 	// Not running state
 	if !data.Running {
-		_, err := fmt.Fprintln(w, "Not running")
-		return err
+		if opts.UseColor {
+			colorFprint(w, color.FgYellow, "Not running\n")
+		} else {
+			fmt.Fprintln(w, "Not running")
+		}
+		return nil
 	}
 
 	// Running but no browser
 	if data.ActiveSession == nil && len(data.Sessions) == 0 {
-		fmt.Fprintln(w, "No browser")
+		if opts.UseColor {
+			colorFprint(w, color.FgYellow, "No browser\n")
+		} else {
+			fmt.Fprintln(w, "No browser")
+		}
 		if data.PID > 0 {
 			fmt.Fprintf(w, "pid: %d\n", data.PID)
 		}
@@ -55,7 +107,11 @@ func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 
 	// Running but no active session (browser connected but no pages)
 	if data.ActiveSession == nil {
-		fmt.Fprintln(w, "No session")
+		if opts.UseColor {
+			colorFprint(w, color.FgYellow, "No session\n")
+		} else {
+			fmt.Fprintln(w, "No session")
+		}
 		if data.PID > 0 {
 			fmt.Fprintf(w, "pid: %d\n", data.PID)
 		}
@@ -63,7 +119,11 @@ func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 	}
 
 	// All systems operational
-	fmt.Fprintln(w, "OK")
+	if opts.UseColor {
+		colorFprint(w, color.FgGreen, "OK\n")
+	} else {
+		fmt.Fprintln(w, "OK")
+	}
 	if data.PID > 0 {
 		fmt.Fprintf(w, "pid: %d\n", data.PID)
 	}
@@ -72,13 +132,17 @@ func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 	if len(data.Sessions) > 0 {
 		fmt.Fprintln(w, "sessions:")
 		for _, session := range data.Sessions {
-			prefix := "  "
 			if session.Active {
-				prefix = "  * "
+				if opts.UseColor {
+					fmt.Fprint(w, "  ")
+					colorFprint(w, color.FgCyan, "* ")
+					fmt.Fprintln(w, session.URL)
+				} else {
+					fmt.Fprintf(w, "  * %s\n", session.URL)
+				}
 			} else {
-				prefix = "    "
+				fmt.Fprintf(w, "    %s\n", session.URL)
 			}
-			fmt.Fprintf(w, "%s%s\n", prefix, session.URL)
 		}
 	}
 
@@ -90,9 +154,29 @@ func Console(w io.Writer, entries []ipc.ConsoleEntry, opts OutputOptions) error 
 	for _, e := range entries {
 		ts := time.UnixMilli(e.Timestamp).Local()
 		timestamp := ts.Format("15:04:05")
+		level := strings.ToUpper(e.Type)
 
 		// Format: [HH:MM:SS] LEVEL Message
-		fmt.Fprintf(w, "[%s] %s %s\n", timestamp, strings.ToUpper(e.Type), e.Text)
+		if opts.UseColor {
+			fmt.Fprint(w, "[")
+			colorFprint(w, color.Faint, timestamp)
+			fmt.Fprint(w, "] ")
+
+			// Color the level based on type
+			switch strings.ToLower(e.Type) {
+			case "error":
+				colorFprint(w, color.FgRed, level)
+			case "warning", "warn":
+				colorFprint(w, color.FgYellow, level)
+			case "info":
+				colorFprint(w, color.FgCyan, level)
+			default:
+				fmt.Fprint(w, level)
+			}
+			fmt.Fprintf(w, " %s\n", e.Text)
+		} else {
+			fmt.Fprintf(w, "[%s] %s %s\n", timestamp, level, e.Text)
+		}
 
 		// Source URL and line number indented below
 		if e.URL != "" {
@@ -113,7 +197,40 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 		durationMs := int(e.Duration * 1000)
 
 		// Main line: METHOD URL STATUS DURATION
-		fmt.Fprintf(w, "%s %s %d %dms\n", e.Method, e.URL, e.Status, durationMs)
+		if opts.UseColor {
+			// Color the HTTP method
+			switch e.Method {
+			case "GET":
+				colorFprint(w, color.FgGreen, e.Method)
+			case "POST":
+				colorFprint(w, color.FgBlue, e.Method)
+			case "PUT", "PATCH":
+				colorFprint(w, color.FgYellow, e.Method)
+			case "DELETE":
+				colorFprint(w, color.FgRed, e.Method)
+			default:
+				fmt.Fprint(w, e.Method)
+			}
+
+			fmt.Fprintf(w, " %s ", e.URL)
+
+			// Color the status code by category
+			if e.Status >= 200 && e.Status < 300 {
+				colorFprintf(w, color.FgGreen, "%d", e.Status)
+			} else if e.Status >= 300 && e.Status < 400 {
+				colorFprintf(w, color.FgCyan, "%d", e.Status)
+			} else if e.Status >= 400 && e.Status < 500 {
+				colorFprintf(w, color.FgYellow, "%d", e.Status)
+			} else if e.Status >= 500 {
+				colorFprintf(w, color.FgRed, "%d", e.Status)
+			} else {
+				fmt.Fprintf(w, "%d", e.Status)
+			}
+
+			fmt.Fprintf(w, " %dms\n", durationMs)
+		} else {
+			fmt.Fprintf(w, "%s %s %d %dms\n", e.Method, e.URL, e.Status, durationMs)
+		}
 
 		// Request body (if present and non-empty)
 		if e.Body != "" && e.Method != "GET" {
@@ -199,10 +316,7 @@ func EvalResult(w io.Writer, data ipc.EvalData) error {
 // Target outputs page sessions list in text format.
 func Target(w io.Writer, data ipc.TargetData, opts OutputOptions) error {
 	for _, session := range data.Sessions {
-		prefix := "  "
-		if session.ID == data.ActiveSession {
-			prefix = "* "
-		}
+		isActive := session.ID == data.ActiveSession
 
 		// Truncate ID to 8 chars
 		displayID := session.ID
@@ -216,14 +330,34 @@ func Target(w io.Writer, data ipc.TargetData, opts OutputOptions) error {
 			title = title[:37] + "..."
 		}
 
-		fmt.Fprintf(w, "%s%s - %s [%s]\n", prefix, session.URL, title, displayID)
+		if opts.UseColor {
+			if isActive {
+				colorFprint(w, color.FgCyan, "* ")
+			} else {
+				fmt.Fprint(w, "  ")
+			}
+			fmt.Fprintf(w, "%s - %s [", session.URL, title)
+			colorFprint(w, color.FgCyan, displayID)
+			fmt.Fprintln(w, "]")
+		} else {
+			prefix := "  "
+			if isActive {
+				prefix = "* "
+			}
+			fmt.Fprintf(w, "%s%s - %s [%s]\n", prefix, session.URL, title, displayID)
+		}
 	}
 	return nil
 }
 
 // TargetError outputs target error with session/match information.
 func TargetError(w io.Writer, errorMsg string, sessions []ipc.PageSession, matches []ipc.PageSession, opts OutputOptions) error {
-	fmt.Fprintf(w, "Error: %s\n", errorMsg)
+	if opts.UseColor {
+		colorFprint(w, color.FgRed, "Error:")
+		fmt.Fprintf(w, " %s\n", errorMsg)
+	} else {
+		fmt.Fprintf(w, "Error: %s\n", errorMsg)
+	}
 
 	if len(sessions) > 0 {
 		fmt.Fprintln(w, "Available sessions:")

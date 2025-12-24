@@ -136,7 +136,7 @@ func runNetwork(cmd *cobra.Command, args []string) error {
 	}
 
 	// Text mode: use text formatter
-	return format.Network(os.Stdout, entries, format.DefaultOptions())
+	return format.Network(os.Stdout, entries, format.NewOutputOptions(JSONOutput, NoColor))
 }
 
 // statusMatcher represents a parsed status pattern.

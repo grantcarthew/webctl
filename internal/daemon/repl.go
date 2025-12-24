@@ -7,8 +7,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/chzyer/readline"
+	"github.com/fatih/color"
 	"github.com/grantcarthew/webctl/internal/ipc"
-	"github.com/peterh/liner"
 	"golang.org/x/term"
 )
 
@@ -20,7 +21,7 @@ type REPL struct {
 	handler     ipc.Handler
 	cmdExec     ipc.CommandExecutor
 	sessionProv SessionProvider
-	liner       *liner.State
+	readline    *readline.Instance
 	history     []string
 	shutdown    func()
 }
@@ -48,15 +49,27 @@ func IsStdinTTY() bool {
 
 // Run starts the REPL loop. Blocks until exit command or EOF.
 func (r *REPL) Run() error {
-	r.liner = liner.NewLiner()
-	defer r.liner.Close()
+	// Create readline instance with initial prompt
+	cfg := &readline.Config{
+		Prompt:          r.prompt(),
+		InterruptPrompt: "^C",
+		EOFPrompt:       "^D",
+	}
 
-	r.liner.SetCtrlCAborts(true)
+	rl, err := readline.NewEx(cfg)
+	if err != nil {
+		return err
+	}
+	r.readline = rl
+	defer r.readline.Close()
 
 	for {
-		line, err := r.liner.Prompt(r.prompt())
+		// Update prompt dynamically before each read
+		r.readline.SetPrompt(r.prompt())
+
+		line, err := r.readline.Readline()
 		if err != nil {
-			if err == liner.ErrPromptAborted || err == io.EOF {
+			if err == readline.ErrInterrupt || err == io.EOF {
 				return nil
 			}
 			return err
@@ -67,7 +80,6 @@ func (r *REPL) Run() error {
 			continue
 		}
 
-		r.liner.AppendHistory(line)
 		r.history = append(r.history, line)
 
 		if r.handleSpecialCommand(line) {
@@ -94,12 +106,21 @@ func cleanURLForDisplay(url string) string {
 
 // prompt generates the REPL prompt with session context.
 func (r *REPL) prompt() string {
+	// Check if color should be enabled
+	useColor := shouldUseREPLColor()
+
 	if r.sessionProv == nil {
+		if useColor {
+			return coloredPrompt("", 0)
+		}
 		return "webctl> "
 	}
 
 	active, count := r.sessionProv()
 	if active == nil {
+		if useColor {
+			return coloredPrompt("", 0)
+		}
 		return "webctl> "
 	}
 
@@ -114,10 +135,46 @@ func (r *REPL) prompt() string {
 		displayURL = displayURL[:37] + "..."
 	}
 
+	if useColor {
+		return coloredPrompt(displayURL, count)
+	}
+
 	if count > 1 {
 		return fmt.Sprintf("webctl [%s](%d)> ", displayURL, count)
 	}
 	return fmt.Sprintf("webctl [%s]> ", displayURL)
+}
+
+// shouldUseREPLColor determines if the REPL should use colors.
+// Respects NO_COLOR env var but always assumes TTY in interactive mode.
+func shouldUseREPLColor() bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	// REPL is always interactive, so we default to true
+	return true
+}
+
+// coloredPrompt generates a colored REPL prompt.
+// Format: webctl [url](count)>
+// Colors: webctl=blue, []=default, url=cyan, count=default, >=bold white
+func coloredPrompt(url string, count int) string {
+	blue := color.New(color.FgBlue)
+	cyan := color.New(color.FgCyan)
+	boldWhite := color.New(color.FgWhite, color.Bold)
+
+	if url == "" {
+		// No session: webctl>
+		return blue.Sprint("webctl") + boldWhite.Sprint("> ")
+	}
+
+	if count > 1 {
+		// Multiple sessions: webctl [url](count)>
+		return blue.Sprint("webctl") + " [" + cyan.Sprint(url) + fmt.Sprintf("](%d)", count) + boldWhite.Sprint("> ")
+	}
+
+	// Single session: webctl [url]>
+	return blue.Sprint("webctl") + " [" + cyan.Sprint(url) + "]" + boldWhite.Sprint("> ")
 }
 
 // replCommands lists REPL-specific commands for abbreviation matching.
@@ -272,7 +329,12 @@ func outputJSON(data any) {
 // The REPL uses text format for its own errors since it's interactive.
 // Individual commands respect the --json flag separately.
 func outputError(msg string) {
-	fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
+	if shouldUseREPLColor() {
+		color.New(color.FgRed).Fprint(os.Stderr, "Error:")
+		fmt.Fprintf(os.Stderr, " %s\n", msg)
+	} else {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
+	}
 }
 
 // outputResponse writes the response as JSON to stdout.

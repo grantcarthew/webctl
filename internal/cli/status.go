@@ -32,7 +32,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 				"running": false,
 			})
 		}
-		return format.Status(os.Stdout, status, format.DefaultOptions())
+		return format.Status(os.Stdout, status, format.NewOutputOptions(JSONOutput, NoColor))
 	}
 
 	exec, err := execFactory.NewExecutor()
@@ -62,5 +62,5 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Text mode: use text formatter
-	return format.Status(os.Stdout, status, format.DefaultOptions())
+	return format.Status(os.Stdout, status, format.NewOutputOptions(JSONOutput, NoColor))
 }
