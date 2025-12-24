@@ -47,12 +47,17 @@ func runClear(cmd *cobra.Command, args []string) error {
 		return outputError(resp.Error)
 	}
 
-	msg := "all buffers cleared"
-	if target != "" {
-		msg = target + " buffer cleared"
+	// JSON mode: include message
+	if JSONOutput {
+		msg := "all buffers cleared"
+		if target != "" {
+			msg = target + " buffer cleared"
+		}
+		return outputSuccess(map[string]string{
+			"message": msg,
+		})
 	}
 
-	return outputSuccess(map[string]string{
-		"message": msg,
-	})
+	// Text mode: just output OK
+	return outputSuccess(nil)
 }

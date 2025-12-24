@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
@@ -131,13 +132,17 @@ func runEval(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Build result - only include value if it was present (not undefined)
-	result := map[string]any{
-		"ok": true,
-	}
-	if data.HasValue {
-		result["value"] = data.Value
+	// JSON mode: output JSON with value
+	if JSONOutput {
+		result := map[string]any{
+			"ok": true,
+		}
+		if data.HasValue {
+			result["value"] = data.Value
+		}
+		return outputJSON(os.Stdout, result)
 	}
 
-	return outputJSON(os.Stdout, result)
+	// Text mode: use text formatter (outputs raw value)
+	return format.EvalResult(os.Stdout, data)
 }

@@ -12,9 +12,10 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-Active Project: [P-012: Text Output Format](docs/projects/p-012-cli-text-output-format.md)
+Active Project: None
 
 Completed projects are in docs/projects/completed/
+- P-012: Text Output Format (2025-12-24)
 - P-009: Design Review & Validation of P-008 Commands (2025-12-24)
 - P-008: Navigation & Interaction Commands (2025-12-23)
 
@@ -53,7 +54,7 @@ webctl clear [console|network]
 - Language: Go
 - Browser control: CDP (Chrome DevTools Protocol)
 - IPC: Unix socket (local), TCP (remote)
-- Output: JSON
+- Output: Text format (default), JSON (--json flag)
 
 ---
 

@@ -1,8 +1,8 @@
 # P-012: Text Output Format
 
-- Status: Proposed
-- Started: -
-- Completed: -
+- Status: Completed
+- Started: 2025-12-24
+- Completed: 2025-12-24
 
 ## Overview
 
@@ -32,11 +32,11 @@ Out of Scope:
 
 ## Success Criteria
 
-- [ ] All commands output text by default
-- [ ] All commands support `--json` flag
-- [ ] Text output matches DR-018 specification
-- [ ] Colours disabled when output is piped
-- [ ] Existing JSON consumers can use `--json` flag
+- [x] All commands output text by default
+- [x] All commands support `--json` flag
+- [x] Text output matches DR-018 specification
+- [x] Colours disabled when output is piped
+- [x] Existing JSON consumers can use `--json` flag
 
 ## Deliverables
 

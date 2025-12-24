@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
 
+	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
@@ -23,9 +25,14 @@ func init() {
 func runStatus(cmd *cobra.Command, args []string) error {
 	// Check if daemon is running
 	if !execFactory.IsDaemonRunning() {
-		return outputSuccess(map[string]any{
-			"running": false,
-		})
+		status := ipc.StatusData{Running: false}
+
+		if JSONOutput {
+			return outputSuccess(map[string]any{
+				"running": false,
+			})
+		}
+		return format.Status(os.Stdout, status, format.DefaultOptions())
 	}
 
 	exec, err := execFactory.NewExecutor()
@@ -43,11 +50,17 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return outputError(resp.Error)
 	}
 
-	// Parse and output status data
+	// Parse status data
 	var status ipc.StatusData
 	if err := json.Unmarshal(resp.Data, &status); err != nil {
 		return outputError(err.Error())
 	}
 
-	return outputSuccess(status)
+	// JSON mode: output full JSON
+	if JSONOutput {
+		return outputSuccess(status)
+	}
+
+	// Text mode: use text formatter
+	return format.Status(os.Stdout, status, format.DefaultOptions())
 }

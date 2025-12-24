@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
@@ -37,7 +38,6 @@ and repeatable (--status 4xx --status 5xx) syntax.`,
 }
 
 func init() {
-	networkCmd.Flags().String("format", "", "Output format: json or text (auto-detect by default)")
 	networkCmd.Flags().StringSlice("type", nil, "Filter by CDP resource type (repeatable, CSV-supported)")
 	networkCmd.Flags().StringSlice("method", nil, "Filter by HTTP method (repeatable, CSV-supported)")
 	networkCmd.Flags().StringSlice("status", nil, "Filter by status code or range (repeatable, CSV-supported)")
@@ -60,7 +60,6 @@ func runNetwork(cmd *cobra.Command, args []string) error {
 	}
 
 	// Read flags from command
-	format, _ := cmd.Flags().GetString("format")
 	types, _ := cmd.Flags().GetStringSlice("type")
 	methods, _ := cmd.Flags().GetStringSlice("method")
 	statuses, _ := cmd.Flags().GetStringSlice("status")
@@ -131,15 +130,13 @@ func runNetwork(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
-	// Determine output format
-	if format == "" {
-		format = "json"
+	// JSON mode: output JSON
+	if JSONOutput {
+		return outputNetworkJSON(entries, maxBodySize)
 	}
 
-	if format == "text" {
-		return outputNetworkText(entries)
-	}
-	return outputNetworkJSON(entries, maxBodySize)
+	// Text mode: use text formatter
+	return format.Network(os.Stdout, entries, format.DefaultOptions())
 }
 
 // statusMatcher represents a parsed status pattern.
@@ -352,50 +349,6 @@ func applyNetworkLimiting(entries []ipc.NetworkEntry, head, tail int, rangeStr s
 	}
 
 	return entries, nil
-}
-
-// outputNetworkText outputs entries in human-readable text format.
-func outputNetworkText(entries []ipc.NetworkEntry) error {
-	for _, e := range entries {
-		ts := time.UnixMilli(e.RequestTime).Local()
-		timestamp := ts.Format("2006-01-02 15:04:05.000")
-
-		// Format duration
-		var durationStr string
-		if e.Duration > 0 {
-			durationStr = fmt.Sprintf("%.0fms", e.Duration*1000)
-		} else {
-			durationStr = "0ms"
-		}
-
-		// Format status
-		var statusStr string
-		if e.Failed {
-			statusStr = "ERR"
-		} else if e.Status > 0 {
-			statusStr = strconv.Itoa(e.Status)
-		} else {
-			statusStr = "---"
-		}
-
-		// Format MIME type (use "-" if empty)
-		mimeType := e.MimeType
-		if mimeType == "" {
-			mimeType = "-"
-		}
-
-		// Base output line
-		line := fmt.Sprintf("[%s] %s %s %s %s %s",
-			timestamp, e.Method, statusStr, durationStr, mimeType, e.URL)
-
-		// Add error info for failed requests
-		if e.Failed && e.Error != "" {
-			line += fmt.Sprintf(" (%s)", e.Error)
-		}
-
-		fmt.Println(line)
-	}
-	return nil
 }
 
 // outputNetworkJSON outputs entries in JSON format.

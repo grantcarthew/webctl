@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
@@ -68,7 +69,13 @@ func runTarget(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
-	return outputTargetJSON(data)
+	// JSON mode: output JSON
+	if JSONOutput {
+		return outputTargetJSON(data)
+	}
+
+	// Text mode: use text formatter
+	return format.Target(os.Stdout, data, format.DefaultOptions())
 }
 
 // outputTargetError outputs an error response that includes session data.
@@ -84,19 +91,25 @@ func outputTargetError(resp ipc.Response) error {
 		_ = json.Unmarshal(resp.Data, &errData)
 	}
 
-	output := map[string]any{
-		"ok":    false,
-		"error": resp.Error,
+	// JSON mode: output JSON
+	if JSONOutput {
+		output := map[string]any{
+			"ok":    false,
+			"error": resp.Error,
+		}
+
+		if len(errData.Sessions) > 0 {
+			output["sessions"] = errData.Sessions
+		}
+		if len(errData.Matches) > 0 {
+			output["matches"] = errData.Matches
+		}
+
+		return outputJSON(os.Stdout, output)
 	}
 
-	if len(errData.Sessions) > 0 {
-		output["sessions"] = errData.Sessions
-	}
-	if len(errData.Matches) > 0 {
-		output["matches"] = errData.Matches
-	}
-
-	return outputJSON(os.Stdout, output)
+	// Text mode: use text formatter
+	return format.TargetError(os.Stderr, resp.Error, errData.Sessions, errData.Matches, format.DefaultOptions())
 }
 
 // outputTargetJSON outputs target data in JSON format.

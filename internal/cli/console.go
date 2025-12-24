@@ -4,11 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
@@ -21,7 +20,6 @@ var consoleCmd = &cobra.Command{
 }
 
 func init() {
-	consoleCmd.Flags().String("format", "", "Output format: json or text (auto-detect by default)")
 	consoleCmd.Flags().StringSlice("type", nil, "Filter by entry type (repeatable, CSV-supported)")
 	consoleCmd.Flags().Int("head", 0, "Return first N entries")
 	consoleCmd.Flags().Int("tail", 0, "Return last N entries")
@@ -36,7 +34,6 @@ func runConsole(cmd *cobra.Command, args []string) error {
 	}
 
 	// Read flags from command
-	format, _ := cmd.Flags().GetString("format")
 	types, _ := cmd.Flags().GetStringSlice("type")
 	head, _ := cmd.Flags().GetInt("head")
 	tail, _ := cmd.Flags().GetInt("tail")
@@ -75,15 +72,13 @@ func runConsole(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
-	// Determine output format
-	if format == "" {
-		format = "json"
+	// JSON mode: output JSON
+	if JSONOutput {
+		return outputConsoleJSON(entries)
 	}
 
-	if format == "text" {
-		return outputConsoleText(entries)
-	}
-	return outputConsoleJSON(entries)
+	// Text mode: use text formatter
+	return format.Console(os.Stdout, entries, format.DefaultOptions())
 }
 
 // filterConsoleByType filters entries to only include those with matching types.
@@ -144,31 +139,6 @@ func applyConsoleLimiting(entries []ipc.ConsoleEntry, head, tail int, rangeStr s
 	}
 
 	return entries, nil
-}
-
-// outputConsoleText outputs entries in human-readable text format.
-func outputConsoleText(entries []ipc.ConsoleEntry) error {
-	for _, e := range entries {
-		ts := time.UnixMilli(e.Timestamp).Local()
-		timestamp := ts.Format("2006-01-02 15:04:05.000")
-
-		var source string
-		if e.URL != "" {
-			filename := filepath.Base(e.URL)
-			if e.Line > 0 {
-				source = fmt.Sprintf("%s:%d", filename, e.Line)
-			} else {
-				source = filename
-			}
-		}
-
-		if source != "" {
-			fmt.Printf("[%s] %s %s\n", timestamp, source, e.Text)
-		} else {
-			fmt.Printf("[%s] %s\n", timestamp, e.Text)
-		}
-	}
-	return nil
 }
 
 // outputConsoleJSON outputs entries in JSON format.

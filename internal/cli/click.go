@@ -111,19 +111,24 @@ func runClick(cmd *cobra.Command, args []string) error {
 		return outputError(resp.Error)
 	}
 
-	result := map[string]any{
-		"ok": true,
-	}
+	// JSON mode: include any warnings from response data
+	if JSONOutput {
+		result := map[string]any{
+			"ok": true,
+		}
 
-	// Check for warning in response data
-	if len(resp.Data) > 0 {
-		var data map[string]any
-		if err := json.Unmarshal(resp.Data, &data); err == nil {
-			if warning, ok := data["warning"].(string); ok {
-				result["warning"] = warning
+		if len(resp.Data) > 0 {
+			var data map[string]any
+			if err := json.Unmarshal(resp.Data, &data); err == nil {
+				if warning, ok := data["warning"].(string); ok {
+					result["warning"] = warning
+				}
 			}
 		}
+
+		return outputJSON(os.Stdout, result)
 	}
 
-	return outputJSON(os.Stdout, result)
+	// Text mode: just output OK (warnings ignored in text mode for simplicity)
+	return outputSuccess(nil)
 }

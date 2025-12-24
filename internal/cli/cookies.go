@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
+	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
@@ -224,13 +225,18 @@ func runCookiesList(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	result := map[string]any{
-		"ok":      true,
-		"cookies": data.Cookies,
-		"count":   data.Count,
+	// JSON mode: output JSON
+	if JSONOutput {
+		result := map[string]any{
+			"ok":      true,
+			"cookies": data.Cookies,
+			"count":   data.Count,
+		}
+		return outputJSON(os.Stdout, result)
 	}
 
-	return outputJSON(os.Stdout, result)
+	// Text mode: use text formatter
+	return format.Cookies(os.Stdout, data.Cookies, format.DefaultOptions())
 }
 
 func runCookiesSet(cmd *cobra.Command, args []string) error {
@@ -279,7 +285,13 @@ func runCookiesSet(cmd *cobra.Command, args []string) error {
 		return outputError(resp.Error)
 	}
 
-	return outputJSON(os.Stdout, map[string]any{"ok": true})
+	// JSON mode: output JSON
+	if JSONOutput {
+		return outputJSON(os.Stdout, map[string]any{"ok": true})
+	}
+
+	// Text mode: just output OK
+	return outputSuccess(nil)
 }
 
 func runCookiesDelete(cmd *cobra.Command, args []string) error {
@@ -317,18 +329,26 @@ func runCookiesDelete(cmd *cobra.Command, args []string) error {
 		var data ipc.CookiesData
 		if len(resp.Data) > 0 {
 			if err := json.Unmarshal(resp.Data, &data); err == nil && len(data.Matches) > 0 {
-				// Return error with matches
-				result := map[string]any{
-					"ok":      false,
-					"error":   resp.Error,
-					"matches": data.Matches,
+				// JSON mode: return error with matches
+				if JSONOutput {
+					result := map[string]any{
+						"ok":      false,
+						"error":   resp.Error,
+						"matches": data.Matches,
+					}
+					outputJSON(os.Stdout, result)
 				}
-				outputJSON(os.Stdout, result)
 				return outputError(resp.Error)
 			}
 		}
 		return outputError(resp.Error)
 	}
 
-	return outputJSON(os.Stdout, map[string]any{"ok": true})
+	// JSON mode: output JSON
+	if JSONOutput {
+		return outputJSON(os.Stdout, map[string]any{"ok": true})
+	}
+
+	// Text mode: just output OK
+	return outputSuccess(nil)
 }

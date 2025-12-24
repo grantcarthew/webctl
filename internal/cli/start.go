@@ -51,10 +51,15 @@ func runStart(cmd *cobra.Command, args []string) error {
 	d = daemon.New(cfg)
 
 	// Output startup message
-	outputSuccess(map[string]any{
-		"message": "daemon starting",
-		"port":    startPort,
-	})
+	if JSONOutput {
+		outputSuccess(map[string]any{
+			"message": "daemon starting",
+			"port":    startPort,
+		})
+	} else {
+		// Text mode: just output OK
+		outputSuccess(nil)
+	}
 
 	// Run daemon (blocks until shutdown)
 	if err := d.Run(context.Background()); err != nil {

@@ -17,6 +17,9 @@ var Version = "dev"
 // Debug enables verbose debug output.
 var Debug bool
 
+// JSONOutput enables JSON output format (default is text).
+var JSONOutput bool
+
 var rootCmd = &cobra.Command{
 	Use:           "webctl",
 	Short:         "Browser automation CLI for AI agents",
@@ -28,6 +31,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&Debug, "debug", false, "Enable verbose debug output")
+	rootCmd.PersistentFlags().BoolVar(&JSONOutput, "json", false, "Output in JSON format (default is text)")
 }
 
 // debugf logs a debug message if debug mode is enabled.
@@ -91,23 +95,43 @@ func outputJSON(w io.Writer, data any) error {
 	return enc.Encode(data)
 }
 
-// outputSuccess writes a successful JSON response to stdout.
+// outputSuccess writes a successful response to stdout.
+// Uses text format by default, JSON if --json flag is set.
+// For action commands (no data), outputs "OK" in text mode.
 func outputSuccess(data any) error {
-	resp := map[string]any{
-		"ok": true,
+	if JSONOutput {
+		resp := map[string]any{
+			"ok": true,
+		}
+		if data != nil {
+			resp["data"] = data
+		}
+		return outputJSON(os.Stdout, resp)
 	}
-	if data != nil {
-		resp["data"] = data
+
+	// Text mode: just "OK" for action commands (no data)
+	if data == nil {
+		_, err := fmt.Fprintln(os.Stdout, "OK")
+		return err
 	}
-	return outputJSON(os.Stdout, resp)
+
+	// For commands with data, they should use their own formatters
+	// This fallback shouldn't be hit in normal usage
+	_, err := fmt.Fprintf(os.Stdout, "%v\n", data)
+	return err
 }
 
-// outputError writes an error JSON response to stderr and returns an error.
+// outputError writes an error response to stderr and returns an error.
+// Uses text format by default, JSON if --json flag is set.
 func outputError(msg string) error {
-	resp := map[string]any{
-		"ok":    false,
-		"error": msg,
+	if JSONOutput {
+		resp := map[string]any{
+			"ok":    false,
+			"error": msg,
+		}
+		outputJSON(os.Stderr, resp)
+	} else {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
 	}
-	outputJSON(os.Stderr, resp)
 	return fmt.Errorf("%s", msg)
 }

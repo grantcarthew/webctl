@@ -127,16 +127,21 @@ func runNavigate(cmd *cobra.Command, args []string) error {
 		return outputError(resp.Error)
 	}
 
-	// Parse and output the navigation result
-	var data ipc.NavigateData
-	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return outputError(err.Error())
+	// JSON mode: include URL and title
+	if JSONOutput {
+		var data ipc.NavigateData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			return outputError(err.Error())
+		}
+
+		result := map[string]any{
+			"ok":    true,
+			"url":   data.URL,
+			"title": data.Title,
+		}
+		return outputJSON(os.Stdout, result)
 	}
 
-	result := map[string]any{
-		"ok":    true,
-		"url":   data.URL,
-		"title": data.Title,
-	}
-	return outputJSON(os.Stdout, result)
+	// Text mode: just output OK
+	return outputSuccess(nil)
 }
