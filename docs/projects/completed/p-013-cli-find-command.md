@@ -1,8 +1,8 @@
 # P-013: Find Command
 
-- Status: Proposed
-- Started: -
-- Completed: -
+- Status: Completed
+- Started: 2025-12-25
+- Completed: 2025-12-25
 
 ## Overview
 
@@ -34,16 +34,16 @@ Out of Scope:
 
 ## Success Criteria
 
-- [ ] `webctl find <text>` searches page HTML
-- [ ] Minimum 3 character query enforced
-- [ ] Case-insensitive by default
-- [ ] `-E` flag enables regex mode
-- [ ] `-c` flag enables case-sensitive (plain text only)
-- [ ] `--limit N` limits results
-- [ ] Text output shows context with indented match line
-- [ ] JSON output includes selector and xpath
-- [ ] Exit 0 for success (including no matches)
-- [ ] Exit 1 for errors (short query, bad regex, etc.)
+- [x] `webctl find <text>` searches page HTML
+- [x] Minimum 3 character query enforced
+- [x] Case-insensitive by default
+- [x] `-E` flag enables regex mode
+- [x] `-c` flag enables case-sensitive (plain text only)
+- [x] `--limit N` limits results
+- [x] Text output shows context with indented match line
+- [x] JSON output includes selector and xpath
+- [x] Exit 0 for success (including no matches)
+- [x] Exit 1 for errors (short query, bad regex, etc.)
 
 ## Deliverables
 

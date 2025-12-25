@@ -385,3 +385,81 @@ func TargetError(w io.Writer, errorMsg string, sessions []ipc.PageSession, match
 
 	return nil
 }
+
+// Find outputs find results in text format with colored highlighting.
+func Find(w io.Writer, data ipc.FindData, opts OutputOptions) error {
+	if len(data.Matches) == 0 {
+		fmt.Fprintln(w, "No matches found")
+		return nil
+	}
+
+	for i, match := range data.Matches {
+		// Header: "Match X of Y"
+		if opts.UseColor {
+			colorFprintf(w, color.FgCyan, "Match %d of %d\n", match.Index, data.Total)
+		} else {
+			fmt.Fprintf(w, "Match %d of %d\n", match.Index, data.Total)
+		}
+
+		// Context before (if present)
+		if match.Context.Before != "" {
+			fmt.Fprintf(w, "  %s\n", match.Context.Before)
+		}
+
+		// Match line with ">" prefix and highlighted text
+		if opts.UseColor {
+			// Highlight the matched text within the line
+			highlighted := highlightMatch(match.Context.Match, data.Query)
+			fmt.Fprintf(w, "> %s\n", highlighted)
+		} else {
+			fmt.Fprintf(w, "> %s\n", match.Context.Match)
+		}
+
+		// Context after (if present)
+		if match.Context.After != "" {
+			fmt.Fprintf(w, "  %s\n", match.Context.After)
+		}
+
+		// Separator between matches (cyan "---")
+		if i < len(data.Matches)-1 {
+			if opts.UseColor {
+				colorFprint(w, color.FgCyan, "---\n")
+			} else {
+				fmt.Fprintln(w, "---")
+			}
+		}
+	}
+
+	return nil
+}
+
+// highlightMatch highlights all occurrences of query in the line with yellow color.
+// Does case-insensitive matching for the highlighting.
+func highlightMatch(line string, query string) string {
+	// For simple highlighting, we'll use strings.Contains with case-insensitive comparison
+	// This is a basic implementation - the daemon should provide match positions for more accuracy
+	queryLower := strings.ToLower(query)
+
+	// Find all occurrences
+	result := line
+	offset := 0
+	for {
+		idx := strings.Index(strings.ToLower(result[offset:]), queryLower)
+		if idx == -1 {
+			break
+		}
+		idx += offset
+
+		// Extract the actual matched text (preserving case)
+		matched := result[idx : idx+len(query)]
+
+		// Replace with colored version
+		colored := colorize(color.FgYellow, matched)
+		result = result[:idx] + colored + result[idx+len(query):]
+
+		// Move offset past this match (account for ANSI codes added)
+		offset = idx + len(colored)
+	}
+
+	return result
+}

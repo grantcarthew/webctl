@@ -1,7 +1,7 @@
 # DR-017: Find Command Interface
 
 - Date: 2025-12-24
-- Status: Proposed
+- Status: Accepted
 - Category: CLI
 
 ## Problem

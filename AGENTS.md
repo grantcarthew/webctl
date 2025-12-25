@@ -12,9 +12,10 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-Active Project: P-015: Polish Release
+Active Project: P-015: HTML Formatting for Find and HTML Commands
 
 Completed projects are in docs/projects/completed/
+- P-013: Find Command (2025-12-25)
 - P-010: Ready Command Extensions (2025-12-25)
 - P-014: Terminal Colors (2025-12-24)
 - P-012: Text Output Format (2025-12-24)
@@ -48,6 +49,7 @@ webctl screenshot
 webctl html [selector]
 webctl eval <js-expression>
 webctl cookies
+webctl find <text> [-E] [-c] [--limit N]
 
 webctl click <selector>
 webctl type <selector> <text>
