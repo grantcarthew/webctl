@@ -145,7 +145,10 @@ type HistoryParams struct {
 
 // ReadyParams represents parameters for the "ready" command.
 type ReadyParams struct {
-	Timeout int `json:"timeout"` // timeout in milliseconds
+	Timeout     int    `json:"timeout"`     // timeout in milliseconds
+	Selector    string `json:"selector"`    // CSS selector to wait for (optional)
+	NetworkIdle bool   `json:"networkIdle"` // wait for network idle
+	Eval        string `json:"eval"`        // JavaScript expression to evaluate (optional)
 }
 
 // ClickParams represents parameters for the "click" command.

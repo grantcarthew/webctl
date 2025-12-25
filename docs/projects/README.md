@@ -11,14 +11,20 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | Project | Title | Status | Started | Completed |
 |---------|-------|--------|---------|-----------|
 | P-001 | Project Initialization | Completed | 2025-12-11 | 2025-12-11 |
-| P-002 | Project Definition | Proposed | - | - |
-| P-007 | Observation Commands | In Progress | 2025-12-15 | - |
-| P-008 | Navigation & Interaction Commands | In Progress | 2025-12-19 | - |
-| P-009 | Wait-For Commands | Proposed | - | - |
-| P-010 | Polish & Release | Proposed | - | - |
-| P-011 | CDP Navigation Debugging | In Progress | 2025-12-19 | - |
-| P-012 | Text Output Format | Proposed | - | - |
+| P-002 | Project Definition | Completed | 2025-12-11 | 2025-12-11 |
+| P-003 | CDP Core Library | Completed | 2025-12-11 | 2025-12-15 |
+| P-004 | Browser Launch | Completed | 2025-12-11 | 2025-12-15 |
+| P-005 | Daemon & IPC | Completed | 2025-12-11 | 2025-12-15 |
+| P-006 | CLI Framework | Completed | 2025-12-15 | 2025-12-15 |
+| P-007 | Observation Commands | Completed | 2025-12-15 | 2025-12-23 |
+| P-008 | Navigation & Interaction Commands | Completed | 2025-12-19 | 2025-12-23 |
+| P-009 | Design Review & Validation of P-008 | Completed | 2025-12-23 | 2025-12-24 |
+| P-010 | Ready Command Extensions | Completed | 2025-12-23 | 2025-12-25 |
+| P-011 | CDP Navigation Debugging | Completed | 2025-12-19 | 2025-12-23 |
+| P-012 | Text Output Format | Completed | 2025-12-24 | 2025-12-24 |
 | P-013 | Find Command | Proposed | - | - |
+| P-014 | Terminal Colors | Completed | 2025-12-24 | 2025-12-24 |
+| P-015 | Polish & Release | Proposed | - | - |
 
 Note: Completed projects are in `completed/`
 

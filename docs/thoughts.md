@@ -15,3 +15,4 @@ This document is a space for brainstorming, capturing ideas, asking questions, a
 - With output commands, we should check if the page is ready, if not, stderr a message saying "waiting for ready" or the like.
 - tesla.com -> html failed `Error: failed to get window: request timed out: context deadline exceeded`, then a reload hung. The site has a "Select region" dialog.
 - What about CSS?
+- There is a handleReadySelector function. Is there one like that for the select command? If so, are we being DRY?

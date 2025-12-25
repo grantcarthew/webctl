@@ -276,7 +276,8 @@ func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams) ipc.Respon
 	})
 }
 
-// handleReady waits for the page to finish loading.
+// handleReady waits for the page or application to be ready.
+// Supports multiple modes: page load, selector, network idle, and eval.
 func (d *Daemon) handleReady(req ipc.Request) ipc.Response {
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
@@ -295,11 +296,26 @@ func (d *Daemon) handleReady(req ipc.Request) ipc.Response {
 		timeout = time.Duration(params.Timeout) * time.Millisecond
 	}
 
+	// Mode detection (order matters)
+	if params.NetworkIdle {
+		return d.handleReadyNetworkIdle(activeID, timeout)
+	} else if params.Eval != "" {
+		return d.handleReadyEval(activeID, params.Eval, timeout)
+	} else if params.Selector != "" {
+		return d.handleReadySelector(activeID, params.Selector, timeout)
+	} else {
+		// Default: page load mode
+		return d.handleReadyPageLoad(activeID, timeout)
+	}
+}
+
+// handleReadyPageLoad waits for the page to finish loading (existing behavior).
+func (d *Daemon) handleReadyPageLoad(sessionID string, timeout time.Duration) ipc.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	// First check if page is already loaded via document.readyState
-	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+	result, err := d.cdp.SendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
 		"expression":    "document.readyState",
 		"returnByValue": true,
 	})
@@ -322,11 +338,224 @@ func (d *Daemon) handleReady(req ipc.Request) ipc.Response {
 	}
 
 	// Page not yet loaded, wait for loadEventFired
-	if err := d.waitForLoadEvent(activeID, timeout); err != nil {
+	if err := d.waitForLoadEvent(sessionID, timeout); err != nil {
 		return ipc.ErrorResponse(err.Error())
 	}
 
 	return ipc.SuccessResponse(nil)
+}
+
+// handleReadySelector waits for an element matching the CSS selector to appear.
+func (d *Daemon) handleReadySelector(sessionID, selector string, timeout time.Duration) ipc.Response {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ipc.ErrorResponse(fmt.Sprintf("timeout waiting for: %s", selector))
+		case <-ticker.C:
+			// Try to find the element
+			found, err := d.querySelector(ctx, sessionID, selector)
+			if err != nil {
+				// Continue polling on error (element might not exist yet)
+				continue
+			}
+			if found {
+				return ipc.SuccessResponse(nil)
+			}
+		}
+	}
+}
+
+// handleReadyNetworkIdle waits for all pending network requests to complete.
+func (d *Daemon) handleReadyNetworkIdle(sessionID string, timeout time.Duration) ipc.Response {
+	// Ensure Network domain is enabled (needed for tracking requests)
+	if err := d.ensureNetworkEnabled(sessionID); err != nil {
+		return ipc.ErrorResponse(err.Error())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	idleThreshold := 500 * time.Millisecond
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	var idleStart time.Time
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ipc.ErrorResponse("timeout waiting for network idle")
+		case <-ticker.C:
+			pending := d.getPendingRequestCount(sessionID)
+			if pending == 0 {
+				if idleStart.IsZero() {
+					idleStart = time.Now()
+				} else if time.Since(idleStart) >= idleThreshold {
+					return ipc.SuccessResponse(nil)
+				}
+			} else {
+				idleStart = time.Time{} // Reset
+			}
+		}
+	}
+}
+
+// handleReadyEval waits for a JavaScript expression to evaluate to a truthy value.
+func (d *Daemon) handleReadyEval(sessionID, expression string, timeout time.Duration) ipc.Response {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ipc.ErrorResponse(fmt.Sprintf("timeout waiting for: %s", expression))
+		case <-ticker.C:
+			result, err := d.cdp.SendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
+				"expression":    expression,
+				"returnByValue": true,
+			})
+			if err != nil {
+				// Continue polling on error (expression might fail initially)
+				continue
+			}
+
+			var resp struct {
+				Result struct {
+					Value any `json:"value"`
+				} `json:"result"`
+			}
+			if err := json.Unmarshal(result, &resp); err != nil {
+				continue
+			}
+
+			// Check if truthy
+			if isTruthy(resp.Result.Value) {
+				return ipc.SuccessResponse(nil)
+			}
+		}
+	}
+}
+
+// querySelector checks if an element matching the selector exists.
+// Returns true if found, false if not found.
+func (d *Daemon) querySelector(ctx context.Context, sessionID, selector string) (bool, error) {
+	// Get document root
+	docResult, err := d.cdp.SendToSession(ctx, sessionID, "DOM.getDocument", nil)
+	if err != nil {
+		return false, err
+	}
+
+	var docResp struct {
+		Root struct {
+			NodeID int `json:"nodeId"`
+		} `json:"root"`
+	}
+	if err := json.Unmarshal(docResult, &docResp); err != nil {
+		return false, err
+	}
+
+	// Query for selector
+	queryResult, err := d.cdp.SendToSession(ctx, sessionID, "DOM.querySelector", map[string]any{
+		"nodeId":   docResp.Root.NodeID,
+		"selector": selector,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	var queryResp struct {
+		NodeID int `json:"nodeId"`
+	}
+	if err := json.Unmarshal(queryResult, &queryResp); err != nil {
+		return false, err
+	}
+
+	// NodeID of 0 means element not found
+	return queryResp.NodeID != 0, nil
+}
+
+// ensureNetworkEnabled ensures the Network domain is enabled for the session.
+func (d *Daemon) ensureNetworkEnabled(sessionID string) error {
+	// Check if already enabled
+	if _, loaded := d.networkEnabled.Load(sessionID); loaded {
+		return nil
+	}
+
+	// Enable Network domain
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := d.cdp.SendToSession(ctx, sessionID, "Network.enable", nil)
+	if err != nil {
+		return fmt.Errorf("failed to enable Network domain: %v", err)
+	}
+
+	d.networkEnabled.Store(sessionID, true)
+	return nil
+}
+
+// getPendingRequestCount returns the number of pending network requests for the session.
+// This is a simplified implementation that counts requests in the buffer.
+// TODO: Implement proper request tracking with requestID mapping.
+func (d *Daemon) getPendingRequestCount(sessionID string) int {
+	// For now, check if there are any recent requests without responses
+	// This is a simplified heuristic - proper implementation would track request/response pairs
+	recentRequests := make(map[string]bool)
+
+	// Get all network entries
+	entries := d.networkBuf.All()
+
+	// Scan the network buffer for recent activity
+	for _, entry := range entries {
+		// Only count entries for this session
+		if entry.SessionID != sessionID {
+			continue
+		}
+
+		// Check if this is a recent request (within last 5 seconds)
+		age := time.Now().Unix() - entry.RequestTime/1000
+		if age > 5 {
+			continue // Skip old entries
+		}
+
+		// Track request by ID
+		if entry.Type == "" { // This is a request entry
+			recentRequests[entry.RequestID] = true
+		}
+
+		// If we've seen a response for this request, it's complete
+		if entry.ResponseTime > 0 || entry.Failed {
+			delete(recentRequests, entry.RequestID)
+		}
+	}
+
+	return len(recentRequests)
+}
+
+// isTruthy checks if a value is truthy in JavaScript terms.
+func isTruthy(value any) bool {
+	if value == nil {
+		return false
+	}
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		return v != ""
+	case float64:
+		return v != 0
+	default:
+		return true
+	}
 }
 
 // getPageTitle retrieves the current page title via JavaScript.
