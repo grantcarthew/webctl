@@ -22,9 +22,9 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-010 | Ready Command Extensions | Completed | 2025-12-23 | 2025-12-25 |
 | P-011 | CDP Navigation Debugging | Completed | 2025-12-19 | 2025-12-23 |
 | P-012 | Text Output Format | Completed | 2025-12-24 | 2025-12-24 |
-| P-013 | Find Command | Proposed | - | - |
+| P-013 | Find Command | Completed | 2025-12-25 | 2025-12-25 |
 | P-014 | Terminal Colors | Completed | 2025-12-24 | 2025-12-24 |
-| P-015 | Polish & Release | Proposed | - | - |
+| P-015 | HTML Formatting for Find and HTML Commands | Proposed | - | - |
 
 Note: Completed projects are in `completed/`
 
