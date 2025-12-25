@@ -12,13 +12,22 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-Active Project: None
+Active Project: P-015: Polish Release
 
 Completed projects are in docs/projects/completed/
+- P-010: Ready Command Extensions (2025-12-25)
 - P-014: Terminal Colors (2025-12-24)
 - P-012: Text Output Format (2025-12-24)
+- P-011: CDP Navigation Debugging (2025-12-23)
 - P-009: Design Review & Validation of P-008 Commands (2025-12-24)
 - P-008: Navigation & Interaction Commands (2025-12-23)
+- P-007: Observation Commands (2025-12-23)
+- P-006: CLI Framework (2025-12-15)
+- P-005: Daemon & IPC (2025-12-15)
+- P-004: Browser Launch (2025-12-15)
+- P-003: CDP Core Library (2025-12-15)
+- P-002: Project Definition (2025-12-11)
+- P-001: Project Initialization (2025-12-11)
 
 ## Quick Reference
 
@@ -45,7 +54,7 @@ webctl type <selector> <text>
 webctl select <selector> <value>
 webctl scroll <selector|position>
 
-webctl wait-for <selector|condition>
+webctl ready [selector] [--network-idle] [--eval "condition"]
 
 webctl clear [console|network]
 ```
