@@ -46,6 +46,24 @@ REPL-specific commands:
 
 All standard webctl commands work in REPL: console, network, clear, status, etc.
 
+Command Abbreviation:
+
+Both REPL and CLI support command abbreviation via unique prefix matching. Users can type the shortest unambiguous prefix of any command name.
+
+Examples:
+- `nav` expands to `navigate` (unique prefix)
+- `cons` expands to `console` (unique prefix)
+- `net` expands to `network` (unique prefix)
+- `ba` expands to `back` (unique prefix)
+- `e` expands to `exit` in REPL (unique among REPL commands)
+- `h` is ambiguous (`help`, `html`, `history`) - requires more characters
+
+Abbreviation applies to:
+- REPL commands: exit, quit, help, history, stop
+- webctl commands: back, clear, click, console, cookies, eval, find, focus, forward, html, key, navigate, network, ready, reload, screenshot, scroll, select, start, status, stop, target, type
+
+Implementation uses prefix matching - if exactly one command starts with the given prefix, it is expanded. If zero or multiple commands match, the abbreviation is rejected.
+
 History:
 
 - Up/down arrow keys navigate command history
@@ -240,3 +258,4 @@ REPL:
 
 - 2025-12-15: Initial version
 - 2025-12-24: Replaced peterh/liner with chzyer/readline to support ANSI colored prompts (DR-019). The liner library rejected prompts containing control characters (ANSI escape codes), while readline explicitly supports them.
+- 2025-12-26: Documented command abbreviation feature (unique prefix matching). Extended abbreviation support from REPL-only to both REPL and CLI. Added `find` command to abbreviation list.

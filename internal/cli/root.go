@@ -47,8 +47,45 @@ func debugf(format string, args ...any) {
 }
 
 // Execute runs the root command.
+// Supports command abbreviation via unique prefix matching.
 func Execute() error {
+	// Try abbreviation expansion for CLI commands
+	args := os.Args[1:]
+	if len(args) > 0 {
+		if expanded := tryExpandCommand(args[0]); expanded != "" {
+			args[0] = expanded
+			rootCmd.SetArgs(args)
+		}
+	}
 	return rootCmd.Execute()
+}
+
+// tryExpandCommand attempts to expand a command abbreviation.
+// Returns the expanded command if exactly one match is found, empty string otherwise.
+func tryExpandCommand(prefix string) string {
+	// Get all subcommands of root
+	var commands []string
+	for _, cmd := range rootCmd.Commands() {
+		commands = append(commands, cmd.Name())
+	}
+
+	// Try to expand
+	var matches []string
+	for _, cmd := range commands {
+		if cmd == prefix {
+			// Exact match, no expansion needed
+			return ""
+		}
+		if len(prefix) < len(cmd) && cmd[:len(prefix)] == prefix {
+			matches = append(matches, cmd)
+		}
+	}
+
+	// Return expanded command only if exactly one match
+	if len(matches) == 1 {
+		return matches[0]
+	}
+	return ""
 }
 
 // ExecuteArgs runs a command with the given arguments.

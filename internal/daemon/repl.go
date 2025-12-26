@@ -182,7 +182,7 @@ var replCommands = []string{"exit", "quit", "help", "history", "stop"}
 
 // webctlCommands lists webctl commands for abbreviation matching.
 var webctlCommands = []string{
-	"back", "clear", "click", "console", "cookies", "eval", "focus",
+	"back", "clear", "click", "console", "cookies", "eval", "find", "focus",
 	"forward", "html", "key", "navigate", "network", "ready", "reload",
 	"screenshot", "scroll", "select", "status", "target", "type",
 }

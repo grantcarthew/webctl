@@ -46,7 +46,7 @@ Eval mode:
   Most flexible option for application-specific ready states.
 
 Timeout:
-  --timeout duration    Maximum time to wait (default 30s)
+  --timeout duration    Maximum time to wait (default 60s)
                         Accepts Go duration format: 10s, 1m, 500ms
 
 Examples:
@@ -61,8 +61,8 @@ Examples:
   ready "button.submit:enabled"        # Wait for enabled button
 
   # Network idle mode - wait for requests to complete
-  ready --network-idle                 # Default 30s timeout
-  ready --network-idle --timeout 60s   # Longer timeout for slow APIs
+  ready --network-idle                 # Default 60s timeout
+  ready --network-idle --timeout 120s  # Longer timeout for slow APIs
 
   # Eval mode - wait for custom condition
   ready --eval "document.readyState === 'complete'"
@@ -117,7 +117,7 @@ Error cases:
 }
 
 func init() {
-	readyCmd.Flags().Duration("timeout", 30*time.Second, "Maximum time to wait")
+	readyCmd.Flags().Duration("timeout", 60*time.Second, "Maximum time to wait")
 	readyCmd.Flags().Bool("network-idle", false, "Wait for network to be idle (500ms of no activity)")
 	readyCmd.Flags().String("eval", "", "JavaScript expression to evaluate")
 	rootCmd.AddCommand(readyCmd)

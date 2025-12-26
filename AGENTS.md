@@ -12,7 +12,7 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-Active Project: None - Ready for next project
+Active Project: P-018 - Browser Auto-relaunch (docs/projects/p-018-browser-auto-relaunch.md)
 
 Completed projects are in docs/projects/completed/
 - P-015: HTML Formatting for Find and HTML Commands (2025-12-26)
