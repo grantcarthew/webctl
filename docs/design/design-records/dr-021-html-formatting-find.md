@@ -1,7 +1,8 @@
 # DR-021: HTML Formatting for Find Command
 
 - Date: 2025-12-25
-- Status: Proposed
+- Status: Accepted
+- Implemented: 2025-12-26
 - Category: CLI
 
 ## Problem
@@ -33,17 +34,19 @@ Requirements:
 
 ## Decision
 
-Implement custom HTML pretty-printer in webctl daemon (approximately 150-200 lines) that formats HTML before find command searches it.
+Implement custom HTML pretty-printer that formats HTML before find command searches it, and also provide formatted output for the html command by default.
 
 Implementation:
 
-1. Add `internal/daemon/htmlformat.go` with `Format(html string) string` function
+1. Add `internal/htmlformat/format.go` with `Format(html string) (string, error)` function
 2. Use `golang.org/x/net/html` tokenizer (standard library package)
 3. Format output with 2-space indentation
 4. Preserve raw content in `<pre>` and `<textarea>` tags
 5. Update `handleFind()` to format HTML before searching
+6. Update `html` command to format by default with `--raw` flag to disable
+7. Collapse multiple consecutive spaces in text content
 
-The formatter runs inside the daemon, so formatted HTML is never exposed to the user (only search results are returned).
+The formatter is available as a shared package that both daemon and CLI can use.
 
 ## Why
 
@@ -125,12 +128,12 @@ Search using DOM tree traversal instead of text:
 
 File structure:
 
-Location: `internal/daemon/htmlformat.go`
+Location: `internal/htmlformat/format.go` (shared package)
 
 Core function:
 
-```
-Format(html string) string
+```go
+Format(html string) (string, error)
 ```
 
 Algorithm:
@@ -150,20 +153,42 @@ Integration:
 
 Modify `handleFind()` in `internal/daemon/handlers_observation.go`:
 
-```
+```go
 // After getting HTML from page:
 html := htmlResp.OuterHTML
 
 // Format before searching:
-formattedHTML := htmlformat.Format(html)
+formattedHTML, err := htmlformat.Format(html)
+if err != nil {
+    // Fall back to raw HTML if formatting fails
+    formattedHTML = html
+}
 
 // Search formatted HTML:
 matches, err := d.searchHTML(formattedHTML, params)
 ```
 
+Modify `runHTML()` in `internal/cli/html.go`:
+
+```go
+// Format HTML unless --raw flag is set
+htmlOutput := data.HTML
+if !rawOutput {
+    formatted, err := htmlformat.Format(data.HTML)
+    if err != nil {
+        // Fall back to raw HTML if formatting fails
+    } else {
+        htmlOutput = formatted
+    }
+}
+
+// Write formatted HTML to file
+os.WriteFile(outputPath, []byte(htmlOutput), 0644)
+```
+
 Testing:
 
-Unit tests in `internal/daemon/htmlformat_test.go`:
+Unit tests in `internal/htmlformat/format_test.go`:
 
 - Test minified HTML formatting
 - Test preservation of `<pre>` and `<textarea>` content
@@ -190,13 +215,30 @@ Research:
   - `text_element.go` (43 lines): Text node handling
   - `utils.go` (101 lines): Formatting buffer implementation
 
-Files to modify:
+Files created/modified:
 
-- Create: `internal/daemon/htmlformat.go` (approximately 150-200 lines)
-- Create: `internal/daemon/htmlformat_test.go` (approximately 100-150 lines)
-- Modify: `internal/daemon/handlers_observation.go` (add formatting call in `handleFind()`)
-- Update: `go.mod` (add `golang.org/x/net/html` if not present)
+- Created: `internal/htmlformat/format.go` (169 lines)
+- Created: `internal/htmlformat/format_test.go` (942 lines, 46 comprehensive tests)
+- Modified: `internal/daemon/handlers_observation.go` (add formatting call in `handleFind()`)
+- Modified: `internal/cli/html.go` (add `--raw` flag and formatting logic)
+- Modified: `internal/cli/cli_test.go` (update test to expect formatted output)
+- Updated: `go.mod` (added `golang.org/x/net v0.48.0`)
+
+Edge cases tested (46 total): script/style tags, HTML entities, ALL 14 void elements, deep nesting (50+ levels), malformed HTML, inline SVG, MathML, long attributes, Unicode/emoji, data attributes, template tags, mixed line endings, CDATA sections, unquoted attributes, CVE-2025-22872 related cases, boolean attributes, custom elements, and more.
+
+Test/Code Ratio: 5.6:1 - Production-grade comprehensive coverage.
 
 ## Updates
 
 - 2025-12-25: Initial version
+- 2025-12-26: Implemented and accepted
+  - Created htmlformat package in `internal/htmlformat/`
+  - Implemented Format() function with comprehensive test coverage (46 tests, all passing)
+  - **Critical fix:** Added script and style tag preservation (prevents breaking JavaScript/CSS)
+  - Integrated into find command for formatted search
+  - Added --raw flag to html command for optional unformatted output
+  - Added collapseSpaces() helper to normalize whitespace in text nodes
+  - Extensive edge case testing: HTML entities, ALL void elements, deep nesting (50+), SVG, MathML, Unicode, malformed HTML, CDATA, unquoted attributes, CVE-2025-22872 related cases, and more
+  - Research-driven edge case discovery using Kagi search: found 15+ additional critical edge cases
+  - Test/Code Ratio: 5.6:1 (942 test lines / 169 production lines) - Production-grade coverage
+  - All existing tests pass with updated expectations

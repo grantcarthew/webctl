@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/grantcarthew/webctl/internal/cdp"
+	"github.com/grantcarthew/webctl/internal/htmlformat"
 	"github.com/grantcarthew/webctl/internal/ipc"
 )
 
@@ -658,8 +659,16 @@ func (d *Daemon) handleFind(req ipc.Request) ipc.Response {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to parse HTML response: %v", err))
 	}
 
-	// Search HTML for matches
-	matches, err := d.searchHTML(htmlResp.OuterHTML, params)
+	// Format HTML before searching to make minified HTML readable
+	formattedHTML, err := htmlformat.Format(htmlResp.OuterHTML)
+	if err != nil {
+		// If formatting fails, fall back to original HTML
+		d.debugf("HTML formatting failed: %v", err)
+		formattedHTML = htmlResp.OuterHTML
+	}
+
+	// Search formatted HTML for matches
+	matches, err := d.searchHTML(formattedHTML, params)
 	if err != nil {
 		return ipc.ErrorResponse(err.Error())
 	}

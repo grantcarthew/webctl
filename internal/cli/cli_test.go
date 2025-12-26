@@ -1776,8 +1776,23 @@ func TestRunHTML_FullPage(t *testing.T) {
 		t.Errorf("failed to read HTML file: %v", err)
 	}
 
-	if string(data) != htmlContent {
-		t.Errorf("HTML content mismatch: got %q, want %q", string(data), htmlContent)
+	// HTML should be formatted by default (not raw)
+	expectedFormatted := `<!DOCTYPE html>
+<html>
+  <head>
+    <title>
+      Test
+    </title>
+  </head>
+  <body>
+    <h1>
+      Hello
+    </h1>
+  </body>
+</html>
+`
+	if string(data) != expectedFormatted {
+		t.Errorf("HTML content mismatch: got %q, want %q", string(data), expectedFormatted)
 	}
 }
 
