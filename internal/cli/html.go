@@ -9,6 +9,7 @@ import (
 
 	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/executor"
+	"github.com/grantcarthew/webctl/internal/htmlformat"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
@@ -26,6 +27,7 @@ large. This allows incremental reading with offset/limit parameters.
 
 Flags:
   --output, -o      Save to specified path instead of temp directory
+  --raw             Save unformatted HTML (default: formatted for readability)
 
 File location:
   Default: /tmp/webctl-html/YY-MM-DD-HHMMSS-{title}.html
@@ -89,6 +91,7 @@ Error cases:
 
 func init() {
 	htmlCmd.Flags().StringP("output", "o", "", "Save to specified path instead of temp directory")
+	htmlCmd.Flags().Bool("raw", false, "Save unformatted HTML (default: formatted for readability)")
 	rootCmd.AddCommand(htmlCmd)
 }
 
@@ -100,6 +103,7 @@ func runHTML(cmd *cobra.Command, args []string) error {
 
 	// Read flags from command
 	output, _ := cmd.Flags().GetString("output")
+	rawOutput, _ := cmd.Flags().GetBool("raw")
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -141,6 +145,18 @@ func runHTML(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	// Format HTML unless --raw flag is set
+	htmlOutput := data.HTML
+	if !rawOutput {
+		formatted, err := htmlformat.Format(data.HTML)
+		if err != nil {
+			// If formatting fails, fall back to raw HTML
+			debugf("HTML formatting failed: %v", err)
+		} else {
+			htmlOutput = formatted
+		}
+	}
+
 	// Determine output path
 	var outputPath string
 	if output != "" {
@@ -162,7 +178,7 @@ func runHTML(cmd *cobra.Command, args []string) error {
 	}
 
 	// Write HTML to file
-	if err := os.WriteFile(outputPath, []byte(data.HTML), 0644); err != nil {
+	if err := os.WriteFile(outputPath, []byte(htmlOutput), 0644); err != nil {
 		return outputError(fmt.Sprintf("failed to write HTML: %v", err))
 	}
 

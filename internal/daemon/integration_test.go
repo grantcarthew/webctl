@@ -1718,3 +1718,186 @@ func TestDaemon_CookiesCommand(t *testing.T) {
 	}
 }
 
+// TestFind_Integration tests find command with minified HTML.
+// Verifies that HTML formatting makes search results readable.
+// Run with: go test -run Integration ./...
+func TestFind_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "webctl.sock")
+	pidPath := filepath.Join(tmpDir, "webctl.pid")
+
+	cfg := Config{
+		Headless:   true,
+		Port:       0,
+		SocketPath: socketPath,
+		PIDPath:    pidPath,
+		BufferSize: 100,
+	}
+
+	d := New(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- d.Run(ctx)
+	}()
+
+	if !waitForSocket(socketPath, 30*time.Second) {
+		t.Fatal("daemon did not start in time")
+	}
+
+	client, err := ipc.DialPath(socketPath)
+	if err != nil {
+		t.Fatalf("failed to connect to daemon: %v", err)
+	}
+	defer client.Close()
+
+	// Navigate to a test page with minified HTML
+	// This simulates modern frameworks that output single-line HTML
+	minifiedHTML := `<!DOCTYPE html><html><head><title>Minified Page</title></head><body><div class="container"><header><h1>Welcome</h1></header><main><article class="post"><h2>Article Title</h2><p>This is a test paragraph with searchable text.</p></article><aside><p>Sidebar content here.</p></aside></main><footer>Footer text</footer></div></body></html>`
+	params, _ := json.Marshal(map[string]any{
+		"url": "data:text/html," + minifiedHTML,
+	})
+	resp, err := client.Send(ipc.Request{
+		Cmd:    "cdp",
+		Target: "Page.navigate",
+		Params: params,
+	})
+	if err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("navigate returned error: %s", resp.Error)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Test: Search for text in minified HTML
+	t.Run("search_minified_html", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.FindParams{
+			Query: "searchable text",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "find",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("find command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("find returned error: %s", resp.Error)
+		}
+
+		var data ipc.FindData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse find data: %v", err)
+		}
+
+		if data.Total == 0 {
+			t.Fatal("expected at least one match")
+		}
+
+		match := data.Matches[0]
+
+		// Verify match line is readable (not thousands of characters)
+		if len(match.Context.Match) > 200 {
+			t.Errorf("match line too long (%d chars), HTML formatting may have failed", len(match.Context.Match))
+		}
+
+		// Verify match contains the search term
+		if !bytes.Contains([]byte(match.Context.Match), []byte("searchable text")) {
+			t.Errorf("match should contain search term, got: %s", match.Context.Match)
+		}
+
+		// Verify context lines are reasonable length
+		if len(match.Context.Before) > 200 {
+			t.Errorf("before context too long (%d chars)", len(match.Context.Before))
+		}
+		if len(match.Context.After) > 200 {
+			t.Errorf("after context too long (%d chars)", len(match.Context.After))
+		}
+
+		// Verify selector was generated
+		if match.Selector == "" {
+			t.Error("expected selector to be generated")
+		}
+
+		t.Logf("Found match in formatted HTML:")
+		t.Logf("  Before: %s", match.Context.Before)
+		t.Logf("  Match:  %s", match.Context.Match)
+		t.Logf("  After:  %s", match.Context.After)
+		t.Logf("  Selector: %s", match.Selector)
+	})
+
+	// Test: Regex search in minified HTML
+	t.Run("regex_search", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.FindParams{
+			Query: "Article.*Title",
+			Regex: true,
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "find",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("find command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("find returned error: %s", resp.Error)
+		}
+
+		var data ipc.FindData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse find data: %v", err)
+		}
+
+		if data.Total == 0 {
+			t.Fatal("expected at least one regex match")
+		}
+
+		t.Logf("Regex matched %d results", data.Total)
+	})
+
+	// Test: No matches
+	t.Run("no_matches", func(t *testing.T) {
+		params, _ := json.Marshal(ipc.FindParams{
+			Query: "nonexistent-text-xyz",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "find",
+			Params: params,
+		})
+		if err != nil {
+			t.Fatalf("find command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("find returned error: %s", resp.Error)
+		}
+
+		var data ipc.FindData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("failed to parse find data: %v", err)
+		}
+
+		if data.Total != 0 {
+			t.Errorf("expected 0 matches, got %d", data.Total)
+		}
+	})
+
+	client.Close()
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != context.Canceled {
+			t.Errorf("daemon exited with error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("daemon did not shut down in time")
+	}
+}
