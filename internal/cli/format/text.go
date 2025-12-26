@@ -248,31 +248,68 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 // Cookies outputs cookies in text format (semicolon-separated attributes).
 func Cookies(w io.Writer, cookies []ipc.Cookie, opts OutputOptions) error {
 	for _, c := range cookies {
-		parts := []string{
-			fmt.Sprintf("%s=%s", c.Name, c.Value),
-		}
+		if opts.UseColor {
+			// Cookie name in cyan
+			colorFprint(w, color.FgCyan, c.Name)
+			fmt.Fprint(w, "=")
+			// Cookie value in default color
+			fmt.Fprint(w, c.Value)
 
-		if c.Domain != "" {
-			parts = append(parts, fmt.Sprintf("domain=%s", c.Domain))
-		}
-		if c.Path != "" {
-			parts = append(parts, fmt.Sprintf("path=%s", c.Path))
-		}
-		if c.Secure {
-			parts = append(parts, "secure")
-		}
-		if c.HTTPOnly {
-			parts = append(parts, "httponly")
-		}
-		if !c.Session && c.Expires > 0 {
-			expiresTime := time.Unix(int64(c.Expires), 0)
-			parts = append(parts, fmt.Sprintf("expires=%s", expiresTime.Format("2006-01-02")))
-		}
-		if c.SameSite != "" {
-			parts = append(parts, fmt.Sprintf("samesite=%s", c.SameSite))
-		}
+			// Attributes in dim gray
+			if c.Domain != "" {
+				fmt.Fprint(w, "; ")
+				colorFprintf(w, color.Faint, "domain=%s", c.Domain)
+			}
+			if c.Path != "" {
+				fmt.Fprint(w, "; ")
+				colorFprintf(w, color.Faint, "path=%s", c.Path)
+			}
+			if c.Secure {
+				fmt.Fprint(w, "; ")
+				colorFprint(w, color.Faint, "secure")
+			}
+			if c.HTTPOnly {
+				fmt.Fprint(w, "; ")
+				colorFprint(w, color.Faint, "httponly")
+			}
+			if !c.Session && c.Expires > 0 {
+				expiresTime := time.Unix(int64(c.Expires), 0)
+				fmt.Fprint(w, "; ")
+				colorFprintf(w, color.Faint, "expires=%s", expiresTime.Format("2006-01-02"))
+			}
+			if c.SameSite != "" {
+				fmt.Fprint(w, "; ")
+				colorFprintf(w, color.Faint, "samesite=%s", c.SameSite)
+			}
+			fmt.Fprintln(w)
+		} else {
+			// No color - original behavior
+			parts := []string{
+				fmt.Sprintf("%s=%s", c.Name, c.Value),
+			}
 
-		fmt.Fprintln(w, strings.Join(parts, "; "))
+			if c.Domain != "" {
+				parts = append(parts, fmt.Sprintf("domain=%s", c.Domain))
+			}
+			if c.Path != "" {
+				parts = append(parts, fmt.Sprintf("path=%s", c.Path))
+			}
+			if c.Secure {
+				parts = append(parts, "secure")
+			}
+			if c.HTTPOnly {
+				parts = append(parts, "httponly")
+			}
+			if !c.Session && c.Expires > 0 {
+				expiresTime := time.Unix(int64(c.Expires), 0)
+				parts = append(parts, fmt.Sprintf("expires=%s", expiresTime.Format("2006-01-02")))
+			}
+			if c.SameSite != "" {
+				parts = append(parts, fmt.Sprintf("samesite=%s", c.SameSite))
+			}
+
+			fmt.Fprintln(w, strings.Join(parts, "; "))
+		}
 	}
 	return nil
 }

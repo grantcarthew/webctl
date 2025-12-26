@@ -13,7 +13,7 @@ import (
 )
 
 // DefaultTimeout is the default timeout for CDP commands.
-const DefaultTimeout = 30 * time.Second
+const DefaultTimeout = 60 * time.Second
 
 // Client is a CDP protocol client.
 type Client struct {

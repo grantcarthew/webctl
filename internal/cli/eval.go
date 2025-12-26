@@ -83,7 +83,7 @@ Note: For complex scripts, consider using a file and piping:
 }
 
 func init() {
-	evalCmd.Flags().DurationP("timeout", "t", 30*time.Second, "Timeout for async expressions")
+	evalCmd.Flags().DurationP("timeout", "t", 60*time.Second, "Timeout for async expressions")
 	rootCmd.AddCommand(evalCmd)
 }
 

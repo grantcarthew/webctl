@@ -4497,9 +4497,9 @@ func TestRunReady_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Default timeout should be 30 seconds = 30000ms
-	if capturedParams.Timeout != 30000 {
-		t.Errorf("expected Timeout=30000, got %d", capturedParams.Timeout)
+	// Default timeout should be 60 seconds = 60000ms
+	if capturedParams.Timeout != 60000 {
+		t.Errorf("expected Timeout=60000, got %d", capturedParams.Timeout)
 	}
 
 	var buf bytes.Buffer
