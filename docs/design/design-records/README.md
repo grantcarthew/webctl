@@ -25,5 +25,10 @@ Design Records (DRs) document significant technical decisions made during develo
 | DR-017 | [Find Command Interface](dr-017-find-command.md) | Proposed | 2025-12-24 |
 | DR-018 | [Text Output Format](dr-018-text-output-format.md) | Proposed | 2025-12-24 |
 | DR-019 | [Terminal Colors](dr-019-cli-terminal-colors.md) | Accepted | 2025-12-24 |
+| DR-020 | [Command Abbreviation Support](dr-020-command-abbreviations.md) | Accepted | 2025-12-26 |
+| DR-021 | [HTML Formatter](dr-021-html-formatter.md) | Accepted | 2025-12-26 |
+| DR-022 | [Find Command Text Search](dr-022-find-command.md) | Accepted | 2025-12-25 |
+| DR-023 | [Ready Command Synchronization Modes](dr-023-ready-synchronization.md) | Accepted | 2025-12-26 |
+| DR-024 | [Browser Connection Failure Handling](dr-024-browser-auto-relaunch.md) | Accepted | 2025-12-27 |
 
 Note: Superseded design records are in `superseded/`

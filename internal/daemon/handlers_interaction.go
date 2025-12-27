@@ -14,6 +14,11 @@ import (
 // handleClick clicks an element by selector.
 // Scrolls element into view, checks visibility, then dispatches mouse events.
 func (d *Daemon) handleClick(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -51,7 +56,7 @@ func (d *Daemon) handleClick(req ipc.Request) ipc.Response {
 		return {x, y, covered: isCovered};
 	})()`, params.Selector)
 
-	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+	result, err := d.sendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 		"expression":    js,
 		"returnByValue": true,
 	})
@@ -83,7 +88,7 @@ func (d *Daemon) handleClick(req ipc.Request) ipc.Response {
 
 	// Send mouse events
 	// mousePressed
-	_, err = d.cdp.SendToSession(ctx, activeID, "Input.dispatchMouseEvent", map[string]any{
+	_, err = d.sendToSession(ctx, activeID, "Input.dispatchMouseEvent", map[string]any{
 		"type":       "mousePressed",
 		"x":          x,
 		"y":          y,
@@ -95,7 +100,7 @@ func (d *Daemon) handleClick(req ipc.Request) ipc.Response {
 	}
 
 	// mouseReleased
-	_, err = d.cdp.SendToSession(ctx, activeID, "Input.dispatchMouseEvent", map[string]any{
+	_, err = d.sendToSession(ctx, activeID, "Input.dispatchMouseEvent", map[string]any{
 		"type":       "mouseReleased",
 		"x":          x,
 		"y":          y,
@@ -118,6 +123,11 @@ func (d *Daemon) handleClick(req ipc.Request) ipc.Response {
 
 // handleFocus focuses an element by selector.
 func (d *Daemon) handleFocus(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -143,7 +153,7 @@ func (d *Daemon) handleFocus(req ipc.Request) ipc.Response {
 		return true;
 	})()`, params.Selector)
 
-	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+	result, err := d.sendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 		"expression":    js,
 		"returnByValue": true,
 	})
@@ -168,6 +178,11 @@ func (d *Daemon) handleFocus(req ipc.Request) ipc.Response {
 
 // handleType types text into an element.
 func (d *Daemon) handleType(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -227,7 +242,7 @@ func (d *Daemon) handleType(req ipc.Request) ipc.Response {
 
 	// Insert text
 	if params.Text != "" {
-		_, err := d.cdp.SendToSession(ctx, activeID, "Input.insertText", map[string]any{
+		_, err := d.sendToSession(ctx, activeID, "Input.insertText", map[string]any{
 			"text": params.Text,
 		})
 		if err != nil {
@@ -253,6 +268,11 @@ func (d *Daemon) handleType(req ipc.Request) ipc.Response {
 
 // handleKey sends a keyboard key event.
 func (d *Daemon) handleKey(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -289,7 +309,7 @@ func (d *Daemon) handleKey(req ipc.Request) ipc.Response {
 	keyInfo := getKeyInfo(params.Key)
 
 	// keyDown
-	_, err := d.cdp.SendToSession(ctx, activeID, "Input.dispatchKeyEvent", map[string]any{
+	_, err := d.sendToSession(ctx, activeID, "Input.dispatchKeyEvent", map[string]any{
 		"type":                  "keyDown",
 		"key":                   keyInfo.key,
 		"code":                  keyInfo.code,
@@ -301,7 +321,7 @@ func (d *Daemon) handleKey(req ipc.Request) ipc.Response {
 	}
 
 	// keyUp
-	_, err = d.cdp.SendToSession(ctx, activeID, "Input.dispatchKeyEvent", map[string]any{
+	_, err = d.sendToSession(ctx, activeID, "Input.dispatchKeyEvent", map[string]any{
 		"type":                  "keyUp",
 		"key":                   keyInfo.key,
 		"code":                  keyInfo.code,
@@ -370,6 +390,11 @@ func getKeyInfo(key string) keyInfo {
 
 // handleSelect selects an option in a dropdown.
 func (d *Daemon) handleSelect(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -400,7 +425,7 @@ func (d *Daemon) handleSelect(req ipc.Request) ipc.Response {
 		return 'ok';
 	})()`, params.Selector, params.Value)
 
-	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+	result, err := d.sendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 		"expression":    js,
 		"returnByValue": true,
 	})
@@ -431,6 +456,11 @@ func (d *Daemon) handleSelect(req ipc.Request) ipc.Response {
 
 // handleScroll scrolls to an element or position.
 func (d *Daemon) handleScroll(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -470,7 +500,7 @@ func (d *Daemon) handleScroll(req ipc.Request) ipc.Response {
 		return ipc.ErrorResponse("invalid scroll mode: must be 'element', 'to', or 'by'")
 	}
 
-	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+	result, err := d.sendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 		"expression":    js,
 		"returnByValue": true,
 	})

@@ -509,4 +509,114 @@ No new security concerns introduced:
 
 ## Updates
 
-None yet.
+### 2025-12-27: Decision Reversed - Fail-Fast Approach
+
+After initial implementation and testing review, the auto-relaunch feature was deemed too complex for the value it provides. The implementation required ~1200+ lines of changes across 33 files, including:
+- Complex retry limiting with sliding time windows
+- URL restoration logic
+- Warning message propagation through IPC protocol
+- Double-checked locking for thread safety
+- Error detection and retry wrapper for every CDP call
+
+**New Decision: Fail-Fast**
+
+When browser connection is lost, daemon will:
+1. Detect disconnection on next command
+2. Clear session state
+3. Show clear error: "browser connection lost - daemon shutting down"
+4. Exit daemon cleanly
+
+User must manually restart with `webctl start`.
+
+**Implementation (~50 lines vs. 1200+):**
+
+Added to `internal/daemon/daemon.go`:
+```go
+// browserConnected checks if the browser is currently running and connected.
+func (d *Daemon) browserConnected() bool {
+	if d.browser == nil || d.cdp == nil {
+		return false
+	}
+	return d.sessions.Count() > 0
+}
+
+// requireBrowser checks if the browser is connected.
+// If not connected, it triggers daemon shutdown and returns an error response.
+func (d *Daemon) requireBrowser() (ok bool, resp ipc.Response) {
+	if d.browserConnected() {
+		return true, ipc.Response{}
+	}
+
+	// Browser is dead - clear state and trigger shutdown
+	d.debugf("Browser not connected - clearing state and shutting down daemon")
+	d.sessions.Clear()
+	go d.shutdownOnce.Do(func() {
+		close(d.shutdown)
+	})
+
+	return false, ipc.ErrorResponse("browser connection lost - daemon shutting down")
+}
+```
+
+Added to `internal/daemon/session.go`:
+```go
+// Clear removes all sessions and resets the manager state.
+func (m *SessionManager) Clear() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sessions = make(map[string]*session)
+	m.activeID = ""
+	m.order = nil
+}
+```
+
+Integration: Added `requireBrowser()` check at start of all 16 command handlers requiring browser connection.
+
+**Connection Error Detection:**
+
+The initial implementation had a race condition: `requireBrowser()` would pass, but the CDP connection could be dead (e.g., from `kill -9`). The CDP client object remains non-nil even when closed.
+
+Added wrapper to detect connection errors during CDP calls:
+```go
+// isConnectionError checks if an error indicates a CDP connection failure.
+func (d *Daemon) isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "client is closed") ||
+		strings.Contains(s, "client closed while waiting") ||
+		strings.Contains(s, "failed to send request")
+}
+
+// sendToSession wraps cdp.SendToSession with connection error detection.
+func (d *Daemon) sendToSession(ctx context.Context, sessionID, method string, params any) (json.RawMessage, error) {
+	result, err := d.cdp.SendToSession(ctx, sessionID, method, params)
+	if err != nil && d.isConnectionError(err) {
+		d.debugf("Connection error detected in %s: %v - shutting down daemon", method, err)
+		d.sessions.Clear()
+		go d.shutdownOnce.Do(func() {
+			close(d.shutdown)
+		})
+		return nil, fmt.Errorf("browser connection lost - daemon shutting down")
+	}
+	return result, err
+}
+```
+
+All 34 `d.cdp.SendToSession()` calls replaced with `d.sendToSession()`.
+
+**Behavior:**
+- Manual browser close: Detected immediately by `requireBrowser()` → clean shutdown
+- `kill -9` browser: Detected on first CDP call → connection error → clean shutdown
+
+**Rationale:**
+
+- **Simplicity**: Fail-fast is easy to understand and reason about
+- **Clear UX**: Error message tells user exactly what to do
+- **No Edge Cases**: No retry limits, race conditions, or URL restoration to handle
+- **Maintainability**: Minimal code means minimal bugs
+- **Browser crashes are rare**: Complex recovery for rare scenarios adds unnecessary complexity
+- **Two-layer detection**: Proactive check + reactive error handling = robust
+
+This aligns with Go's philosophy: simple, explicit error handling over implicit magic.

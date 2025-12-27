@@ -9,6 +9,11 @@ import (
 
 // handleTarget lists sessions or switches to a specific session.
 func (d *Daemon) handleTarget(query string) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	// If no query, list all sessions
 	if query == "" {
 		return ipc.SuccessResponse(ipc.TargetData{

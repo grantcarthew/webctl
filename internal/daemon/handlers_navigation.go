@@ -15,6 +15,12 @@ import (
 // This avoids Chrome's internal blocking that occurs when waiting for navigation events.
 func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 	d.debugf("handleNavigate called")
+
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -43,7 +49,7 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	result, err := d.cdp.SendToSession(ctx, activeID, "Page.navigate", map[string]any{
+	result, err := d.sendToSession(ctx, activeID, "Page.navigate", map[string]any{
 		"url": params.URL,
 	})
 	if err != nil {
@@ -94,6 +100,11 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 // handleReload reloads the current page.
 // Returns immediately after sending Page.reload command.
 func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -118,7 +129,7 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, err := d.cdp.SendToSession(ctx, activeID, "Page.reload", map[string]any{
+	_, err := d.sendToSession(ctx, activeID, "Page.reload", map[string]any{
 		"ignoreCache": params.IgnoreCache,
 	})
 	if err != nil {
@@ -192,6 +203,11 @@ func (d *Daemon) handleForward(req ipc.Request) ipc.Response {
 // navigateHistory navigates forward or backward in history.
 // Returns immediately after sending navigation command unless wait=true.
 func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -201,7 +217,7 @@ func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams) ipc.Respon
 	defer cancel()
 
 	// Get navigation history
-	result, err := d.cdp.SendToSession(ctx, activeID, "Page.getNavigationHistory", nil)
+	result, err := d.sendToSession(ctx, activeID, "Page.getNavigationHistory", nil)
 	if err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to get history: %v", err))
 	}
@@ -235,7 +251,7 @@ func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams) ipc.Respon
 	d.debugf("navigateHistory: created navigating channel for session %s", activeID)
 
 	// Navigate to history entry
-	_, err = d.cdp.SendToSession(ctx, activeID, "Page.navigateToHistoryEntry", map[string]any{
+	_, err = d.sendToSession(ctx, activeID, "Page.navigateToHistoryEntry", map[string]any{
 		"entryId": history.Entries[targetIndex].ID,
 	})
 	if err != nil {
@@ -279,6 +295,11 @@ func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams) ipc.Respon
 // handleReady waits for the page or application to be ready.
 // Supports multiple modes: page load, selector, network idle, and eval.
 func (d *Daemon) handleReady(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -315,7 +336,7 @@ func (d *Daemon) handleReadyPageLoad(sessionID string, timeout time.Duration) ip
 	defer cancel()
 
 	// First check if page is already loaded via document.readyState
-	result, err := d.cdp.SendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
+	result, err := d.sendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
 		"expression":    "document.readyState",
 		"returnByValue": true,
 	})
@@ -419,7 +440,7 @@ func (d *Daemon) handleReadyEval(sessionID, expression string, timeout time.Dura
 		case <-ctx.Done():
 			return ipc.ErrorResponse(fmt.Sprintf("timeout waiting for: %s", expression))
 		case <-ticker.C:
-			result, err := d.cdp.SendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
+			result, err := d.sendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
 				"expression":    expression,
 				"returnByValue": true,
 			})
@@ -449,7 +470,7 @@ func (d *Daemon) handleReadyEval(sessionID, expression string, timeout time.Dura
 // Returns true if found, false if not found.
 func (d *Daemon) querySelector(ctx context.Context, sessionID, selector string) (bool, error) {
 	// Get document root
-	docResult, err := d.cdp.SendToSession(ctx, sessionID, "DOM.getDocument", nil)
+	docResult, err := d.sendToSession(ctx, sessionID, "DOM.getDocument", nil)
 	if err != nil {
 		return false, err
 	}
@@ -464,7 +485,7 @@ func (d *Daemon) querySelector(ctx context.Context, sessionID, selector string) 
 	}
 
 	// Query for selector
-	queryResult, err := d.cdp.SendToSession(ctx, sessionID, "DOM.querySelector", map[string]any{
+	queryResult, err := d.sendToSession(ctx, sessionID, "DOM.querySelector", map[string]any{
 		"nodeId":   docResp.Root.NodeID,
 		"selector": selector,
 	})
@@ -494,7 +515,7 @@ func (d *Daemon) ensureNetworkEnabled(sessionID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := d.cdp.SendToSession(ctx, sessionID, "Network.enable", nil)
+	_, err := d.sendToSession(ctx, sessionID, "Network.enable", nil)
 	if err != nil {
 		return fmt.Errorf("failed to enable Network domain: %v", err)
 	}
@@ -560,7 +581,7 @@ func isTruthy(value any) bool {
 
 // getPageTitle retrieves the current page title via JavaScript.
 func (d *Daemon) getPageTitle(ctx context.Context, sessionID string) string {
-	result, err := d.cdp.SendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
+	result, err := d.sendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
 		"expression":    "document.title",
 		"returnByValue": true,
 	})

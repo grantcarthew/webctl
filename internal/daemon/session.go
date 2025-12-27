@@ -199,6 +199,16 @@ func (m *SessionManager) Count() int {
 	return len(m.sessions)
 }
 
+// Clear removes all sessions and resets the manager state.
+// Used when browser connection is lost.
+func (m *SessionManager) Clear() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sessions = make(map[string]*session)
+	m.activeID = ""
+	m.order = nil
+}
+
 // FindByQuery searches for sessions matching the query.
 // Query is matched against session ID prefix (case-sensitive) or title substring (case-insensitive).
 // Returns matching sessions.
