@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -88,6 +89,59 @@ func (d *Daemon) debugf(format string, args ...any) {
 		timestamp := time.Now().Format("15:04:05.000")
 		fmt.Fprintf(os.Stderr, "[DEBUG] [%s] "+format+"\n", append([]any{timestamp}, args...)...)
 	}
+}
+
+// browserConnected checks if the browser is currently running and connected.
+func (d *Daemon) browserConnected() bool {
+	if d.browser == nil || d.cdp == nil {
+		return false
+	}
+	// Check if we have any active sessions
+	return d.sessions.Count() > 0
+}
+
+// requireBrowser checks if the browser is connected.
+// If not connected, it triggers daemon shutdown and returns an error response.
+// Handlers should return this response immediately if err is not nil.
+func (d *Daemon) requireBrowser() (ok bool, resp ipc.Response) {
+	if d.browserConnected() {
+		return true, ipc.Response{}
+	}
+
+	// Browser is dead - clear state and trigger shutdown
+	d.debugf("Browser not connected - clearing state and shutting down daemon")
+	d.sessions.Clear()
+	go d.shutdownOnce.Do(func() {
+		close(d.shutdown)
+	})
+
+	return false, ipc.ErrorResponse("browser connection lost - daemon shutting down")
+}
+
+// isConnectionError checks if an error indicates a CDP connection failure.
+func (d *Daemon) isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "client is closed") ||
+		strings.Contains(s, "client closed while waiting") ||
+		strings.Contains(s, "failed to send request")
+}
+
+// sendToSession wraps cdp.SendToSession with connection error detection.
+// If a connection error is detected, it triggers daemon shutdown.
+func (d *Daemon) sendToSession(ctx context.Context, sessionID, method string, params any) (json.RawMessage, error) {
+	result, err := d.cdp.SendToSession(ctx, sessionID, method, params)
+	if err != nil && d.isConnectionError(err) {
+		d.debugf("Connection error detected in %s: %v - shutting down daemon", method, err)
+		d.sessions.Clear()
+		go d.shutdownOnce.Do(func() {
+			close(d.shutdown)
+		})
+		return nil, fmt.Errorf("browser connection lost - daemon shutting down")
+	}
+	return result, err
 }
 
 // New creates a new daemon with the given configuration.

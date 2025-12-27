@@ -37,6 +37,11 @@ func (d *Daemon) handleStatus() ipc.Response {
 
 // handleConsole returns buffered console entries filtered to active session.
 func (d *Daemon) handleConsole() ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -59,6 +64,11 @@ func (d *Daemon) handleConsole() ipc.Response {
 // handleNetwork returns buffered network entries filtered to active session.
 // Enables Network domain lazily on first call to avoid blocking Runtime.evaluate.
 func (d *Daemon) handleNetwork() ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -68,7 +78,7 @@ func (d *Daemon) handleNetwork() ipc.Response {
 	if _, loaded := d.networkEnabled.LoadOrStore(activeID, true); !loaded {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if _, err := d.cdp.SendToSession(ctx, activeID, "Network.enable", nil); err != nil {
+		if _, err := d.sendToSession(ctx, activeID, "Network.enable", nil); err != nil {
 			d.debugf("warning: failed to enable Network domain: %v", err)
 		} else {
 			d.debugf("Network domain enabled lazily for session %s", activeID)
@@ -91,6 +101,11 @@ func (d *Daemon) handleNetwork() ipc.Response {
 
 // handleScreenshot captures a screenshot of the active session.
 func (d *Daemon) handleScreenshot(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -118,7 +133,7 @@ func (d *Daemon) handleScreenshot(req ipc.Request) ipc.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	result, err := d.cdp.SendToSession(ctx, activeID, "Page.captureScreenshot", cdpParams)
+	result, err := d.sendToSession(ctx, activeID, "Page.captureScreenshot", cdpParams)
 	if err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to capture screenshot: %v", err))
 	}
@@ -147,6 +162,12 @@ func (d *Daemon) handleScreenshot(req ipc.Request) ipc.Response {
 // This avoids the networkIdle blocking that occurs with direct Runtime.evaluate.
 func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 	d.debugf("handleHTML called")
+
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -173,7 +194,7 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 		// Step 1: Get window ObjectID using Runtime.evaluate.
 		// Chrome handles "window" specially - it's always available.
 		d.debugf("html: calling Runtime.evaluate for window")
-		windowResult, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+		windowResult, err := d.sendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 			"expression": "window",
 		})
 		d.debugf("html: Runtime.evaluate(window) completed in %v", time.Since(start))
@@ -203,7 +224,7 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 		// By targeting the window object directly, we avoid context creation delays.
 		d.debugf("html: calling Runtime.callFunctionOn for document.documentElement")
 		callStart := time.Now()
-		callResult, err := d.cdp.SendToSession(ctx, activeID, "Runtime.callFunctionOn", map[string]any{
+		callResult, err := d.sendToSession(ctx, activeID, "Runtime.callFunctionOn", map[string]any{
 			"objectId":            windowResp.Result.ObjectID,
 			"functionDeclaration": "function() { return document.documentElement; }",
 			"returnByValue":       false,
@@ -234,7 +255,7 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 		// Step 3: Get outer HTML using DOM.getOuterHTML with the ObjectID.
 		d.debugf("html: calling DOM.getOuterHTML with objectId=%s", callResp.Result.ObjectID)
 		htmlStart := time.Now()
-		htmlResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
+		htmlResult, err := d.sendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
 			"objectId": callResp.Result.ObjectID,
 		})
 		d.debugf("html: DOM.getOuterHTML completed in %v", time.Since(htmlStart))
@@ -299,7 +320,7 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 		});
 	})()`, params.Selector, params.Selector)
 
-	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+	result, err := d.sendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 		"expression":    js,
 		"returnByValue": true,
 		"awaitPromise":  true,
@@ -336,6 +357,11 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 
 // handleEval evaluates JavaScript in the browser context.
 func (d *Daemon) handleEval(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -358,7 +384,7 @@ func (d *Daemon) handleEval(req ipc.Request) ipc.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	result, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+	result, err := d.sendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 		"expression":    params.Expression,
 		"awaitPromise":  true,
 		"returnByValue": true,
@@ -406,6 +432,11 @@ func (d *Daemon) handleEval(req ipc.Request) ipc.Response {
 
 // handleCookies manages browser cookies (list, set, delete).
 func (d *Daemon) handleCookies(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -433,7 +464,7 @@ func (d *Daemon) handleCookiesList(sessionID string) ipc.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	result, err := d.cdp.SendToSession(ctx, sessionID, "Network.getCookies", map[string]any{})
+	result, err := d.sendToSession(ctx, sessionID, "Network.getCookies", map[string]any{})
 	if err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to get cookies: %v", err))
 	}
@@ -499,7 +530,7 @@ func (d *Daemon) handleCookiesSet(sessionID string, params ipc.CookiesParams) ip
 		cdpParams["expires"] = float64(time.Now().Unix() + int64(params.MaxAge))
 	}
 
-	result, err := d.cdp.SendToSession(ctx, sessionID, "Network.setCookie", cdpParams)
+	result, err := d.sendToSession(ctx, sessionID, "Network.setCookie", cdpParams)
 	if err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to set cookie: %v", err))
 	}
@@ -528,7 +559,7 @@ func (d *Daemon) handleCookiesDelete(sessionID string, params ipc.CookiesParams)
 	defer cancel()
 
 	// First, get all cookies to find matches
-	result, err := d.cdp.SendToSession(ctx, sessionID, "Network.getCookies", map[string]any{})
+	result, err := d.sendToSession(ctx, sessionID, "Network.getCookies", map[string]any{})
 	if err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to get cookies: %v", err))
 	}
@@ -583,7 +614,7 @@ func (d *Daemon) handleCookiesDelete(sessionID string, params ipc.CookiesParams)
 		"domain": targetCookie.Domain,
 	}
 
-	_, err = d.cdp.SendToSession(ctx, sessionID, "Network.deleteCookies", deleteParams)
+	_, err = d.sendToSession(ctx, sessionID, "Network.deleteCookies", deleteParams)
 	if err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to delete cookie: %v", err))
 	}
@@ -593,6 +624,11 @@ func (d *Daemon) handleCookiesDelete(sessionID string, params ipc.CookiesParams)
 
 // handleFind searches HTML content for text patterns.
 func (d *Daemon) handleFind(req ipc.Request) ipc.Response {
+	// Check if browser is connected (fail-fast if not)
+	if ok, resp := d.requireBrowser(); !ok {
+		return resp
+	}
+
 	activeID := d.sessions.ActiveID()
 	if activeID == "" {
 		return d.noActiveSessionError()
@@ -609,7 +645,7 @@ func (d *Daemon) handleFind(req ipc.Request) ipc.Response {
 	defer cancel()
 
 	// Get window ObjectID
-	windowResult, err := d.cdp.SendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
+	windowResult, err := d.sendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 		"expression": "window",
 	})
 	if err != nil {
@@ -626,7 +662,7 @@ func (d *Daemon) handleFind(req ipc.Request) ipc.Response {
 	}
 
 	// Get documentElement
-	callResult, err := d.cdp.SendToSession(ctx, activeID, "Runtime.callFunctionOn", map[string]any{
+	callResult, err := d.sendToSession(ctx, activeID, "Runtime.callFunctionOn", map[string]any{
 		"objectId":            windowResp.Result.ObjectID,
 		"functionDeclaration": "function() { return document.documentElement; }",
 		"returnByValue":       false,
@@ -645,7 +681,7 @@ func (d *Daemon) handleFind(req ipc.Request) ipc.Response {
 	}
 
 	// Get outer HTML
-	htmlResult, err := d.cdp.SendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
+	htmlResult, err := d.sendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
 		"objectId": callResp.Result.ObjectID,
 	})
 	if err != nil {
@@ -824,7 +860,7 @@ func (d *Daemon) handleCDP(req ipc.Request) ipc.Response {
 		if activeID == "" {
 			return d.noActiveSessionError()
 		}
-		result, err = d.cdp.SendToSession(ctx, activeID, req.Target, params)
+		result, err = d.sendToSession(ctx, activeID, req.Target, params)
 	}
 
 	if err != nil {

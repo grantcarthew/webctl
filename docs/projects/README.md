@@ -24,7 +24,10 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-012 | Text Output Format | Completed | 2025-12-24 | 2025-12-24 |
 | P-013 | Find Command | Completed | 2025-12-25 | 2025-12-25 |
 | P-014 | Terminal Colors | Completed | 2025-12-24 | 2025-12-24 |
-| P-015 | HTML Formatting for Find and HTML Commands | Proposed | - | - |
+| P-015 | HTML Formatting for Find and HTML Commands | Completed | 2025-12-26 | 2025-12-26 |
+| P-016 | CLI Serve Command | In Progress | 2025-12-26 | - |
+| P-017 | CLI CSS Commands | In Progress | 2025-12-26 | - |
+| P-018 | Browser Connection Failure Handling | Completed | 2025-12-26 | 2025-12-27 |
 
 Note: Completed projects are in `completed/`
 
