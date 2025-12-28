@@ -275,6 +275,22 @@ type FindData struct {
 	Matches []FindMatch `json:"matches"`
 }
 
+// CSSParams represents parameters for the "css" command.
+type CSSParams struct {
+	Action   string `json:"action"`            // "save", "computed", "get", or "inject"
+	Selector string `json:"selector,omitempty"` // CSS selector for computed/get
+	Property string `json:"property,omitempty"` // CSS property for get action
+	CSS      string `json:"css,omitempty"`      // CSS content for inject action
+	File     string `json:"file,omitempty"`     // File path for inject action
+}
+
+// CSSData is the response data for the "css" command.
+type CSSData struct {
+	CSS    string            `json:"css,omitempty"`    // For save/computed actions
+	Styles map[string]string `json:"styles,omitempty"` // For computed action (JSON format)
+	Value  string            `json:"value,omitempty"`  // For get action
+}
+
 // SuccessResponse creates a successful response with the given data.
 func SuccessResponse(data any) Response {
 	var raw json.RawMessage
