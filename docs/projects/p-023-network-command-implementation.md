@@ -81,6 +81,7 @@ Testing follows DR-004 strategy with race detection and integration tests.
 
 - DR-028: Network Command Interface (design authority)
 - DR-004: Testing Strategy (testing approach consistency)
+- P-019: Implementation Gotchas section (unknown subcommand validation pattern)
 - Existing network command implementation
 
 ## Notes

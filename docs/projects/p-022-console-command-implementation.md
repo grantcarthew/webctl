@@ -80,6 +80,7 @@ Testing follows DR-004 strategy with race detection and integration tests.
 
 - DR-027: Console Command Interface (design authority)
 - DR-004: Testing Strategy (testing approach consistency)
+- P-019: Implementation Gotchas section (unknown subcommand validation pattern)
 - Existing console command implementation
 
 ## Notes

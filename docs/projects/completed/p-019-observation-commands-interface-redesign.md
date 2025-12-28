@@ -1,8 +1,8 @@
-# P-018: Observation Commands Interface Redesign
+# P-019: Observation Commands Interface Redesign
 
-- Status: In Progress
+- Status: Completed
 - Started: 2025-12-28
-- Completed: (not yet completed)
+- Completed: 2025-12-28
 
 ## Overview
 
@@ -446,6 +446,35 @@ None - this is a foundational redesign.
 ## Questions & Uncertainties
 
 None - design is locked in via interface documents.
+
+## Implementation Gotchas
+
+### Unknown Subcommand Validation
+
+When implementing commands with both a default `RunE` handler and subcommands, Cobra does not automatically error on unknown subcommands. For example:
+
+```bash
+webctl html xyz  # Without validation, this executes the default handler
+```
+
+**Required Fix**: Add manual argument validation in the default handler:
+
+```go
+func cmdDefaultHandler(cmd *cobra.Command, args []string) error {
+  // Validate that no arguments were provided (catches unknown subcommands)
+  if len(args) > 0 {
+    return outputError(fmt.Sprintf("unknown command %q for \"webctl <cmd>\"", args[0]))
+  }
+
+  // Rest of default handler logic...
+}
+```
+
+**Why this is needed**: When Cobra encounters an unknown subcommand like "xyz", it falls through to the parent command's `RunE` handler with the unknown text as an argument. The `Args: cobra.NoArgs` constraint on the parent command does NOT prevent this behavior.
+
+**Applies to**: All observation commands with default handlers (HTML, CSS, console, network, cookies)
+
+**Reference**: Implemented and tested in P-020 (HTML Command Implementation)
 
 ## Notes
 
