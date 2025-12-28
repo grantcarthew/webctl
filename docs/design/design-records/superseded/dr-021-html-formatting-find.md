@@ -1,7 +1,7 @@
 # DR-021: HTML Formatting for Find Command
 
 - Date: 2025-12-25
-- Status: Accepted
+- Status: Superseded by [DR-025](../dr-025-html-command-interface.md)
 - Implemented: 2025-12-26
 - Category: CLI
 

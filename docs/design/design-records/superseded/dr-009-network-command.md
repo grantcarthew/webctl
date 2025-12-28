@@ -1,7 +1,7 @@
 # DR-009: Network Command Interface
 
 - Date: 2025-12-15
-- Status: Accepted
+- Status: Superseded by [DR-028](../dr-028-network-command-interface.md)
 - Category: CLI
 
 ## Problem

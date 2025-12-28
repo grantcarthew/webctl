@@ -1,7 +1,7 @@
 # DR-017: Find Command Interface
 
 - Date: 2025-12-24
-- Status: Accepted
+- Status: Superseded by [DR-030](../dr-030-find-command-removal.md)
 - Category: CLI
 
 ## Problem

@@ -1,7 +1,7 @@
 # DR-012: HTML Command Interface
 
 - Date: 2025-12-17
-- Status: Accepted
+- Status: Superseded by [DR-025](../dr-025-html-command-interface.md)
 - Category: CLI
 
 ## Problem

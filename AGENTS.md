@@ -12,7 +12,7 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-- Active Project: None
+- Active Project: docs/projects/p-019-observation-commands-interface-redesign.md
 - Design Record: None
 
 ## Completed Projects
@@ -50,18 +50,43 @@ webctl reload
 webctl back
 webctl forward
 
-webctl console
-webctl network
-webctl screenshot
-webctl html [selector]
-webctl css save [selector]
-webctl css computed <selector>
-webctl css get <selector> <property>
-webctl css inject <css>
-webctl eval <js-expression>
-webctl cookies
-webctl find <text> [-E] [-c] [--limit N]
+# Observation commands (universal pattern: default/show/save)
+webctl html                         # Save to temp
+webctl html show                    # Output to stdout
+webctl html save <path>             # Save to custom path
+webctl html --select <selector> --find <text>
 
+webctl css                          # Save stylesheets to temp
+webctl css show                     # Output to stdout
+webctl css save <path>              # Save to custom path
+webctl css --select <selector> --find <text>
+webctl css computed <selector>      # Computed styles (stdout)
+webctl css get <selector> <property> # Single property (stdout)
+webctl css inject <css>             # Inject CSS
+
+webctl console                      # Save logs to temp
+webctl console show                 # Output to stdout
+webctl console save <path>          # Save to custom path
+webctl console --type <type> --find <text>
+
+webctl network                      # Save requests to temp
+webctl network show                 # Output to stdout
+webctl network save <path>          # Save to custom path
+webctl network --status <code> --method <method> --find <text>
+
+webctl cookies                      # Save cookies to temp
+webctl cookies show                 # Output to stdout
+webctl cookies save <path>          # Save to custom path
+webctl cookies --domain <domain> --find <text>
+webctl cookies set <name> <value>
+webctl cookies delete <name>
+
+webctl screenshot                   # Save to temp
+webctl screenshot save <path>       # Save to custom path
+
+webctl eval <js-expression>
+
+# Interaction commands
 webctl click <selector>
 webctl type <selector> <text>
 webctl select <selector> <value>
