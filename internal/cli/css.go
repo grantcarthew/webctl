@@ -18,94 +18,89 @@ import (
 
 var cssCmd = &cobra.Command{
 	Use:   "css",
-	Short: "CSS extraction, inspection, and manipulation",
-	Long: `Extract, inspect, and manipulate CSS in the browser.
+	Short: "Extract CSS from current page (default: save to temp)",
+	Long: `Extracts CSS from the current page with flexible output modes.
+
+Default behavior (no subcommand):
+  Saves CSS to /tmp/webctl-css/ with auto-generated filename
+  Returns JSON with file path
 
 Subcommands:
-  css save [selector]           Extract and save CSS to file
-  css computed <selector>       Get computed styles to stdout
-  css get <selector> <property> Get single CSS property to stdout
-  css inject <css>              Inject CSS into page
+  show              Output CSS to stdout
+  save <path>       Save CSS to custom path
+  computed <sel>    Get computed styles to stdout
+  get <sel> <prop>  Get single CSS property to stdout
+  inject <css>      Inject CSS into page
 
-Extract all stylesheets:
-  css save
-  css save -o ./styles.css
-  css save --raw                # Unformatted
+Universal flags (work with default/show/save modes):
+  --select, -s      Filter to element's computed styles
+  --find, -f        Search for text within CSS
+  --raw             Skip CSS formatting (return as-is from browser)
+  --json            Output in JSON format (global flag)
 
-Extract computed styles for element:
-  css save "#header"
-  css save ".button" -o ./button-styles.css
+Examples:
 
-Get all computed styles:
-  css computed "#main"
-  css computed ".button" --json
+Default mode (save to temp):
+  css                                  # All stylesheets to temp
+  css --select "#header"               # Computed styles to temp
+  css --find "background"              # Search and save matches
 
-Get single property:
-  css get "#header" background-color
-  css get ".button" display
+Show mode (stdout):
+  css show                             # All stylesheets to stdout
+  css show --select ".button"          # Computed styles to stdout
+  css show --find "color"              # Search and show matches
 
-Inject CSS:
-  css inject "body { background: red; }"
-  css inject --file ./custom.css
+Save mode (custom path):
+  css save ./styles.css                # Save to file
+  css save ./output/                   # Save to dir (auto-filename)
+  css save ./debug.css --select "form" --find "border"
 
-Response:
-  save:     {"ok": true, "path": "/tmp/webctl-css/..."}
-  computed: Styles output to stdout
-  get:      Property value to stdout
-  inject:   {"ok": true}
+CSS-specific operations:
+  css computed "#main"                 # All computed styles
+  css get "#header" background-color   # Single property
+  css inject "body { background: red; }" # Inject CSS
+  css inject --file ./custom.css       # Inject from file
+
+Response formats:
+  Default/Save: {"ok": true, "path": "/tmp/webctl-css/25-12-28-143052-example.css"}
+  Show:         body { margin: 0; ... } (to stdout)
+  Computed:     display: flex\ncolor: rgb(0,0,0) (to stdout)
+  Get:          rgb(0,0,0) (to stdout)
+  Inject:       {"ok": true}
 
 Error cases:
   - "selector matched no elements" - nothing matches selector
   - "property does not exist" - invalid CSS property
   - "daemon not running" - start daemon first with: webctl start`,
+	RunE: runCSSDefault,
+}
+
+var cssShowCmd = &cobra.Command{
+	Use:   "show",
+	Short: "Output CSS to stdout",
+	Long: `Outputs CSS to stdout for piping or inspection.
+
+Examples:
+  css show                             # All stylesheets
+  css show --select "#main"            # Computed styles
+  css show --find "background"         # Search within CSS
+  css show --raw                       # Unformatted output`,
+	RunE: runCSSShow,
 }
 
 var cssSaveCmd = &cobra.Command{
-	Use:   "save [selector]",
-	Short: "Extract and save CSS to file",
-	Long: `Extracts CSS and saves it to a file.
+	Use:   "save <path>",
+	Short: "Save CSS to custom path",
+	Long: `Saves CSS to a custom file path.
 
-Without a selector, returns all stylesheets (inline, style tags, linked).
-With a selector, returns computed styles for the matched element.
+If path is a directory, auto-generates filename.
+If path is a file, uses exact path.
 
-Flags:
-  --output, -o      Save to specified path instead of temp directory
-  --raw             Save unformatted CSS (default: formatted for readability)
-
-File location:
-  Default: /tmp/webctl-css/YY-MM-DD-HHMMSS-{title}.css
-  Custom:  Specified path with --output flag
-
-Extract all stylesheets:
-  css save                                  # All CSS from page
-  css save -o ./debug/styles.css            # Save to specific location
-  css save --raw                            # Unformatted CSS
-
-Extract computed styles for element:
-  css save "#main"                          # Element by ID
-  css save ".content"                       # Element by class
-  css save "nav > ul"                       # Nested selector
-
-Common patterns:
-  # Debug element styling
-  navigate example.com --wait
-  css save "#header" -o ./header.css
-
-  # Extract all page styles
-  css save -o ./site-styles.css
-
-  # Compare styles before/after
-  css save ".button" -o ./before.css
-  click "#toggle-theme"
-  ready
-  css save ".button" -o ./after.css
-
-Response:
-  {"ok": true, "path": "/tmp/webctl-css/24-12-28-143052-example-domain.css"}
-
-Error cases:
-  - "selector matched no elements" - nothing matches
-  - "failed to write CSS: permission denied" - cannot write to path`,
+Examples:
+  css save ./styles.css                # Save to file
+  css save ./output/                   # Save to dir
+  css save ./debug.css --select "#app" --find "color"`,
+	Args: cobra.ExactArgs(1),
 	RunE: runCSSSave,
 }
 
@@ -232,120 +227,131 @@ Note: Injected CSS is temporary and removed on page reload.`,
 }
 
 func init() {
-	// Flags for save subcommand
-	cssSaveCmd.Flags().StringP("output", "o", "", "Save to specified path instead of temp directory")
-	cssSaveCmd.Flags().Bool("raw", false, "Save unformatted CSS (default: formatted for readability)")
+	// Universal flags on root command (inherited by default/show/save subcommands)
+	cssCmd.PersistentFlags().StringP("select", "s", "", "Filter to element's computed styles")
+	cssCmd.PersistentFlags().StringP("find", "f", "", "Search for text within CSS")
+	cssCmd.PersistentFlags().Bool("raw", false, "Skip CSS formatting")
 
-	// Flags for inject subcommand
-	cssInjectCmd.Flags().StringP("file", "f", "", "Inject CSS from file")
+	// Flags for inject subcommand (note: -f conflicts with --find, so using --file only)
+	cssInjectCmd.Flags().String("file", "", "Inject CSS from file")
 
-	cssCmd.AddCommand(cssSaveCmd)
-	cssCmd.AddCommand(cssComputedCmd)
-	cssCmd.AddCommand(cssGetCmd)
-	cssCmd.AddCommand(cssInjectCmd)
+	// Add all subcommands
+	cssCmd.AddCommand(cssShowCmd, cssSaveCmd, cssComputedCmd, cssGetCmd, cssInjectCmd)
+
 	rootCmd.AddCommand(cssCmd)
 }
 
-func runCSSSave(cmd *cobra.Command, args []string) error {
+// runCSSDefault handles default behavior: save to temp directory
+func runCSSDefault(cmd *cobra.Command, args []string) error {
+	// Validate that no arguments were provided (catches unknown subcommands)
+	if len(args) > 0 {
+		return outputError(fmt.Sprintf("unknown command %q for \"webctl css\"", args[0]))
+	}
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
 
-	// Read flags
-	output, _ := cmd.Flags().GetString("output")
-	rawOutput, _ := cmd.Flags().GetBool("raw")
+	// Get CSS from daemon
+	css, err := getCSSFromDaemon(cmd)
+	if err != nil {
+		return outputError(err.Error())
+	}
 
+	// Get selector for filename generation
+	selector, _ := cmd.Flags().GetString("select")
+
+	// Generate filename in temp directory
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return outputError(err.Error())
 	}
 	defer exec.Close()
 
-	// Build request with optional selector
-	var selector string
-	if len(args) > 0 {
-		selector = args[0]
-	}
-
-	params, err := json.Marshal(ipc.CSSParams{
-		Action:   "save",
-		Selector: selector,
-	})
+	outputPath, err := generateCSSPath(exec, selector)
 	if err != nil {
 		return outputError(err.Error())
-	}
-
-	resp, err := exec.Execute(ipc.Request{
-		Cmd:    "css",
-		Params: params,
-	})
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	if !resp.OK {
-		return outputError(resp.Error)
-	}
-
-	// Parse CSS data
-	var data ipc.CSSData
-	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return outputError(err.Error())
-	}
-
-	// Format CSS unless --raw flag is set
-	var cssOutput string
-	if selector == "" {
-		// All stylesheets - data.CSS contains the CSS
-		cssOutput = data.CSS
-		if !rawOutput {
-			formatted, err := cssformat.Format(data.CSS)
-			if err != nil {
-				// If formatting fails, fall back to raw CSS
-				debugf("CSS formatting failed: %v", err)
-			} else {
-				cssOutput = formatted
-			}
-		}
-	} else {
-		// Computed styles - data.Styles contains the map
-		cssOutput = cssformat.FormatComputedStyles(data.Styles)
-	}
-
-	// Determine output path
-	var outputPath string
-	if output != "" {
-		outputPath = output
-	} else {
-		// Generate filename in temp directory
-		outputPath, err = generateCSSPath(exec, selector)
-		if err != nil {
-			return outputError(err.Error())
-		}
-	}
-
-	// Ensure parent directory exists
-	dir := filepath.Dir(outputPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return outputError(fmt.Sprintf("failed to create directory: %v", err))
 	}
 
 	// Write CSS to file
-	if err := os.WriteFile(outputPath, []byte(cssOutput), 0644); err != nil {
-		return outputError(fmt.Sprintf("failed to write CSS: %v", err))
+	if err := writeCSSToFile(outputPath, css); err != nil {
+		return outputError(err.Error())
 	}
 
-	// JSON mode: return JSON with file path
+	// Return JSON response
 	if JSONOutput {
-		result := map[string]any{
+		return outputJSON(os.Stdout, map[string]any{
 			"ok":   true,
 			"path": outputPath,
-		}
-		return outputJSON(os.Stdout, result)
+		})
 	}
 
-	// Text mode: just output the file path
 	return format.FilePath(os.Stdout, outputPath)
+}
+
+// runCSSShow handles show subcommand: output to stdout
+func runCSSShow(cmd *cobra.Command, args []string) error {
+	if !execFactory.IsDaemonRunning() {
+		return outputError("daemon not running. Start with: webctl start")
+	}
+
+	// Get CSS from daemon
+	css, err := getCSSFromDaemon(cmd)
+	if err != nil {
+		return outputError(err.Error())
+	}
+
+	// Output to stdout
+	fmt.Println(css)
+	return nil
+}
+
+// runCSSSave handles save subcommand: save to custom path
+func runCSSSave(cmd *cobra.Command, args []string) error {
+	if !execFactory.IsDaemonRunning() {
+		return outputError("daemon not running. Start with: webctl start")
+	}
+
+	path := args[0]
+
+	// Get CSS from daemon
+	css, err := getCSSFromDaemon(cmd)
+	if err != nil {
+		return outputError(err.Error())
+	}
+
+	// Handle directory vs file path
+	fileInfo, err := os.Stat(path)
+	if err == nil && fileInfo.IsDir() {
+		// Path is a directory - auto-generate filename
+		exec, err := execFactory.NewExecutor()
+		if err != nil {
+			return outputError(err.Error())
+		}
+		defer exec.Close()
+
+		selector, _ := cmd.Flags().GetString("select")
+		filename, err := generateCSSFilename(exec, selector)
+		if err != nil {
+			return outputError(err.Error())
+		}
+		path = filepath.Join(path, filename)
+	}
+
+	// Write CSS to file
+	if err := writeCSSToFile(path, css); err != nil {
+		return outputError(err.Error())
+	}
+
+	// Return JSON response
+	if JSONOutput {
+		return outputJSON(os.Stdout, map[string]any{
+			"ok":   true,
+			"path": path,
+		})
+	}
+
+	return format.FilePath(os.Stdout, path)
 }
 
 func runCSSComputed(cmd *cobra.Command, args []string) error {
@@ -503,12 +509,44 @@ func runCSSInject(cmd *cobra.Command, args []string) error {
 	return outputSuccess(nil)
 }
 
-// generateCSSPath generates a filename in /tmp/webctl-css/
-// using the pattern: YY-MM-DD-HHMMSS-{normalized-title}.css
-// For selectors, uses normalized selector as identifier
-func generateCSSPath(exec executor.Executor, selector string) (string, error) {
-	// Get current session for title
-	resp, err := exec.Execute(ipc.Request{Cmd: "status"})
+// getCSSFromDaemon fetches CSS from daemon, applying filters and formatting
+func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
+	// Try to get flags from command, falling back to parent for persistent flags
+	selector, _ := cmd.Flags().GetString("select")
+	if selector == "" && cmd.Parent() != nil {
+		selector, _ = cmd.Parent().PersistentFlags().GetString("select")
+	}
+
+	find, _ := cmd.Flags().GetString("find")
+	if find == "" && cmd.Parent() != nil {
+		find, _ = cmd.Parent().PersistentFlags().GetString("find")
+	}
+
+	raw, _ := cmd.Flags().GetBool("raw")
+	if !raw && cmd.Parent() != nil {
+		raw, _ = cmd.Parent().PersistentFlags().GetBool("raw")
+	}
+
+	exec, err := execFactory.NewExecutor()
+	if err != nil {
+		return "", err
+	}
+	defer exec.Close()
+
+	// Build request with selector
+	params, err := json.Marshal(ipc.CSSParams{
+		Action:   "save",
+		Selector: selector,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	// Execute CSS request
+	resp, err := exec.Execute(ipc.Request{
+		Cmd:    "css",
+		Params: params,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -517,33 +555,127 @@ func generateCSSPath(exec executor.Executor, selector string) (string, error) {
 		return "", fmt.Errorf("%s", resp.Error)
 	}
 
-	var status ipc.StatusData
-	if err := json.Unmarshal(resp.Data, &status); err != nil {
+	// Parse CSS data
+	var data ipc.CSSData
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
 		return "", err
 	}
 
-	// Generate identifier
-	var identifier string
+	var css string
+	if selector == "" {
+		// All stylesheets - data.CSS contains the CSS
+		css = data.CSS
+	} else {
+		// Computed styles - data.Styles contains the map
+		css = cssformat.FormatComputedStyles(data.Styles)
+	}
+
+	// Apply --find filter if specified
+	if find != "" {
+		css, err = filterCSSByText(css, find)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// Format CSS unless --raw flag is set
+	if !raw && selector == "" {
+		// Only format full stylesheets, not computed styles
+		formatted, err := cssformat.Format(css)
+		if err != nil {
+			// If formatting fails, fall back to raw CSS
+			debugf("CSS formatting failed: %v", err)
+		} else {
+			css = formatted
+		}
+	}
+
+	return css, nil
+}
+
+// filterCSSByText filters CSS to only include lines containing the search text
+func filterCSSByText(css, searchText string) (string, error) {
+	lines := strings.Split(css, "\n")
+	var matchedLines []string
+
+	searchLower := strings.ToLower(searchText)
+
+	for _, line := range lines {
+		if strings.Contains(strings.ToLower(line), searchLower) {
+			matchedLines = append(matchedLines, line)
+		}
+	}
+
+	if len(matchedLines) == 0 {
+		return "", fmt.Errorf("no matches found for '%s'", searchText)
+	}
+
+	return strings.Join(matchedLines, "\n"), nil
+}
+
+// writeCSSToFile writes CSS content to a file, creating directories if needed
+func writeCSSToFile(path, css string) error {
+	// Ensure parent directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %v", err)
+	}
+
+	// Write CSS to file
+	if err := os.WriteFile(path, []byte(css), 0644); err != nil {
+		return fmt.Errorf("failed to write CSS: %v", err)
+	}
+
+	return nil
+}
+
+// generateCSSPath generates a full path in /tmp/webctl-css/
+// using the pattern: YY-MM-DD-HHMMSS-{identifier}.css
+func generateCSSPath(exec executor.Executor, selector string) (string, error) {
+	filename, err := generateCSSFilename(exec, selector)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join("/tmp/webctl-css", filename), nil
+}
+
+// generateCSSFilename generates a filename using the pattern:
+// YY-MM-DD-HHMMSS-{identifier}.css
+// Identifier is based on selector (if provided) or page title
+func generateCSSFilename(exec executor.Executor, selector string) (string, error) {
+	// Generate timestamp: YY-MM-DD-HHMMSS
+	now := time.Now()
+	timestamp := now.Format("06-01-02-150405")
+
+	// Get identifier (selector or page title)
+	identifier := "untitled"
 	if selector != "" {
 		// Use normalized selector
 		identifier = normalizeSelector(selector)
 	} else {
-		// Use page title
-		identifier = "untitled"
+		// Get page title
+		resp, err := exec.Execute(ipc.Request{Cmd: "status"})
+		if err != nil {
+			return "", err
+		}
+
+		if !resp.OK {
+			return "", fmt.Errorf("%s", resp.Error)
+		}
+
+		var status ipc.StatusData
+		if err := json.Unmarshal(resp.Data, &status); err != nil {
+			return "", err
+		}
+
 		if status.ActiveSession != nil && status.ActiveSession.Title != "" {
 			identifier = normalizeTitle(status.ActiveSession.Title)
 		}
 	}
 
-	// Generate timestamp: YY-MM-DD-HHMMSS
-	now := time.Now()
-	timestamp := now.Format("06-01-02-150405")
-
 	// Generate filename
-	filename := fmt.Sprintf("%s-%s.css", timestamp, identifier)
-
-	// Return path in /tmp/webctl-css/
-	return filepath.Join("/tmp/webctl-css", filename), nil
+	return fmt.Sprintf("%s-%s.css", timestamp, identifier), nil
 }
 
 // normalizeSelector normalizes a CSS selector for use in a filename.
