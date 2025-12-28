@@ -1,7 +1,7 @@
 # DR-015: Cookies Command Interface
 
 - Date: 2025-12-22
-- Status: Proposed
+- Status: Superseded by [DR-029](../dr-029-cookies-command-interface.md)
 - Category: CLI
 
 ## Problem

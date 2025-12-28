@@ -1,7 +1,7 @@
 # DR-007: Console Command Interface
 
 - Date: 2025-12-14
-- Status: Accepted
+- Status: Superseded by [DR-027](../dr-027-console-command-interface.md)
 - Category: CLI
 
 ## Problem

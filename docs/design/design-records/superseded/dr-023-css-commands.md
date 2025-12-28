@@ -1,7 +1,7 @@
 # DR-023: CSS Command Architecture
 
 - Date: 2025-12-26
-- Status: Proposed
+- Status: Superseded by [DR-026](../dr-026-css-command-interface.md)
 - Category: CLI
 
 ## Problem
