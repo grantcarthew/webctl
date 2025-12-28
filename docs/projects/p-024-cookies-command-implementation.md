@@ -96,6 +96,7 @@ Flags:
 
 - DR-029: Cookies Command Interface (design authority)
 - DR-004: Testing Strategy (testing approach consistency)
+- P-019: Implementation Gotchas section (unknown subcommand validation pattern)
 - Existing cookies command implementation
 
 ## Notes

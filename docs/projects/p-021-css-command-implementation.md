@@ -276,6 +276,7 @@ Subcommands computed/get/inject remain unchanged.
 
 - DR-026: CSS Command Interface (design authority)
 - DR-004: Testing Strategy (testing approach consistency)
+- P-019: Implementation Gotchas section (unknown subcommand validation pattern)
 - DR-023: CSS Command Architecture (existing implementation)
 - Existing CSS command code (refactor base)
 - Cobra library (subcommand support)

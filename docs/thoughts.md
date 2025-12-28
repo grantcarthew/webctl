@@ -4,3 +4,4 @@ This document is a space for brainstorming, capturing ideas, asking questions, a
 
 - The terminal stops showing text when typing after exiting webctl. I have to `reset` to fix it.
 - Add a --help-summary or similar with the goal of giving a full help summary for AI agent use.
+- nav telsa.com causes an error twice

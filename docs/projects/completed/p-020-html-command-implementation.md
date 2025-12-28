@@ -1,8 +1,8 @@
-# P-019: HTML Command Implementation
+# P-020: HTML Command Implementation
 
-- Status: Proposed
-- Started: (not yet started)
-- Completed: (not yet completed)
+- Status: Completed
+- Started: 2025-12-28
+- Completed: 2025-12-28
 
 ## Overview
 
@@ -47,19 +47,19 @@ Out of Scope:
 
 ## Success Criteria
 
-- [ ] Default (no subcommand) saves to temp with auto-generated filename
-- [ ] Show subcommand outputs to stdout
-- [ ] Save <path> subcommand saves to custom path
-- [ ] Directory paths auto-generate filenames
-- [ ] File paths use exact path
-- [ ] --select flag filters to element(s)
-- [ ] --find flag searches within HTML
-- [ ] --raw flag skips formatting
-- [ ] --json flag outputs JSON format
-- [ ] All existing tests pass
-- [ ] New tests cover all output modes and flags
-- [ ] Documentation updated
-- [ ] AGENTS.md updated with new HTML command pattern
+- [x] Default (no subcommand) saves to temp with auto-generated filename
+- [x] Show subcommand outputs to stdout
+- [x] Save <path> subcommand saves to custom path
+- [x] Directory paths auto-generate filenames
+- [x] File paths use exact path
+- [x] --select flag filters to element(s)
+- [x] --find flag searches within HTML
+- [x] --raw flag skips formatting
+- [x] --json flag outputs JSON format
+- [x] All existing tests pass
+- [x] New tests cover all output modes and flags
+- [x] Documentation updated (via command help text)
+- [x] AGENTS.md updated with new HTML command pattern
 
 ## Deliverables
 

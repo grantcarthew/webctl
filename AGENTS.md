@@ -12,13 +12,16 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-- Active Project: docs/projects/p-019-observation-commands-interface-redesign.md
-- Design Record: None
+- Active Project: (no active project)
+- Design Record: N/A
+
 
 ## Completed Projects
 
 
 Completed projects are in docs/projects/completed/
+- P-020: HTML Command Implementation (2025-12-28)
+- P-019: Observation Commands Interface Redesign (2025-12-28)
 - P-017: CSS Commands (2025-12-28)
 - P-018: Browser Connection Failure Handling (2025-12-27)
 - P-015: HTML Formatting for Find and HTML Commands (2025-12-26)
@@ -54,7 +57,7 @@ webctl forward
 webctl html                         # Save to temp
 webctl html show                    # Output to stdout
 webctl html save <path>             # Save to custom path
-webctl html --select <selector> --find <text>
+webctl html --select <selector> --find <text>  # Filter and search
 
 webctl css                          # Save stylesheets to temp
 webctl css show                     # Output to stdout

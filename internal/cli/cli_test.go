@@ -1678,7 +1678,7 @@ func TestRunHTML_DaemonNotRunning(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	err := runHTML(htmlCmd, []string{})
+	err := runHTMLDefault(htmlCmd, []string{})
 
 	w.Close()
 	os.Stderr = oldStderr
@@ -1737,14 +1737,11 @@ func TestRunHTML_FullPage(t *testing.T) {
 	})
 	defer restore()
 
-	htmlCmd.Flags().Set("output", tmpDir+"/test.html")
-	defer htmlCmd.Flags().Set("output", "")
-
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runHTML(htmlCmd, []string{})
+	err := runHTMLSave(htmlSaveCmd, []string{tmpDir + "/test.html"})
 
 	w.Close()
 	os.Stdout = old
@@ -1823,14 +1820,15 @@ func TestRunHTML_WithSelector(t *testing.T) {
 	})
 	defer restore()
 
-	htmlCmd.Flags().Set("output", tmpDir+"/test.html")
-	defer htmlCmd.Flags().Set("output", "")
+	// Set persistent flag on parent command
+	htmlCmd.PersistentFlags().Set("select", ".content")
+	defer htmlCmd.PersistentFlags().Set("select", "")
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runHTML(htmlCmd, []string{".content"})
+	runHTMLSave(htmlSaveCmd, []string{tmpDir + "/test.html"})
 
 	w.Close()
 	os.Stdout = old
@@ -1864,14 +1862,11 @@ func TestRunHTML_CustomOutput(t *testing.T) {
 	})
 	defer restore()
 
-	htmlCmd.Flags().Set("output", customPath)
-	defer htmlCmd.Flags().Set("output", "")
-
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runHTML(htmlCmd, []string{})
+	err := runHTMLSave(htmlSaveCmd, []string{customPath})
 
 	w.Close()
 	os.Stdout = old
