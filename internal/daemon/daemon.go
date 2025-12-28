@@ -407,6 +407,8 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 		return d.handleCookies(req)
 	case "find":
 		return d.handleFind(req)
+	case "css":
+		return d.handleCSS(req)
 	case "shutdown":
 		return d.handleShutdown()
 	default:

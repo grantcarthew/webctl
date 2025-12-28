@@ -12,9 +12,14 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-Active Project: None
+- Active Project: None
+- Design Record: None
+
+## Completed Projects
+
 
 Completed projects are in docs/projects/completed/
+- P-017: CSS Commands (2025-12-28)
 - P-018: Browser Connection Failure Handling (2025-12-27)
 - P-015: HTML Formatting for Find and HTML Commands (2025-12-26)
 - P-013: Find Command (2025-12-25)
@@ -49,6 +54,10 @@ webctl console
 webctl network
 webctl screenshot
 webctl html [selector]
+webctl css save [selector]
+webctl css computed <selector>
+webctl css get <selector> <property>
+webctl css inject <css>
 webctl eval <js-expression>
 webctl cookies
 webctl find <text> [-E] [-c] [--limit N]
