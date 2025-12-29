@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/fatih/color"
@@ -501,7 +502,7 @@ func TestRunConsole_DaemonNotRunning(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stderr = w
 
-	err := runConsole(nil, nil)
+	err := runConsoleDefault(nil, nil)
 
 	w.Close()
 	os.Stderr = old
@@ -547,7 +548,7 @@ func TestRunConsole_Success(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runConsole(consoleCmd, nil)
+	err := runConsoleShow(consoleShowCmd, nil)
 
 	w.Close()
 	os.Stdout = old
@@ -572,13 +573,13 @@ func TestRunConsole_Success(t *testing.T) {
 		t.Errorf("expected count=2, got %v", result["count"])
 	}
 
-	entries, ok := result["entries"].([]any)
+	logs, ok := result["logs"].([]any)
 	if !ok {
-		t.Fatalf("expected entries to be array, got %T", result["entries"])
+		t.Fatalf("expected logs to be array, got %T", result["logs"])
 	}
 
-	if len(entries) != 2 {
-		t.Errorf("expected 2 entries, got %d", len(entries))
+	if len(logs) != 2 {
+		t.Errorf("expected 2 logs, got %d", len(logs))
 	}
 
 	if !exec.closed {
@@ -612,7 +613,7 @@ func TestRunConsole_EmptyBuffer(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runConsole(consoleCmd, nil)
+	err := runConsoleShow(consoleShowCmd, nil)
 
 	w.Close()
 	os.Stdout = old
@@ -719,6 +720,554 @@ func TestApplyConsoleLimiting(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFilterConsoleByText(t *testing.T) {
+	entries := []ipc.ConsoleEntry{
+		{Type: "log", Text: "User logged in successfully"},
+		{Type: "error", Text: "TypeError: Cannot read property 'name'"},
+		{Type: "warn", Text: "Deprecated API usage"},
+		{Type: "error", Text: "ReferenceError: foo is not defined"},
+		{Type: "log", Text: "Application log entry"},
+	}
+
+	tests := []struct {
+		name     string
+		search   string
+		expected int
+	}{
+		{"exact match", "TypeError", 1},
+		{"case insensitive", "typeerror", 1},
+		{"partial match", "error", 2},
+		{"multiple matches", "log", 2},
+		{"no match", "xyz123", 0},
+		{"common word", "API", 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filtered := filterConsoleByText(entries, tt.search)
+			if len(filtered) != tt.expected {
+				t.Errorf("expected %d entries, got %d", tt.expected, len(filtered))
+			}
+		})
+	}
+}
+
+func TestRunConsoleDefault_Success(t *testing.T) {
+	enableJSONOutput(t)
+
+	consoleData := ipc.ConsoleData{
+		Entries: []ipc.ConsoleEntry{
+			{Type: "log", Text: "test message", Timestamp: 1702000000000},
+		},
+		Count: 1,
+	}
+	consoleJSON, _ := json.Marshal(consoleData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			if req.Cmd != "console" {
+				t.Errorf("expected cmd=console, got %s", req.Cmd)
+			}
+			return ipc.Response{OK: true, Data: consoleJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runConsoleDefault(consoleCmd, nil)
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Errorf("expected ok=true, got %v", result["ok"])
+	}
+
+	path, ok := result["path"].(string)
+	if !ok {
+		t.Fatalf("expected path to be string, got %T", result["path"])
+	}
+
+	// Verify path is in temp directory
+	if !strings.HasPrefix(path, "/tmp/webctl-console/") {
+		t.Errorf("expected path to start with /tmp/webctl-console/, got %s", path)
+	}
+
+	// Verify filename format: YY-MM-DD-HHMMSS-console.json
+	if !strings.HasSuffix(path, "-console.json") {
+		t.Errorf("expected path to end with -console.json, got %s", path)
+	}
+
+	if !exec.closed {
+		t.Error("expected executor to be closed")
+	}
+}
+
+func TestRunConsoleDefault_UnknownSubcommand(t *testing.T) {
+	enableJSONOutput(t)
+
+	restore := setMockFactory(&mockFactory{daemonRunning: true})
+	defer restore()
+
+	err := runConsoleDefault(consoleCmd, []string{"invalid"})
+
+	if err == nil {
+		t.Fatal("expected error for unknown subcommand")
+	}
+
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("expected 'unknown command' error, got: %v", err)
+	}
+}
+
+func TestRunConsoleSave_CustomFilePath(t *testing.T) {
+	enableJSONOutput(t)
+
+	consoleData := ipc.ConsoleData{
+		Entries: []ipc.ConsoleEntry{
+			{Type: "log", Text: "test", Timestamp: 1702000000000},
+		},
+		Count: 1,
+	}
+	consoleJSON, _ := json.Marshal(consoleData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true, Data: consoleJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	// Create temp file for testing
+	tmpFile, err := os.CreateTemp("", "console-test-*.json")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	tmpPath := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpPath)
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runConsoleSave(consoleSaveCmd, []string{tmpPath})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Errorf("expected ok=true, got %v", result["ok"])
+	}
+
+	if result["path"] != tmpPath {
+		t.Errorf("expected path=%s, got %v", tmpPath, result["path"])
+	}
+
+	// Verify file was written
+	data, err := os.ReadFile(tmpPath)
+	if err != nil {
+		t.Fatalf("failed to read saved file: %v", err)
+	}
+
+	var savedData map[string]any
+	if err := json.Unmarshal(data, &savedData); err != nil {
+		t.Fatalf("saved file is not valid JSON: %v", err)
+	}
+
+	if savedData["ok"] != true {
+		t.Error("saved file should contain ok=true")
+	}
+
+	logs, ok := savedData["logs"].([]any)
+	if !ok {
+		t.Fatalf("saved file should contain logs array, got %T", savedData["logs"])
+	}
+
+	if len(logs) != 1 {
+		t.Errorf("expected 1 log entry, got %d", len(logs))
+	}
+
+	if !exec.closed {
+		t.Error("expected executor to be closed")
+	}
+}
+
+func TestRunConsoleSave_DirectoryPath(t *testing.T) {
+	enableJSONOutput(t)
+
+	consoleData := ipc.ConsoleData{
+		Entries: []ipc.ConsoleEntry{
+			{Type: "log", Text: "test", Timestamp: 1702000000000},
+		},
+		Count: 1,
+	}
+	consoleJSON, _ := json.Marshal(consoleData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true, Data: consoleJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	// Create temp directory
+	tmpDir, err := os.MkdirTemp("", "console-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err = runConsoleSave(consoleSaveCmd, []string{tmpDir})
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Errorf("expected ok=true, got %v", result["ok"])
+	}
+
+	path, ok := result["path"].(string)
+	if !ok {
+		t.Fatalf("expected path to be string, got %T", result["path"])
+	}
+
+	// Verify path is in the specified directory
+	if !strings.HasPrefix(path, tmpDir) {
+		t.Errorf("expected path to start with %s, got %s", tmpDir, path)
+	}
+
+	// Verify auto-generated filename
+	if !strings.HasSuffix(path, "-console.json") {
+		t.Errorf("expected path to end with -console.json, got %s", path)
+	}
+
+	// Verify file exists
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		t.Error("file was not created")
+	}
+
+	if !exec.closed {
+		t.Error("expected executor to be closed")
+	}
+}
+
+func TestRunConsoleShow_RawFlag(t *testing.T) {
+	enableJSONOutput(t)
+
+	consoleData := ipc.ConsoleData{
+		Entries: []ipc.ConsoleEntry{
+			{Type: "log", Text: "test message", Timestamp: 1702000000000},
+		},
+		Count: 1,
+	}
+	consoleJSON, _ := json.Marshal(consoleData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true, Data: consoleJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	// Set --raw flag on parent command
+	consoleCmd.PersistentFlags().Set("raw", "true")
+	t.Cleanup(func() { consoleCmd.PersistentFlags().Set("raw", "false") })
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runConsoleShow(consoleShowCmd, nil)
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+
+	if result["ok"] != true {
+		t.Errorf("expected ok=true, got %v", result["ok"])
+	}
+
+	// Raw flag should output JSON
+	logs, ok := result["logs"].([]any)
+	if !ok {
+		t.Fatalf("expected logs to be array, got %T", result["logs"])
+	}
+
+	if len(logs) != 1 {
+		t.Errorf("expected 1 log, got %d", len(logs))
+	}
+
+	if !exec.closed {
+		t.Error("expected executor to be closed")
+	}
+}
+
+func TestRunConsoleShow_CombinedFilters(t *testing.T) {
+	enableJSONOutput(t)
+
+	consoleData := ipc.ConsoleData{
+		Entries: []ipc.ConsoleEntry{
+			{Type: "log", Text: "Starting application", Timestamp: 1},
+			{Type: "error", Text: "TypeError: Cannot read property", Timestamp: 2},
+			{Type: "warn", Text: "Deprecated API", Timestamp: 3},
+			{Type: "error", Text: "ReferenceError: undefined variable", Timestamp: 4},
+			{Type: "error", Text: "TypeError: Invalid argument", Timestamp: 5},
+			{Type: "log", Text: "Process complete", Timestamp: 6},
+		},
+		Count: 6,
+	}
+	consoleJSON, _ := json.Marshal(consoleData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true, Data: consoleJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	// Set combined filters on the parent command: --type error --find "TypeError" --tail 2
+	consoleCmd.PersistentFlags().Set("type", "error")
+	consoleCmd.PersistentFlags().Set("find", "TypeError")
+	consoleCmd.PersistentFlags().Set("tail", "2")
+	t.Cleanup(func() {
+		consoleCmd.PersistentFlags().Set("type", "")
+		consoleCmd.PersistentFlags().Set("find", "")
+		consoleCmd.PersistentFlags().Set("tail", "0")
+	})
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runConsoleShow(consoleShowCmd, nil)
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+
+	logs, ok := result["logs"].([]any)
+	if !ok {
+		t.Fatalf("expected logs to be array, got %T", result["logs"])
+	}
+
+	// Should get 2 TypeError entries (filtered by type=error, find=TypeError, tail=2)
+	// But we only have 2 TypeError entries total, so should get both
+	if len(logs) != 2 {
+		t.Errorf("expected 2 logs after combined filters, got %d", len(logs))
+	}
+
+	if !exec.closed {
+		t.Error("expected executor to be closed")
+	}
+}
+
+func TestRunConsoleShow_FindNoMatches(t *testing.T) {
+	enableJSONOutput(t)
+
+	consoleData := ipc.ConsoleData{
+		Entries: []ipc.ConsoleEntry{
+			{Type: "log", Text: "test message", Timestamp: 1702000000000},
+		},
+		Count: 1,
+	}
+	consoleJSON, _ := json.Marshal(consoleData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true, Data: consoleJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	// Set --find with no matches on parent command
+	consoleCmd.PersistentFlags().Set("find", "nonexistent-string-xyz")
+	t.Cleanup(func() { consoleCmd.PersistentFlags().Set("find", "") })
+
+	err := runConsoleShow(consoleShowCmd, nil)
+
+	if err == nil {
+		t.Fatal("expected error when no matches found")
+	}
+
+	if !strings.Contains(err.Error(), "no matches found") {
+		t.Errorf("expected 'no matches found' error, got: %v", err)
+	}
+
+	if !exec.closed {
+		t.Error("expected executor to be closed")
+	}
+}
+
+func TestRunConsoleShow_TextOutput(t *testing.T) {
+	// Disable JSON output for this test
+	oldJSON := JSONOutput
+	JSONOutput = false
+	defer func() { JSONOutput = oldJSON }()
+
+	consoleData := ipc.ConsoleData{
+		Entries: []ipc.ConsoleEntry{
+			{Type: "log", Text: "Application started", Timestamp: 1702000000000},
+			{Type: "error", Text: "Fatal error occurred", Timestamp: 1702000001000, URL: "https://example.com/app.js", Line: 42},
+		},
+		Count: 2,
+	}
+	consoleJSON, _ := json.Marshal(consoleData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true, Data: consoleJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runConsoleShow(consoleShowCmd, nil)
+
+	w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	output := buf.String()
+
+	// Verify text format output
+	// Format is: [HH:MM:SS] LEVEL Message
+	// Should contain formatted log entries with timestamps and messages
+	if len(output) == 0 {
+		t.Error("expected non-empty output")
+	}
+
+	// Check for timestamp format [HH:MM:SS]
+	if !strings.Contains(output, "[") || !strings.Contains(output, "]") {
+		t.Errorf("expected output to contain timestamp format, got: %s", output)
+	}
+
+	// At least one message should be present
+	hasLog := strings.Contains(output, "Application started")
+	hasError := strings.Contains(output, "Fatal error occurred")
+	if !hasLog && !hasError {
+		t.Errorf("expected output to contain at least one log message, got: %s", output)
+	}
+
+	if !exec.closed {
+		t.Error("expected executor to be closed")
 	}
 }
 
@@ -859,7 +1408,7 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 	r1, w1, _ := os.Pipe()
 	os.Stdout = w1
 
-	ExecuteArgs([]string{"console", "--json", "--tail", "2"})
+	ExecuteArgs([]string{"console", "show", "--json", "--tail", "2"})
 
 	w1.Close()
 	os.Stdout = old
@@ -868,9 +1417,14 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 	buf1.ReadFrom(r1)
 
 	var result1 map[string]any
-	json.Unmarshal(buf1.Bytes(), &result1)
+	if err := json.Unmarshal(buf1.Bytes(), &result1); err != nil {
+		t.Fatalf("failed to parse first call output: %v, output: %s", err, buf1.String())
+	}
 
-	count1 := result1["count"].(float64)
+	count1, ok := result1["count"].(float64)
+	if !ok {
+		t.Fatalf("first call: count not found or not float64, result: %+v", result1)
+	}
 	if count1 != 2 {
 		t.Errorf("first call with --tail 2: count = %v, want 2", count1)
 	}
@@ -879,7 +1433,7 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 	r2, w2, _ := os.Pipe()
 	os.Stdout = w2
 
-	ExecuteArgs([]string{"console", "--json"})
+	ExecuteArgs([]string{"console", "show", "--json"})
 
 	w2.Close()
 	os.Stdout = old
@@ -888,9 +1442,14 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 	buf2.ReadFrom(r2)
 
 	var result2 map[string]any
-	json.Unmarshal(buf2.Bytes(), &result2)
+	if err := json.Unmarshal(buf2.Bytes(), &result2); err != nil {
+		t.Fatalf("failed to parse second call output: %v, output: %s", err, buf2.String())
+	}
 
-	count2 := result2["count"].(float64)
+	count2, ok := result2["count"].(float64)
+	if !ok {
+		t.Fatalf("second call: count not found or not float64, result: %+v", result2)
+	}
 	if count2 != 5 {
 		t.Errorf("second call without flags: count = %v, want 5 (flags should be reset)", count2)
 	}
