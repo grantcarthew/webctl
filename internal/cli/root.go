@@ -108,16 +108,33 @@ func ExecuteArgs(args []string) (recognized bool, err error) {
 	// Reset flags to defaults AFTER each REPL command execution.
 	// Since we read flags from cmd.Flags() in RunE (which gets values from Cobra's parsing),
 	// we reset AFTER execution so the next call starts fresh.
-	cmd.Flags().VisitAll(func(f *pflag.Flag) {
-		// For slice types with DefValue "[]", use empty string to properly reset.
-		// Using Set("[]") would incorrectly create a slice containing "[]" as a literal.
-		defVal := f.DefValue
-		if defVal == "[]" {
-			defVal = ""
-		}
-		_ = f.Value.Set(defVal)
-		f.Changed = false
-	})
+	resetFlags := func(flags *pflag.FlagSet) {
+		flags.VisitAll(func(f *pflag.Flag) {
+			// For slice types with DefValue "[]", use empty string to properly reset.
+			// Using Set("[]") would incorrectly create a slice containing "[]" as a literal.
+			defVal := f.DefValue
+			if defVal == "[]" {
+				defVal = ""
+			}
+			_ = f.Value.Set(defVal)
+			f.Changed = false
+		})
+	}
+
+	// Reset both local flags and persistent flags
+	resetFlags(cmd.Flags())
+	resetFlags(cmd.PersistentFlags())
+
+	// Also reset persistent flags from parent commands
+	for parent := cmd.Parent(); parent != nil; parent = parent.Parent() {
+		resetFlags(parent.PersistentFlags())
+	}
+
+	// Reset global flag variables to their defaults
+	// (BoolVar bindings should update automatically via Set(), but we ensure it here)
+	Debug = false
+	JSONOutput = false
+	NoColor = false
 
 	return true, err
 }
