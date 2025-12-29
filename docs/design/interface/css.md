@@ -67,6 +67,10 @@ webctl css get <selector> <property>
 # Output: rgb(0, 113, 227)
 
 # Inject CSS into page (mutation)
+# NOTE: NOT IMPLEMENTED - Removed in 2025-12-29
+# Reason: Used non-existent CDP method (Page.addStyleTag).
+# Alternative: Use `webctl eval` with JavaScript to inject styles:
+#   webctl eval "const s=document.createElement('style');s.textContent='...';document.head.appendChild(s)"
 webctl css inject <css>
 webctl css inject --file <path>
 # Example: webctl css inject "body { background: red; }"
@@ -83,7 +87,7 @@ webctl css inject --file <path>
 **CSS-specific subcommands:**
 - `computed` - Quick inspection of element styles
 - `get` - Scriptable single property lookup
-- `inject` - Runtime CSS modification
+- `inject` - ~~Runtime CSS modification~~ NOT IMPLEMENTED (see note above)
 - These operations are unique to CSS and don't apply to other commands
 
 **Principle:**

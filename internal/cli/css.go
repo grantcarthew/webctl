@@ -30,7 +30,6 @@ Subcommands:
   save <path>       Save CSS to custom path
   computed <sel>    Get computed styles to stdout
   get <sel> <prop>  Get single CSS property to stdout
-  inject <css>      Inject CSS into page
 
 Universal flags (work with default/show/save modes):
   --select, -s      Filter to element's computed styles
@@ -58,15 +57,12 @@ Save mode (custom path):
 CSS-specific operations:
   css computed "#main"                 # All computed styles
   css get "#header" background-color   # Single property
-  css inject "body { background: red; }" # Inject CSS
-  css inject --file ./custom.css       # Inject from file
 
 Response formats:
   Default/Save: {"ok": true, "path": "/tmp/webctl-css/25-12-28-143052-example.css"}
   Show:         body { margin: 0; ... } (to stdout)
   Computed:     display: flex\ncolor: rgb(0,0,0) (to stdout)
   Get:          rgb(0,0,0) (to stdout)
-  Inject:       {"ok": true}
 
 Error cases:
   - "selector matched no elements" - nothing matches selector
@@ -183,48 +179,6 @@ Common patterns:
 	RunE: runCSSGet,
 }
 
-var cssInjectCmd = &cobra.Command{
-	Use:   "inject <css>",
-	Short: "Inject CSS into page",
-	Long: `Injects CSS into the current page.
-
-The CSS is added as a style tag in the document head and persists
-until the page is reloaded. Useful for testing and visual debugging.
-
-Flags:
-  --file, -f        Inject CSS from file instead of inline
-
-Inline CSS:
-  css inject "body { background: red; }"
-  css inject ".ads { display: none !important; }"
-
-CSS from file:
-  css inject --file ./custom.css
-  css inject -f ./dark-mode.css
-
-Common patterns:
-  # Hide elements for screenshots
-  css inject ".ads { display: none !important; }"
-  screenshot -o ./clean.png
-
-  # Test responsive styles
-  css inject ".container { max-width: 768px; }"
-  screenshot
-
-  # Apply dark mode for testing
-  css inject --file ./dark-theme.css
-  screenshot
-
-  # Override vendor styles
-  css inject "button { border-radius: 0 !important; }"
-
-Response:
-  {"ok": true}
-
-Note: Injected CSS is temporary and removed on page reload.`,
-	Args: cobra.MaximumNArgs(1),
-	RunE: runCSSInject,
-}
 
 func init() {
 	// Universal flags on root command (inherited by default/show/save subcommands)
@@ -232,11 +186,8 @@ func init() {
 	cssCmd.PersistentFlags().StringP("find", "f", "", "Search for text within CSS")
 	cssCmd.PersistentFlags().Bool("raw", false, "Skip CSS formatting")
 
-	// Flags for inject subcommand (note: -f conflicts with --find, so using --file only)
-	cssInjectCmd.Flags().String("file", "", "Inject CSS from file")
-
 	// Add all subcommands
-	cssCmd.AddCommand(cssShowCmd, cssSaveCmd, cssComputedCmd, cssGetCmd, cssInjectCmd)
+	cssCmd.AddCommand(cssShowCmd, cssSaveCmd, cssComputedCmd, cssGetCmd)
 
 	rootCmd.AddCommand(cssCmd)
 }
@@ -455,59 +406,6 @@ func runCSSGet(cmd *cobra.Command, args []string) error {
 	return format.PropertyValue(os.Stdout, data.Value)
 }
 
-func runCSSInject(cmd *cobra.Command, args []string) error {
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	exec, err := execFactory.NewExecutor()
-	if err != nil {
-		return outputError(err.Error())
-	}
-	defer exec.Close()
-
-	// Read flags
-	filePath, _ := cmd.Flags().GetString("file")
-
-	// Either file or inline CSS must be provided
-	if filePath == "" && len(args) == 0 {
-		return outputError("either provide CSS inline or use --file flag")
-	}
-
-	var cssContent string
-	if len(args) > 0 {
-		cssContent = args[0]
-	}
-
-	params, err := json.Marshal(ipc.CSSParams{
-		Action: "inject",
-		CSS:    cssContent,
-		File:   filePath,
-	})
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	resp, err := exec.Execute(ipc.Request{
-		Cmd:    "css",
-		Params: params,
-	})
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	if !resp.OK {
-		return outputError(resp.Error)
-	}
-
-	// JSON mode: output JSON
-	if JSONOutput {
-		return outputJSON(os.Stdout, map[string]any{"ok": true})
-	}
-
-	// Text mode: just output OK
-	return outputSuccess(nil)
-}
 
 // getCSSFromDaemon fetches CSS from daemon, applying filters and formatting
 func getCSSFromDaemon(cmd *cobra.Command) (string, error) {

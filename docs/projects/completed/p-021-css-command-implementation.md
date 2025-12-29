@@ -62,7 +62,7 @@ Out of Scope:
 - [x] --json flag outputs JSON format
 - [x] computed subcommand works (all computed styles to stdout)
 - [x] get subcommand works (single property to stdout)
-- [ ] inject subcommand works (CSS injection) - Note: Pre-existing CDP bug with Page.addStyleTag
+- [x] inject subcommand removed - Feature removed as it used non-existent CDP method (Page.addStyleTag) and was not essential for browser automation tasks
 - [x] All existing tests pass
 - [x] New tests cover all output modes and flags
 - [x] Documentation updated
