@@ -15,11 +15,12 @@ Projects are stored in the docs/projects/ directory. Update this when starting a
 - Active Project: (no active project)
 - Design Record: N/A
 
+When projects are completed, move them to docs/projects/completed/, update docs/projects/README.md, and update the active project above to the next project.
 
 ## Completed Projects
 
-
 Completed projects are in docs/projects/completed/
+- P-021: CSS Command Implementation (2025-12-28)
 - P-020: HTML Command Implementation (2025-12-28)
 - P-019: Observation Commands Interface Redesign (2025-12-28)
 - P-017: CSS Commands (2025-12-28)

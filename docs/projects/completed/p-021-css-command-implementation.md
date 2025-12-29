@@ -1,8 +1,8 @@
-# P-020: CSS Command Implementation
+# P-021: CSS Command Implementation
 
-- Status: Proposed
-- Started: (not yet started)
-- Completed: (not yet completed)
+- Status: Completed
+- Started: 2025-12-28
+- Completed: 2025-12-28
 
 ## Overview
 
@@ -51,22 +51,22 @@ Out of Scope:
 
 ## Success Criteria
 
-- [ ] Default (no subcommand) saves all stylesheets to temp
-- [ ] Show subcommand outputs all stylesheets to stdout
-- [ ] Save <path> subcommand saves to custom path
-- [ ] Directory paths auto-generate filenames
-- [ ] File paths use exact path
-- [ ] --select flag returns computed styles for element
-- [ ] --find flag searches within CSS
-- [ ] --raw flag skips formatting
-- [ ] --json flag outputs JSON format
-- [ ] computed subcommand works (all computed styles to stdout)
-- [ ] get subcommand works (single property to stdout)
-- [ ] inject subcommand works (CSS injection)
-- [ ] All existing tests pass
-- [ ] New tests cover all output modes and flags
-- [ ] Documentation updated
-- [ ] AGENTS.md updated with new CSS command pattern
+- [x] Default (no subcommand) saves all stylesheets to temp
+- [x] Show subcommand outputs all stylesheets to stdout
+- [x] Save <path> subcommand saves to custom path
+- [x] Directory paths auto-generate filenames
+- [x] File paths use exact path
+- [x] --select flag returns computed styles for element
+- [x] --find flag searches within CSS
+- [x] --raw flag skips formatting
+- [x] --json flag outputs JSON format
+- [x] computed subcommand works (all computed styles to stdout)
+- [x] get subcommand works (single property to stdout)
+- [ ] inject subcommand works (CSS injection) - Note: Pre-existing CDP bug with Page.addStyleTag
+- [x] All existing tests pass
+- [x] New tests cover all output modes and flags
+- [x] Documentation updated
+- [x] AGENTS.md updated with new CSS command pattern
 
 ## Deliverables
 
