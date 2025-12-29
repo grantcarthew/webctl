@@ -277,11 +277,9 @@ type FindData struct {
 
 // CSSParams represents parameters for the "css" command.
 type CSSParams struct {
-	Action   string `json:"action"`            // "save", "computed", "get", or "inject"
+	Action   string `json:"action"`            // "save", "computed", or "get"
 	Selector string `json:"selector,omitempty"` // CSS selector for computed/get
 	Property string `json:"property,omitempty"` // CSS property for get action
-	CSS      string `json:"css,omitempty"`      // CSS content for inject action
-	File     string `json:"file,omitempty"`     // File path for inject action
 }
 
 // CSSData is the response data for the "css" command.

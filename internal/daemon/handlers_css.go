@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/grantcarthew/webctl/internal/ipc"
 )
 
-// handleCSS manages CSS operations (save, computed, get, inject).
+// handleCSS manages CSS operations (save, computed, get).
 func (d *Daemon) handleCSS(req ipc.Request) ipc.Response {
 	// Check if browser is connected (fail-fast if not)
 	if ok, resp := d.requireBrowser(); !ok {
@@ -34,8 +33,6 @@ func (d *Daemon) handleCSS(req ipc.Request) ipc.Response {
 		return d.handleCSSComputed(activeID, params)
 	case "get":
 		return d.handleCSSGet(activeID, params)
-	case "inject":
-		return d.handleCSSInject(activeID, params)
 	default:
 		return ipc.ErrorResponse(fmt.Sprintf("unknown css action: %s", params.Action))
 	}
@@ -216,36 +213,3 @@ func (d *Daemon) handleCSSGet(sessionID string, params ipc.CSSParams) ipc.Respon
 	})
 }
 
-// handleCSSInject injects CSS into the page.
-func (d *Daemon) handleCSSInject(sessionID string, params ipc.CSSParams) ipc.Response {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	var cssContent string
-
-	if params.File != "" {
-		// Read CSS from file
-		data, err := os.ReadFile(params.File)
-		if err != nil {
-			return ipc.ErrorResponse(fmt.Sprintf("failed to read CSS file: %v", err))
-		}
-		cssContent = string(data)
-	} else if params.CSS != "" {
-		// Use inline CSS
-		cssContent = params.CSS
-	} else {
-		return ipc.ErrorResponse("either css or file parameter is required")
-	}
-
-	// Inject CSS using Page.addStyleTag
-	cdpParams := map[string]any{
-		"content": cssContent,
-	}
-
-	_, err := d.sendToSession(ctx, sessionID, "Page.addStyleTag", cdpParams)
-	if err != nil {
-		return ipc.ErrorResponse(fmt.Sprintf("failed to inject CSS: %v", err))
-	}
-
-	return ipc.SuccessResponse(nil)
-}
