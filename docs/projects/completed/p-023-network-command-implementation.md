@@ -1,8 +1,8 @@
 # P-022: Network Command Implementation
 
-- Status: Proposed
-- Started: (not yet started)
-- Completed: (not yet completed)
+- Status: Completed
+- Started: 2025-12-30
+- Completed: 2025-12-30
 
 ## Overview
 
@@ -48,20 +48,20 @@ Out of Scope:
 
 ## Success Criteria
 
-- [ ] Default (no subcommand) saves requests to temp
-- [ ] Show subcommand outputs requests to stdout
-- [ ] Save <path> subcommand saves to custom path
-- [ ] Directory paths auto-generate filenames
-- [ ] --find flag searches within URLs and bodies
-- [ ] All network-specific filters work (--type, --method, --status, --url, --mime, --min-duration, --min-size, --failed)
-- [ ] --head/tail/range flags limit results
-- [ ] --raw flag skips formatting
-- [ ] --json flag outputs JSON format
-- [ ] Show mode has color-coded output by status
-- [ ] All filters AND-combine correctly
-- [ ] All existing tests pass
-- [ ] New tests cover all modes and flags
-- [ ] Documentation updated
+- [x] Default (no subcommand) saves requests to temp
+- [x] Show subcommand outputs requests to stdout
+- [x] Save <path> subcommand saves to custom path
+- [x] Directory paths auto-generate filenames
+- [x] --find flag searches within URLs and bodies
+- [x] All network-specific filters work (--type, --method, --status, --url, --mime, --min-duration, --min-size, --failed)
+- [x] --head/tail/range flags limit results
+- [x] --raw flag skips formatting
+- [x] --json flag outputs JSON format
+- [x] Show mode has color-coded output by status
+- [x] All filters AND-combine correctly
+- [x] All existing tests pass
+- [x] New tests cover all modes and flags
+- [x] Documentation updated
 
 ## Deliverables
 
@@ -93,3 +93,9 @@ Testing follows DR-004 strategy with race detection and integration tests.
 ## Updates
 
 - 2025-12-28: Project created
+- 2025-12-30: Implementation completed
+  - Redesigned network.go to follow unified observation pattern
+  - Added show and save subcommands
+  - Added --find flag for text search in URLs and bodies
+  - Updated tests for new interface
+  - All tests passing with race detection enabled

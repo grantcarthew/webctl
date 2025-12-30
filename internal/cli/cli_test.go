@@ -1660,7 +1660,7 @@ func TestRunNetwork_DaemonNotRunning(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	err := runNetwork(networkCmd, []string{})
+	err := runNetworkDefault(networkCmd, []string{})
 
 	w.Close()
 	os.Stderr = oldStderr
@@ -1730,7 +1730,7 @@ func TestRunNetwork_Success(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runNetwork(networkCmd, []string{})
+	err := runNetworkDefault(networkCmd, []string{})
 
 	w.Close()
 	os.Stdout = old
@@ -1748,10 +1748,22 @@ func TestRunNetwork_Success(t *testing.T) {
 	}
 
 	if result["ok"] != true {
-		t.Error("expected ok=true")
+		t.Errorf("expected ok=true, got %v", result["ok"])
 	}
-	if result["count"].(float64) != 2 {
-		t.Errorf("expected count=2, got %v", result["count"])
+
+	path, ok := result["path"].(string)
+	if !ok {
+		t.Fatalf("expected path to be string, got %T", result["path"])
+	}
+
+	// Verify path is in temp directory
+	if !strings.HasPrefix(path, "/tmp/webctl-network/") {
+		t.Errorf("expected path to start with /tmp/webctl-network/, got %s", path)
+	}
+
+	// Verify filename format: YY-MM-DD-HHMMSS-network.json
+	if !strings.HasSuffix(path, "-network.json") {
+		t.Errorf("expected path to end with -network.json, got %s", path)
 	}
 }
 

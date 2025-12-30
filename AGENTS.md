@@ -12,14 +12,15 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-- Active Project: P-023: Network Command Implementation
-- Design Record: DR-028
+- Active Project: P-024: Cookies Command Implementation
+- Design Record: DR-029
 
 When projects are completed, move them to docs/projects/completed/, update docs/projects/README.md, and update the active project above to the next project.
 
 ## Completed Projects
 
 Completed projects are in docs/projects/completed/
+- P-023: Network Command Implementation (2025-12-30)
 - P-022: Console Command Implementation (2025-12-29)
 - P-021: CSS Command Implementation (2025-12-28)
 - P-020: HTML Command Implementation (2025-12-28)
