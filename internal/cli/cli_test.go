@@ -2788,7 +2788,7 @@ func TestRunCookiesList_DaemonNotRunning(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	err := runCookiesList(cookiesCmd, []string{})
+	err := runCookiesShow(cookiesShowCmd, []string{})
 
 	w.Close()
 	os.Stderr = old
@@ -2834,7 +2834,7 @@ func TestRunCookiesList_Success(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runCookiesList(cookiesCmd, []string{})
+	err := runCookiesShow(cookiesShowCmd, []string{})
 
 	w.Close()
 	os.Stdout = old
