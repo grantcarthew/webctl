@@ -1,8 +1,8 @@
 # P-016: Serve Command
 
-- Status: In Progress
+- Status: Completed
 - Started: 2025-12-30
-- Completed: TBD
+- Completed: 2025-12-30
 
 ## Overview
 

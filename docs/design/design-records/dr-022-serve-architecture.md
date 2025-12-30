@@ -1,8 +1,9 @@
 # DR-022: Serve Command Architecture
 
 - Date: 2025-12-26
-- Status: Proposed
+- Status: Accepted
 - Category: CLI
+- Updated: 2025-12-30
 
 ## Problem
 
@@ -19,22 +20,49 @@ Implement a daemon-managed development server with two separate modes (static an
 Command Interface:
 
 ```bash
-# Static mode
-webctl serve <directory> [--port <n>] [--host <ip>] [--watch <pattern>] [--ignore <pattern>]
+# Static mode (directory defaults to current directory)
+webctl serve [directory] [--port <n>] [--host <ip>] [--watch <pattern>] [--ignore <pattern>]
 
 # Proxy mode
 webctl serve --proxy <url> [--port <n>] [--host <ip>] [--watch <pattern>]
 
 # Examples
+webctl serve                  # Serve current directory (new default)
 webctl serve ./public
 webctl serve ./dist --port 3000 --host 0.0.0.0
 webctl serve --proxy http://localhost:3000
 webctl serve --proxy http://localhost:3000 --watch "../backend/**/*.go"
 ```
 
+Key Behaviors:
+- Auto-starts daemon and browser if not running (one-command operation)
+- Defaults to serving current directory (`.`) if no directory specified
+- Auto-detects available CDP port (9222, 9223, ...) to avoid conflicts
+- Auto-detects available web server port (3000, 8080, 8000, 5000, 4000, ...)
+- Tries common index files for directory requests (index.html, index.htm, default.html, home.html)
+
 No hybrid mode - either static OR proxy, not both.
 
 ## Why
+
+Auto-Start Daemon and Browser:
+- One-command workflow: `webctl serve` does everything
+- Eliminates manual `webctl start` step
+- Better developer experience for new users
+- Consistent with user expectations (like `python -m http.server`)
+- Auto-detects CDP port to avoid conflicts with existing browsers
+
+Default to Current Directory:
+- Most common use case (serve what you're working on)
+- Matches standard dev server behavior (like `python -m http.server`)
+- Reduces typing and cognitive load
+- Explicit directory still supported when needed
+
+Index File Fallback:
+- Supports multiple common naming conventions (index.html, index.htm, default.html, home.html)
+- Handles legacy projects and different frameworks
+- Predictable priority order (index.html first)
+- Better compatibility across different project types
 
 Daemon Management:
 - Consistent with how browser is managed
@@ -133,10 +161,16 @@ Regex Pattern Matching:
 Server Modes:
 
 Static Mode:
-- Serves files from specified directory
+- Serves files from specified directory (defaults to current directory)
 - MIME type detection based on file extension
+- Index file fallback for directory requests (tries in order):
+  1. index.html
+  2. index.htm
+  3. default.html
+  4. home.html
 - Watches directory for file changes
-- Default watch pattern: `**/*.{html,css,js,json,svg,png,jpg,gif,webp,ico}`
+- Auto-ignores: hidden files (.*), node_modules/, vendor/, __pycache__/
+- Default watch pattern: entire served directory
 
 Proxy Mode:
 - Forwards all requests to specified backend URL
@@ -163,21 +197,29 @@ No injection, no WebSocket, no client-side code needed.
 ## Process Lifecycle
 
 Server Start:
-1. User runs `webctl serve <dir>` or `webctl serve --proxy <url>`
-2. Command starts daemon if not running
-3. Daemon starts browser if not running
-4. Daemon starts HTTP server
-5. Server auto-detects available port (starting at 8080) or uses --port
-6. Server binds to localhost (127.0.0.1) or --host if specified
-7. Browser navigates to server URL
-8. File watcher starts (if applicable)
+1. User runs `webctl serve` (defaults to current directory)
+2. If daemon not running:
+   - Starts daemon in-process
+   - Auto-detects available CDP port (tries 9222, 9223, 9224, ...)
+   - Launches browser on detected CDP port
+3. Daemon starts HTTP server
+4. Server auto-detects available port (tries 3000, 8080, 8000, 5000, 4000, then OS-assigned) or uses --port
+5. Server binds to localhost (127.0.0.1) or --host if specified
+6. Browser navigates to server URL
+7. File watcher starts (if applicable)
+8. Command blocks until Ctrl+C (daemon runs in foreground)
 
 Output on Start:
 ```
-Server started on http://127.0.0.1:8080
-Serving: /home/user/myapp
-Watching: **/*.{html,css,js,json,svg,png,jpg,gif,webp,ico}
-Network: http://192.168.1.5:8080 (run with --host 0.0.0.0)
+Starting daemon and server...
+Server started: http://localhost:3000
+Mode: static
+Directory: .
+Port: 3000
+
+Watching for file changes (hot reload enabled)
+
+Press Ctrl+C to stop the server and daemon
 ```
 
 File Change Event:
@@ -192,10 +234,15 @@ Server Stop:
 
 ## Port Selection
 
-Default Behavior:
-- Try port 8080
-- If in use, try 8081, 8082, etc.
-- Show which port was selected
+Web Server Port (Default Behavior):
+- Try common dev ports in order: 3000, 8080, 8000, 5000, 4000
+- If all in use, request OS-assigned port (random available port)
+- Show which port was selected in output
+
+CDP Port (Auto-Start Only):
+- Try default port 9222
+- If in use, try 9223, 9224, ... up to 9322 (100 ports)
+- Displays message: "Port 9222 in use, using port 9223 instead"
 
 Manual Override:
 ```bash
@@ -249,8 +296,9 @@ webctl serve ./public --ignore "dist/**" --ignore "build/**"
 ```
 
 Debouncing:
-- Wait 100ms after last file change before triggering reload
+- Wait 300ms after last file change before triggering reload
 - Prevents rapid-fire reloads during multiple file saves
+- Balances responsiveness with avoiding excessive reloads
 
 ## Integration with Existing Commands
 
@@ -292,21 +340,22 @@ CORS:
 
 ## Implementation Notes
 
-Go Libraries:
+Go Libraries (Implemented):
 - `net/http` - HTTP server and handlers
 - `net/http/httputil` - ReverseProxy for proxy mode
-- `fsnotify/fsnotify` - File system watching
-- `path/filepath` - Path manipulation and matching
-- Glob matching library (research needed - possibly `github.com/gobwas/glob`)
+- `fsnotify/fsnotify` v1.9.0 - File system watching
+- `path/filepath` - Path manipulation and glob matching
+- Standard library only (no external glob library needed)
 
-Server Package Structure:
+Server Package Structure (Implemented):
 ```
 internal/server/
   server.go       - HTTP server setup and lifecycle
-  static.go       - Static file handler
+  static.go       - Static file handler with index fallback
   proxy.go        - Reverse proxy handler
-  watcher.go      - File watching and reload triggering
-  patterns.go     - Glob pattern matching
+  watcher.go      - File watching with debouncing
+  server_test.go  - Unit tests for server lifecycle
+  watcher_test.go - Unit tests for file watching
 ```
 
 Daemon Integration:
@@ -317,4 +366,72 @@ Daemon Integration:
 
 ## Updates
 
-None yet.
+### 2025-12-30: Implementation Completed
+
+Status changed from Proposed to Accepted. Implementation completed with the following enhancements:
+
+Auto-Start Daemon (UX Enhancement):
+- `webctl serve` now auto-starts daemon if not running
+- Eliminates need for manual `webctl start` command
+- One-command workflow for developers
+- Uses DirectExecutorFactory for in-process daemon communication (avoids IPC race condition)
+
+Default Directory Behavior:
+- Directory argument now optional, defaults to current directory (`.`)
+- Matches user expectations from other dev servers
+- Reduces typing and cognitive load
+- Use: `webctl serve` instead of `webctl serve .`
+
+CDP Port Auto-Detection:
+- When auto-starting daemon, uses port 0 to auto-detect available CDP port
+- Browser package tries 9222, 9223, 9224, ... up to 9322
+- Prevents "port already in use" errors
+- Gracefully handles multiple browser instances
+
+Index File Fallback (Robustness):
+- Static handler tries multiple common index files in order:
+  1. index.html (highest priority)
+  2. index.htm
+  3. default.html
+  4. home.html
+- Better compatibility with different project conventions
+- Cleaner implementation (removed duplicate logic)
+
+Implementation Details:
+- External dependency: fsnotify/fsnotify v1.9.0 (approved)
+- Debouncing: 300ms (balances responsiveness vs excessive reloads)
+- Auto-ignore: hidden files (.*), node_modules/, vendor/, __pycache__/
+- Web server port priority: 3000, 8080, 8000, 5000, 4000, then OS-assigned
+- Security: Directory traversal protection, no directory listing
+
+Test Coverage:
+- Server lifecycle (start/stop)
+- Index file fallback (all 4 file types + precedence)
+- Port auto-detection
+- File watcher events
+- Ignore pattern matching
+- Debouncer functionality
+- All tests passing ✓
+
+Files Added:
+- internal/server/server.go (core server)
+- internal/server/static.go (static file handler)
+- internal/server/proxy.go (reverse proxy)
+- internal/server/watcher.go (file watching with debouncing)
+- internal/server/server_test.go (unit tests)
+- internal/server/watcher_test.go (unit tests)
+- internal/daemon/handlers_serve.go (daemon integration)
+- internal/cli/serve.go (CLI command)
+- internal/cli/serve_test.go (CLI tests)
+- docs/cli/serve.md (user documentation)
+
+Files Modified:
+- internal/ipc/protocol.go (ServeParams, ServeData types)
+- internal/daemon/daemon.go (devServer field, shutdown hook)
+- AGENTS.md (active project status)
+- docs/projects/README.md (project status)
+- go.mod (fsnotify dependency)
+
+Project Status: P-016 CLI Serve Command - Completed 2025-12-30
+
+Key Achievement: True one-command development server with hot reload, fully integrated with webctl's browser automation and debugging capabilities.
