@@ -25,7 +25,7 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-013 | Find Command | Completed | 2025-12-25 | 2025-12-25 |
 | P-014 | Terminal Colors | Completed | 2025-12-24 | 2025-12-24 |
 | P-015 | HTML Formatting for Find and HTML Commands | Completed | 2025-12-26 | 2025-12-26 |
-| P-016 | CLI Serve Command | In Progress | 2025-12-26 | - |
+| P-016 | CLI Serve Command | In Progress | 2025-12-30 | - |
 | P-017 | CLI CSS Commands | Completed | 2025-12-26 | 2025-12-28 |
 | P-018 | Browser Connection Failure Handling | Completed | 2025-12-27 | 2025-12-27 |
 | P-019 | Observation Commands Interface Redesign | In Progress | 2025-12-28 | - |
@@ -33,7 +33,7 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-021 | CSS Command Implementation | Proposed | - | - |
 | P-022 | Console Command Implementation | Proposed | - | - |
 | P-023 | Network Command Implementation | Proposed | - | - |
-| P-024 | Cookies Command Implementation | Proposed | - | - |
+| P-024 | Cookies Command Implementation | Completed | 2025-12-29 | 2025-12-30 |
 
 Note: Completed projects are in `completed/`
 
