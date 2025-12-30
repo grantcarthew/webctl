@@ -1,7 +1,7 @@
 # P-016: Serve Command
 
-- Status: Proposed
-- Started: TBD
+- Status: In Progress
+- Started: 2025-12-30
 - Completed: TBD
 
 ## Overview

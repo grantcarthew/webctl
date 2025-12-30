@@ -1,8 +1,8 @@
-# P-023: Cookies Command Implementation
+# P-024: Cookies Command Implementation
 
-- Status: Proposed
-- Started: (not yet started)
-- Completed: (not yet completed)
+- Status: Completed
+- Started: 2025-12-29
+- Completed: 2025-12-30
 
 ## Overview
 
