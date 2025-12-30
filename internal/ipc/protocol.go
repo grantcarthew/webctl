@@ -289,6 +289,26 @@ type CSSData struct {
 	Value  string            `json:"value,omitempty"`  // For get action
 }
 
+// ServeParams represents parameters for the "serve" command.
+type ServeParams struct {
+	Action      string   `json:"action"`                // "start" or "stop"
+	Mode        string   `json:"mode,omitempty"`        // "static" or "proxy"
+	Directory   string   `json:"directory,omitempty"`   // Directory to serve (static mode)
+	ProxyURL    string   `json:"proxyURL,omitempty"`    // Backend URL to proxy (proxy mode)
+	Port        int      `json:"port,omitempty"`        // Server port (0 = auto-detect)
+	Host        string   `json:"host,omitempty"`        // Bind host ("localhost" or "0.0.0.0")
+	WatchPaths  []string `json:"watchPaths,omitempty"`  // Paths to watch for changes
+	IgnorePaths []string `json:"ignorePaths,omitempty"` // Glob patterns to ignore
+}
+
+// ServeData is the response data for the "serve" command.
+type ServeData struct {
+	Running bool   `json:"running"`
+	Mode    string `json:"mode,omitempty"`
+	URL     string `json:"url,omitempty"`
+	Port    int    `json:"port,omitempty"`
+}
+
 // SuccessResponse creates a successful response with the given data.
 func SuccessResponse(data any) Response {
 	var raw json.RawMessage

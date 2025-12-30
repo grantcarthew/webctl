@@ -12,14 +12,15 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-- Active Project: P-016: CLI Serve Command
-- Design Record: DR-022
+- Active Project: None
+- Design Record: N/A
 
 When projects are completed, move them to docs/projects/completed/, update docs/projects/README.md, and update the active project above to the next project.
 
 ## Completed Projects
 
 Completed projects are in docs/projects/completed/
+- P-016: CLI Serve Command (2025-12-30)
 - P-024: Cookies Command Implementation (2025-12-30)
 - P-023: Network Command Implementation (2025-12-30)
 - P-022: Console Command Implementation (2025-12-29)
@@ -51,6 +52,9 @@ webctl browser [--headless] [--port 9222]
 webctl start [--headless] [--attach :9222] [--listen :9444]
 webctl stop
 webctl status
+
+webctl serve <directory>                # Static file server
+webctl serve --proxy <url>              # Reverse proxy server
 
 webctl navigate <url>
 webctl reload

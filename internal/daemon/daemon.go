@@ -16,6 +16,7 @@ import (
 	"github.com/grantcarthew/webctl/internal/browser"
 	"github.com/grantcarthew/webctl/internal/cdp"
 	"github.com/grantcarthew/webctl/internal/ipc"
+	"github.com/grantcarthew/webctl/internal/server"
 )
 
 // DefaultBufferSize is the default capacity for event buffers.
@@ -54,6 +55,8 @@ type Daemon struct {
 	consoleBuf   *RingBuffer[ipc.ConsoleEntry]
 	networkBuf   *RingBuffer[ipc.NetworkEntry]
 	server       *ipc.Server
+	devServer    *server.Server // Development web server (serve command)
+	devServerMu  sync.Mutex      // Protects devServer
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
 	debug        bool
@@ -184,6 +187,19 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	d.browser = b
 	defer d.browser.Close()
+
+	// Stop dev server on shutdown if running
+	defer func() {
+		d.devServerMu.Lock()
+		defer d.devServerMu.Unlock()
+		if d.devServer != nil && d.devServer.IsRunning() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := d.devServer.Stop(ctx); err != nil {
+				d.debugf("Failed to stop dev server: %v", err)
+			}
+		}
+	}()
 
 	// Update config with actual port used (may differ from requested if auto-selected)
 	d.config.Port = b.Port()
@@ -409,6 +425,8 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 		return d.handleFind(req)
 	case "css":
 		return d.handleCSS(req)
+	case "serve":
+		return d.handleServe(req)
 	case "shutdown":
 		return d.handleShutdown()
 	default:
