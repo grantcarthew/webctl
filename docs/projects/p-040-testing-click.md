@@ -7,6 +7,14 @@
 
 Test the webctl click command which clicks an element matching a CSS selector. Uses CDP mouse events for true click simulation, triggering the full event chain (mouseenter → mouseover → mousedown → mouseup → click). Elements are automatically scrolled into view before clicking.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-click.sh
+```
+
 ## Code References
 
 - internal/cli/click.go

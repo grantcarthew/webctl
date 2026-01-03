@@ -7,6 +7,14 @@
 
 Test the webctl scroll command which scrolls to an element, absolute position, or by an offset. Supports three modes: element (scroll to element), absolute (scroll to x,y position), and relative (scroll by x,y offset).
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-scroll.sh
+```
+
 ## Code References
 
 - internal/cli/scroll.go

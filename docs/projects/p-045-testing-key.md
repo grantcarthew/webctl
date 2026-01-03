@@ -7,6 +7,14 @@
 
 Test the webctl key command which sends a keyboard key to the focused element. Supports special keys (Enter, Tab, Escape, etc.) and modifier flags (ctrl, alt, shift, meta). Useful for keyboard shortcuts, navigation, and testing keyboard interactions.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-key.sh
+```
+
 ## Code References
 
 - internal/cli/key.go

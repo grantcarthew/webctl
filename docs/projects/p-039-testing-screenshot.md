@@ -7,6 +7,14 @@
 
 Test the webctl screenshot command which captures PNG screenshots of the current page. This command supports viewport or full-page capture with custom output paths.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-screenshot.sh
+```
+
 ## Code References
 
 - internal/cli/screenshot.go

@@ -7,6 +7,14 @@
 
 Test the webctl status command which reports daemon state including whether it's running, current URL, and page title.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-status.sh
+```
+
 ## Code References
 
 - internal/cli/status.go

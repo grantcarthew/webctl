@@ -7,6 +7,14 @@
 
 Test the webctl reload command which performs a hard reload of the current page (ignores cache). Similar to navigate but reloads current URL.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-reload.sh
+```
+
 ## Code References
 
 - internal/cli/reload.go

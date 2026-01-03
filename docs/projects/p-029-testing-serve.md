@@ -7,6 +7,14 @@
 
 Test the webctl serve command which starts a development server with hot reload capabilities. This command has two modes: static file serving and proxy mode, and auto-starts the daemon if not running.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-serve.sh
+```
+
 ## Code References
 
 - internal/cli/serve.go

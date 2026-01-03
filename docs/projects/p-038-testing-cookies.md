@@ -7,6 +7,14 @@
 
 Test the webctl cookies command which extracts and manipulates cookies from the current page. This command supports five modes (default/show/save/set/delete) with filtering by domain, name, and text search.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-cookies.sh
+```
+
 ## Code References
 
 - internal/cli/cookies.go

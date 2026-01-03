@@ -7,6 +7,14 @@
 
 Test the webctl forward command which navigates to the next page in browser history. Mirrors browser forward button functionality.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-forward.sh
+```
+
 ## Code References
 
 - internal/cli/forward.go

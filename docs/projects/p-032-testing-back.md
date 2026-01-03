@@ -7,6 +7,14 @@
 
 Test the webctl back command which navigates to the previous page in browser history. Mirrors browser back button functionality.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-back.sh
+```
+
 ## Code References
 
 - internal/cli/back.go

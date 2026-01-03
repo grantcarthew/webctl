@@ -7,6 +7,14 @@
 
 Test the webctl select command which selects an option in a native HTML select dropdown element. Only works with native select elements (not custom JavaScript dropdowns). Dispatches a change event after selection.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-select.sh
+```
+
 ## Code References
 
 - internal/cli/selectcmd.go

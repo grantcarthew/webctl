@@ -7,6 +7,14 @@
 
 Test the webctl target command which lists all page sessions or switches to a specific session. Without arguments, lists all active sessions with their IDs, titles, and URLs. With a query argument, switches to the matching session. Query matching supports session ID prefix (case-sensitive) or title substring (case-insensitive).
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-target.sh
+```
+
 ## Code References
 
 - internal/cli/target.go
