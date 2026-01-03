@@ -34,7 +34,7 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-022 | Console Command Implementation | Proposed | - | - |
 | P-023 | Network Command Implementation | Proposed | - | - |
 | P-024 | Cookies Command Implementation | Completed | 2025-12-29 | 2025-12-30 |
-| P-025 | Interactive Test Suite | In Progress | 2025-12-31 | - |
+| P-025 | Interactive Test Suite | Completed | 2025-12-31 | 2026-01-03 |
 
 Note: Completed projects are in `completed/`
 
