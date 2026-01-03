@@ -75,4 +75,36 @@ CLI vs REPL:
 
 ## Issues Discovered
 
-(Issues will be documented here during testing)
+### Issue 1: Terminal echo disabled after REPL `stop` command
+
+**Status**: FIXED ✓
+**Severity**: High
+**Reproducible**: Yes (before fix)
+**Terminals affected**: Ghostty, Gnome Terminal (all terminals)
+
+**Reproduction steps** (before fix):
+1. Run `webctl start`
+2. Type `stop` in the REPL
+3. After daemon exits, terminal echo is disabled (text typed is invisible)
+4. Workaround: Run `reset` command to restore terminal
+
+**Does NOT occur when**:
+- Exiting with Ctrl-C from REPL (terminal state correctly restored)
+
+**Root cause**:
+- `stop`/`exit`/`quit` commands called `r.shutdown()` which closed daemon shutdown channel
+- Main daemon loop exited immediately on shutdown signal
+- REPL goroutine didn't complete deferred cleanup: `defer r.readline.Close()`
+- The readline library needs proper Close() to restore terminal echo settings
+
+**Affected commands**:
+- `stop`, `exit`, `quit` - All fixed
+
+**Fix implemented**:
+Changed `handleSpecialCommand()` to return `(bool, error)` instead of just `bool`. Exit commands now return `io.EOF` to signal clean exit, which allows the REPL.Run() loop to return normally and execute deferred cleanup before daemon shutdown.
+
+**Files changed**:
+- `internal/daemon/repl.go:207-237` - Modified handleSpecialCommand signature and implementation
+- `internal/daemon/repl.go:85-92` - Updated call site to handle error return
+
+**Test documentation**: `scripts/interactive/test-terminal-bug.md`

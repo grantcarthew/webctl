@@ -82,7 +82,12 @@ func (r *REPL) Run() error {
 
 		r.history = append(r.history, line)
 
-		if r.handleSpecialCommand(line) {
+		handled, err := r.handleSpecialCommand(line)
+		if err != nil {
+			// Clean exit requested (io.EOF from exit/quit/stop commands)
+			return nil
+		}
+		if handled {
 			continue
 		}
 
@@ -205,11 +210,11 @@ func expandAbbreviation(prefix string, commands []string) (string, bool) {
 }
 
 // handleSpecialCommand handles REPL-specific commands.
-// Returns true if the command was handled, false otherwise.
-func (r *REPL) handleSpecialCommand(line string) bool {
+// Returns (handled, error). Returns io.EOF for clean exit commands.
+func (r *REPL) handleSpecialCommand(line string) (bool, error) {
 	parts := strings.Fields(line)
 	if len(parts) == 0 {
-		return false
+		return false, nil
 	}
 	cmd := strings.ToLower(parts[0])
 
@@ -219,25 +224,21 @@ func (r *REPL) handleSpecialCommand(line string) bool {
 	}
 
 	switch cmd {
-	case "exit", "quit":
-		r.shutdown()
-		return true
+	case "exit", "quit", "stop":
+		// Return io.EOF to signal clean exit.
+		// This allows deferred cleanup to run before daemon shutdown.
+		return true, io.EOF
 
 	case "help", "?":
 		r.printHelp()
-		return true
+		return true, nil
 
 	case "history":
 		r.printHistory()
-		return true
-
-	case "stop":
-		// Map "stop" to shutdown (REPL-specific behavior)
-		r.shutdown()
-		return true
+		return true, nil
 	}
 
-	return false
+	return false, nil
 }
 
 // executeCommand parses and executes a webctl command.
