@@ -7,6 +7,14 @@
 
 Test the webctl start command which launches the daemon and browser. This command is foundational as it initializes the entire webctl system and enables REPL mode.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-start.sh
+```
+
 ## Code References
 
 - internal/cli/start.go

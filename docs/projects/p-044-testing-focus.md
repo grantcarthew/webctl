@@ -7,6 +7,14 @@
 
 Test the webctl focus command which focuses an element matching a CSS selector. Simple command with no flags, used primarily for focusing input fields before typing or for testing focus-based interactions.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-focus.sh
+```
+
 ## Code References
 
 - internal/cli/focus.go

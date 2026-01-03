@@ -7,6 +7,14 @@
 
 Test the webctl html command which extracts HTML from the current page. This command supports three modes (default/show/save) with filtering and search capabilities.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-html.sh
+```
+
 ## Code References
 
 - internal/cli/html.go

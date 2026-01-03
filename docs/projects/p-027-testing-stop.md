@@ -7,6 +7,14 @@
 
 Test the webctl stop command which sends a shutdown signal to the running daemon, cleanly closing the browser and exiting the REPL.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-stop.sh
+```
+
 ## Code References
 
 - internal/cli/stop.go

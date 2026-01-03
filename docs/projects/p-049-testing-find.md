@@ -7,6 +7,14 @@
 
 Test the webctl find command which searches raw HTML content for text patterns and shows context around matches. Without flags, performs case-insensitive text search. Supports regex patterns and case-sensitive search. Output shows one line before and after each match, with matched text highlighted.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-find.sh
+```
+
 ## Code References
 
 - internal/cli/find.go

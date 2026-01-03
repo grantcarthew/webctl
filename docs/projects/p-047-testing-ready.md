@@ -7,6 +7,14 @@
 
 Test the webctl ready command which waits for the page or application to be ready before continuing. Supports multiple synchronization modes: page load (default), element presence (selector), network idle, and custom JavaScript condition. Only works with one mode at a time.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-ready.sh
+```
+
 ## Code References
 
 - internal/cli/ready.go

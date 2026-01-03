@@ -7,6 +7,14 @@
 
 Test the webctl clear command which clears event buffers (console and/or network). Can clear both buffers or target a specific one. Useful for resetting state between test scenarios or focusing on new events.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-clear.sh
+```
+
 ## Code References
 
 - internal/cli/clear.go

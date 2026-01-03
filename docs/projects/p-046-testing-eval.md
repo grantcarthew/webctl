@@ -7,6 +7,14 @@
 
 Test the webctl eval command which evaluates JavaScript expressions in the browser context. Supports both synchronous and asynchronous (Promise-based) expressions. Results are automatically serialized to JSON. Non-serializable values (DOM nodes, functions, circular references) return undefined.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-eval.sh
+```
+
 ## Code References
 
 - internal/cli/eval.go

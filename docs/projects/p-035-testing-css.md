@@ -7,6 +7,14 @@
 
 Test the webctl css command which extracts CSS from the current page. This command supports four modes (default/show/save/computed/get) with filtering and search capabilities, allowing extraction of stylesheets or computed styles.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-css.sh
+```
+
 ## Code References
 
 - internal/cli/css.go

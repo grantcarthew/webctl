@@ -7,6 +7,14 @@
 
 Test the webctl console command which extracts console logs from the current page. This command supports three modes (default/show/save) with comprehensive filtering by type, text search, and range limiting.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-console.sh
+```
+
 ## Code References
 
 - internal/cli/console.go

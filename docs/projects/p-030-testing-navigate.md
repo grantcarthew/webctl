@@ -7,6 +7,14 @@
 
 Test the webctl navigate command which loads URLs in the browser. Features automatic protocol detection and optional wait-for-load functionality.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-navigate.sh
+```
+
 ## Code References
 
 - internal/cli/navigate.go

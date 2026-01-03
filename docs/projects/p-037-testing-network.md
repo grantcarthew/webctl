@@ -7,6 +7,14 @@
 
 Test the webctl network command which extracts network requests from the current page. This command supports three modes (default/show/save) with extensive filtering capabilities including type, method, status, URL patterns, MIME types, duration, size, and failure state.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-network.sh
+```
+
 ## Code References
 
 - internal/cli/network.go

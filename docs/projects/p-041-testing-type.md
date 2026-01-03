@@ -7,6 +7,14 @@
 
 Test the webctl type command which types text into an element using CDP keyboard input simulation. Supports typing with or without selector, clearing content before typing, and sending a key after typing.
 
+## Test Script
+
+Run the interactive test script:
+
+```bash
+./scripts/interactive/test-type.sh
+```
+
 ## Code References
 
 - internal/cli/type.go
