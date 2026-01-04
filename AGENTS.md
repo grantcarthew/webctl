@@ -12,7 +12,7 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-- Active Project: docs/projects/p-026-testing-start.md
+- Active Project: docs/projects/p-027-testing-stop.md
 - Design Record: N/A
 
 When projects are completed, move them to docs/projects/completed/, update docs/projects/README.md, and update the active project above to the next project.
@@ -20,6 +20,7 @@ When projects are completed, move them to docs/projects/completed/, update docs/
 ## Completed Projects
 
 Completed projects are in docs/projects/completed/
+- P-026: Testing start Command (2026-01-04)
 - P-025: Interactive Test Suite (2026-01-03)
 - P-016: CLI Serve Command (2025-12-30)
 - P-024: Cookies Command Implementation (2025-12-30)

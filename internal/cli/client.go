@@ -15,7 +15,7 @@ type ExecutorFactory interface {
 type defaultFactory struct{}
 
 func (f defaultFactory) NewExecutor() (executor.Executor, error) {
-	return executor.NewIPCExecutor()
+	return executor.NewIPCExecutorWithDebug(Debug)
 }
 
 func (f defaultFactory) IsDaemonRunning() bool {

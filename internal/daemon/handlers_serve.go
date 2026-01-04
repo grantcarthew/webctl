@@ -78,7 +78,7 @@ func (d *Daemon) handleServeStart(params ipc.ServeParams) ipc.Response {
 	}
 
 	d.devServer = srv
-	d.debugf("Development server started: %s", srv.URL())
+	d.debugf(false, "Development server started: %s", srv.URL())
 
 	// Navigate browser to server URL if browser is running
 	if d.browserConnected() {
@@ -94,9 +94,9 @@ func (d *Daemon) handleServeStart(params ipc.ServeParams) ipc.Response {
 					"url": srv.URL(),
 				})
 				if err != nil {
-					d.debugf("Failed to navigate to server URL: %v", err)
+					d.debugf(false, "Failed to navigate to server URL: %v", err)
 				} else {
-					d.debugf("Navigated to server URL: %s", srv.URL())
+					d.debugf(false, "Navigated to server URL: %s", srv.URL())
 				}
 			}()
 		}
@@ -127,7 +127,7 @@ func (d *Daemon) handleServeStop() ipc.Response {
 	}
 
 	d.devServer = nil
-	d.debugf("Development server stopped")
+	d.debugf(false, "Development server stopped")
 
 	return ipc.SuccessResponse(ipc.ServeData{
 		Running: false,
@@ -154,18 +154,18 @@ func (d *Daemon) handleServeStatus() ipc.Response {
 
 // handleServerReload is called when files change - triggers page reload via CDP.
 func (d *Daemon) handleServerReload() {
-	d.debugf("File change detected - reloading page")
+	d.debugf(false, "File change detected - reloading page")
 
 	// Check if browser is connected
 	if !d.browserConnected() {
-		d.debugf("Browser not connected - skipping reload")
+		d.debugf(false, "Browser not connected - skipping reload")
 		return
 	}
 
 	// Get active session
 	session := d.sessions.Active()
 	if session == nil {
-		d.debugf("No active session - skipping reload")
+		d.debugf(false, "No active session - skipping reload")
 		return
 	}
 
@@ -178,9 +178,9 @@ func (d *Daemon) handleServerReload() {
 			"ignoreCache": false,
 		})
 		if err != nil {
-			d.debugf("Failed to reload page: %v", err)
+			d.debugf(false, "Failed to reload page: %v", err)
 		} else {
-			d.debugf("Page reloaded successfully")
+			d.debugf(false, "Page reloaded successfully")
 		}
 	}()
 }

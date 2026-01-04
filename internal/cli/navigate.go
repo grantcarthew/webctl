@@ -24,7 +24,7 @@ URL protocol auto-detection:
 
 Flags:
   --wait              Wait for page load completion (load event fired)
-  --timeout <ms>      Timeout in milliseconds when using --wait (default 30000)
+  --timeout <seconds> Timeout in seconds when using --wait (default 60)
 
 Examples:
   # Basic navigation (fast return, page loads in background)
@@ -42,7 +42,7 @@ Examples:
 
   # Wait for page load (blocks until load event)
   navigate example.com --wait
-  navigate slow-site.com --wait --timeout 60000
+  navigate slow-site.com --wait --timeout 60
 
   # Common workflow patterns
   navigate example.com && ready           # Equivalent to --wait
@@ -63,7 +63,7 @@ Error cases:
 
 func init() {
 	navigateCmd.Flags().Bool("wait", false, "Wait for page load completion")
-	navigateCmd.Flags().Int("timeout", 30000, "Timeout in milliseconds (used with --wait)")
+	navigateCmd.Flags().Int("timeout", 60, "Timeout in seconds (used with --wait)")
 	rootCmd.AddCommand(navigateCmd)
 }
 

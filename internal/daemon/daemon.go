@@ -86,9 +86,9 @@ type frameNavigatedInfo struct {
 	Title string
 }
 
-// debugf logs a debug message if debug mode is enabled.
-func (d *Daemon) debugf(format string, args ...any) {
-	if d.debug {
+// debugf logs a debug message if debug mode is enabled (daemon-level or request-level).
+func (d *Daemon) debugf(reqDebug bool, format string, args ...any) {
+	if d.debug || reqDebug {
 		timestamp := time.Now().Format("15:04:05.000")
 		fmt.Fprintf(os.Stderr, "[DEBUG] [%s] "+format+"\n", append([]any{timestamp}, args...)...)
 	}
@@ -112,7 +112,7 @@ func (d *Daemon) requireBrowser() (ok bool, resp ipc.Response) {
 	}
 
 	// Browser is dead - clear state and trigger shutdown
-	d.debugf("Browser not connected - clearing state and shutting down daemon")
+	d.debugf(false, "Browser not connected - clearing state and shutting down daemon")
 	d.sessions.Clear()
 	go d.shutdownOnce.Do(func() {
 		close(d.shutdown)
@@ -137,7 +137,7 @@ func (d *Daemon) isConnectionError(err error) bool {
 func (d *Daemon) sendToSession(ctx context.Context, sessionID, method string, params any) (json.RawMessage, error) {
 	result, err := d.cdp.SendToSession(ctx, sessionID, method, params)
 	if err != nil && d.isConnectionError(err) {
-		d.debugf("Connection error detected in %s: %v - shutting down daemon", method, err)
+		d.debugf(false, "Connection error detected in %s: %v - shutting down daemon", method, err)
 		d.sessions.Clear()
 		go d.shutdownOnce.Do(func() {
 			close(d.shutdown)
@@ -196,7 +196,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := d.devServer.Stop(ctx); err != nil {
-				d.debugf("Failed to stop dev server: %v", err)
+				d.debugf(false, "Failed to stop dev server: %v", err)
 			}
 		}
 	}()
@@ -210,8 +210,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to get browser version: %w", err)
 	}
-	d.debugf("Browser version info: %+v", version)
-	d.debugf("Connecting to CDP WebSocket: %s", version.WebSocketURL)
+	d.debugf(false, "Browser version info: %+v", version)
+	d.debugf(false, "Connecting to CDP WebSocket: %s", version.WebSocketURL)
 
 	cdpClient, err := cdp.Dial(ctx, version.WebSocketURL)
 	if err != nil {
@@ -219,19 +219,19 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	d.cdp = cdpClient
 	defer d.cdp.Close()
-	d.debugf("CDP client connected successfully")
+	d.debugf(false, "CDP client connected successfully")
 
 	// Subscribe to events before enabling domains
-	d.debugf("Subscribing to CDP events")
+	d.debugf(false, "Subscribing to CDP events")
 	d.subscribeEvents()
-	d.debugf("Event subscriptions complete")
+	d.debugf(false, "Event subscriptions complete")
 
 	// Enable auto-attach for session tracking
-	d.debugf("Enabling target discovery and attachment")
+	d.debugf(false, "Enabling target discovery and attachment")
 	if err := d.enableAutoAttach(); err != nil {
 		return fmt.Errorf("failed to enable auto-attach: %w", err)
 	}
-	d.debugf("Target discovery and attachment enabled")
+	d.debugf(false, "Target discovery and attachment enabled")
 
 	// Start IPC server
 	server, err := ipc.NewServer(d.config.SocketPath, d.handleRequest)
@@ -287,7 +287,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 // enableAutoAttach enables Target.setDiscoverTargets for target discovery.
 // We use manual Target.attachToTarget with flatten:true for each discovered target.
 func (d *Daemon) enableAutoAttach() error {
-	d.debugf("Calling Target.setDiscoverTargets...")
+	d.debugf(false, "Calling Target.setDiscoverTargets...")
 	// Enable target discovery to receive targetCreated/targetInfoChanged/targetDestroyed events
 	_, err := d.cdp.Send("Target.setDiscoverTargets", map[string]any{
 		"discover": true,
@@ -295,19 +295,19 @@ func (d *Daemon) enableAutoAttach() error {
 	if err != nil {
 		return fmt.Errorf("failed to set discover targets: %w", err)
 	}
-	d.debugf("Target.setDiscoverTargets succeeded")
+	d.debugf(false, "Target.setDiscoverTargets succeeded")
 
 	// NOTE: We do NOT use Target.setAutoAttach here.
 	// Instead, we manually call Target.attachToTarget for each target in handleTargetCreated.
 	// Using flatten:true in attachToTarget (not setAutoAttach) avoids networkIdle blocking.
 
 	// Attach to any existing targets that were created before we enabled discovery
-	d.debugf("Calling Target.getTargets to find existing targets...")
+	d.debugf(false, "Calling Target.getTargets to find existing targets...")
 	result, err := d.cdp.Send("Target.getTargets", nil)
 	if err != nil {
 		return fmt.Errorf("failed to get existing targets: %w", err)
 	}
-	d.debugf("Target.getTargets succeeded, parsing results...")
+	d.debugf(false, "Target.getTargets succeeded, parsing results...")
 
 	var targetsResult struct {
 		TargetInfos []struct {
@@ -320,21 +320,21 @@ func (d *Daemon) enableAutoAttach() error {
 	if err := json.Unmarshal(result, &targetsResult); err != nil {
 		return fmt.Errorf("failed to parse targets: %w", err)
 	}
-	d.debugf("Found %d total targets", len(targetsResult.TargetInfos))
+	d.debugf(false, "Found %d total targets", len(targetsResult.TargetInfos))
 
 	// Attach to existing page targets asynchronously
 	for _, targetInfo := range targetsResult.TargetInfos {
-		d.debugf("  Target: type=%q, targetID=%q, url=%q", targetInfo.Type, targetInfo.TargetID, targetInfo.URL)
+		d.debugf(false, "  Target: type=%q, targetID=%q, url=%q", targetInfo.Type, targetInfo.TargetID, targetInfo.URL)
 		if targetInfo.Type == "page" {
 			// Check if we've already attached (targetCreated might have fired before getTargets returned)
 			if _, alreadyAttached := d.attachedTargets.LoadOrStore(targetInfo.TargetID, true); alreadyAttached {
-				d.debugf("  Already attached to targetID=%q, skipping", targetInfo.TargetID)
+				d.debugf(false, "  Already attached to targetID=%q, skipping", targetInfo.TargetID)
 				continue
 			}
 
 			targetID := targetInfo.TargetID // capture for goroutine
 			go func() {
-				d.debugf("  Attaching to existing page target: targetID=%q", targetID)
+				d.debugf(false, "  Attaching to existing page target: targetID=%q", targetID)
 				_, err := d.cdp.Send("Target.attachToTarget", map[string]any{
 					"targetId": targetID,
 					"flatten":  true,
@@ -344,7 +344,7 @@ func (d *Daemon) enableAutoAttach() error {
 					// Remove from attachedTargets on failure so we can retry
 					d.attachedTargets.Delete(targetID)
 				} else {
-					d.debugf("  Successfully attached to target %q", targetID)
+					d.debugf(false, "  Successfully attached to target %q", targetID)
 				}
 			}()
 		}

@@ -146,7 +146,7 @@ func runReady(cmd *cobra.Command, args []string) error {
 	defer exec.Close()
 
 	params, err := json.Marshal(ipc.ReadyParams{
-		Timeout:     int(timeout.Milliseconds()),
+		Timeout:     int(timeout.Seconds()),
 		Selector:    selector,
 		NetworkIdle: networkIdle,
 		Eval:        evalExpr,
