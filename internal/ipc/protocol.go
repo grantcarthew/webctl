@@ -15,6 +15,7 @@ type Request struct {
 	Cmd    string          `json:"cmd"`
 	Target string          `json:"target,omitempty"`
 	Params json.RawMessage `json:"params,omitempty"`
+	Debug  bool            `json:"debug,omitempty"` // Enable debug output for this request
 }
 
 // Response represents a response sent from the daemon to the CLI.
@@ -121,7 +122,7 @@ type HTMLData struct {
 type NavigateParams struct {
 	URL     string `json:"url"`
 	Wait    bool   `json:"wait"`    // wait for page load completion
-	Timeout int    `json:"timeout"` // timeout in milliseconds (when wait=true)
+	Timeout int    `json:"timeout"` // timeout in seconds (when wait=true)
 }
 
 // NavigateData is the response data for the "navigate" command.
@@ -134,18 +135,18 @@ type NavigateData struct {
 type ReloadParams struct {
 	IgnoreCache bool `json:"ignoreCache"`
 	Wait        bool `json:"wait"`    // wait for page load completion
-	Timeout     int  `json:"timeout"` // timeout in milliseconds (when wait=true)
+	Timeout     int  `json:"timeout"` // timeout in seconds (when wait=true)
 }
 
 // HistoryParams represents parameters for the "back" and "forward" commands.
 type HistoryParams struct {
 	Wait    bool `json:"wait"`    // wait for page load completion
-	Timeout int  `json:"timeout"` // timeout in milliseconds (when wait=true)
+	Timeout int  `json:"timeout"` // timeout in seconds (when wait=true)
 }
 
 // ReadyParams represents parameters for the "ready" command.
 type ReadyParams struct {
-	Timeout     int    `json:"timeout"`     // timeout in milliseconds
+	Timeout     int    `json:"timeout"`     // timeout in seconds
 	Selector    string `json:"selector"`    // CSS selector to wait for (optional)
 	NetworkIdle bool   `json:"networkIdle"` // wait for network idle
 	Eval        string `json:"eval"`        // JavaScript expression to evaluate (optional)
@@ -197,7 +198,7 @@ type ScrollParams struct {
 // EvalParams represents parameters for the "eval" command.
 type EvalParams struct {
 	Expression string `json:"expression"`
-	Timeout    int    `json:"timeout,omitempty"` // timeout in milliseconds
+	Timeout    int    `json:"timeout,omitempty"` // timeout in seconds
 }
 
 // EvalData is the response data for the "eval" command.

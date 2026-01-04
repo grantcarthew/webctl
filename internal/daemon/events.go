@@ -51,7 +51,7 @@ func (d *Daemon) subscribeEvents() {
 		if entry, ok := d.parseRequestEvent(evt); ok {
 			entry.SessionID = evt.SessionID
 			d.networkBuf.Push(entry)
-			d.debugf("Network.requestWillBeSent: requestId=%s, url=%s, type=%s", entry.RequestID, entry.URL, entry.Type)
+			d.debugf(false, "Network.requestWillBeSent: requestId=%s, url=%s, type=%s", entry.RequestID, entry.URL, entry.Type)
 		}
 	})
 
@@ -62,7 +62,7 @@ func (d *Daemon) subscribeEvents() {
 			Type      string `json:"type"`
 		}
 		if err := json.Unmarshal(evt.Params, &params); err == nil {
-			d.debugf("Network.responseReceived: requestId=%s, type=%s", params.RequestID, params.Type)
+			d.debugf(false, "Network.responseReceived: requestId=%s, type=%s", params.RequestID, params.Type)
 		}
 	})
 
@@ -72,7 +72,7 @@ func (d *Daemon) subscribeEvents() {
 			RequestID string `json:"requestId"`
 		}
 		if err := json.Unmarshal(evt.Params, &params); err == nil {
-			d.debugf("Network.loadingFinished: requestId=%s", params.RequestID)
+			d.debugf(false, "Network.loadingFinished: requestId=%s", params.RequestID)
 		}
 	})
 
@@ -82,7 +82,7 @@ func (d *Daemon) subscribeEvents() {
 			RequestID string `json:"requestId"`
 		}
 		if err := json.Unmarshal(evt.Params, &params); err == nil {
-			d.debugf("Network.loadingFailed: requestId=%s", params.RequestID)
+			d.debugf(false, "Network.loadingFailed: requestId=%s", params.RequestID)
 		}
 	})
 
@@ -101,11 +101,11 @@ func (d *Daemon) subscribeEvents() {
 
 	// Debug: Additional Page events
 	d.cdp.Subscribe("Page.frameStartedLoading", func(evt cdp.Event) {
-		d.debugf("Page.frameStartedLoading: sessionID=%s", evt.SessionID)
+		d.debugf(false, "Page.frameStartedLoading: sessionID=%s", evt.SessionID)
 	})
 
 	d.cdp.Subscribe("Page.frameStoppedLoading", func(evt cdp.Event) {
-		d.debugf("Page.frameStoppedLoading: sessionID=%s", evt.SessionID)
+		d.debugf(false, "Page.frameStoppedLoading: sessionID=%s", evt.SessionID)
 	})
 
 	d.cdp.Subscribe("Page.lifecycleEvent", func(evt cdp.Event) {
@@ -113,7 +113,7 @@ func (d *Daemon) subscribeEvents() {
 			Name string `json:"name"`
 		}
 		if err := json.Unmarshal(evt.Params, &params); err == nil {
-			d.debugf("Page.lifecycleEvent: name=%s, sessionID=%s", params.Name, evt.SessionID)
+			d.debugf(false, "Page.lifecycleEvent: name=%s, sessionID=%s", params.Name, evt.SessionID)
 		}
 	})
 
@@ -126,7 +126,7 @@ func (d *Daemon) subscribeEvents() {
 			} `json:"context"`
 		}
 		if err := json.Unmarshal(evt.Params, &params); err == nil {
-			d.debugf("Runtime.executionContextCreated: contextId=%d, name=%s", params.Context.ID, params.Context.Name)
+			d.debugf(false, "Runtime.executionContextCreated: contextId=%d, name=%s", params.Context.ID, params.Context.Name)
 		}
 	})
 
@@ -135,17 +135,17 @@ func (d *Daemon) subscribeEvents() {
 			ExecutionContextID int `json:"executionContextId"`
 		}
 		if err := json.Unmarshal(evt.Params, &params); err == nil {
-			d.debugf("Runtime.executionContextDestroyed: contextId=%d", params.ExecutionContextID)
+			d.debugf(false, "Runtime.executionContextDestroyed: contextId=%d", params.ExecutionContextID)
 		}
 	})
 
 	d.cdp.Subscribe("Runtime.executionContextsCleared", func(evt cdp.Event) {
-		d.debugf("Runtime.executionContextsCleared")
+		d.debugf(false, "Runtime.executionContextsCleared")
 	})
 
 	// Debug: DOM events
 	d.cdp.Subscribe("DOM.documentUpdated", func(evt cdp.Event) {
-		d.debugf("DOM.documentUpdated: sessionID=%s", evt.SessionID)
+		d.debugf(false, "DOM.documentUpdated: sessionID=%s", evt.SessionID)
 	})
 }
 
@@ -425,12 +425,12 @@ func (d *Daemon) handleTargetCreated(evt cdp.Event) {
 		return
 	}
 
-	d.debugf("Target.targetCreated: targetID=%q, type=%q, url=%q",
+	d.debugf(false, "Target.targetCreated: targetID=%q, type=%q, url=%q",
 		params.TargetInfo.TargetID, params.TargetInfo.Type, params.TargetInfo.URL)
 
 	// Check if we've already attached to this target (prevent double-attach)
 	if _, alreadyAttached := d.attachedTargets.LoadOrStore(params.TargetInfo.TargetID, true); alreadyAttached {
-		d.debugf("Target.targetCreated: already attached to targetID=%q, skipping", params.TargetInfo.TargetID)
+		d.debugf(false, "Target.targetCreated: already attached to targetID=%q, skipping", params.TargetInfo.TargetID)
 		return
 	}
 
@@ -452,7 +452,7 @@ func (d *Daemon) handleTargetCreated(evt cdp.Event) {
 
 		// The result contains the sessionId, but we'll receive Target.attachedToTarget event anyway
 		// which will handle session setup via handleTargetAttached
-		d.debugf("Target.attachToTarget result for targetID=%q: %s", params.TargetInfo.TargetID, string(result))
+		d.debugf(false, "Target.attachToTarget result for targetID=%q: %s", params.TargetInfo.TargetID, string(result))
 	}()
 }
 
@@ -477,7 +477,7 @@ func (d *Daemon) handleTargetAttached(evt cdp.Event) {
 		return
 	}
 
-	d.debugf("Target.attachedToTarget: sessionID=%q, targetID=%q, url=%q",
+	d.debugf(false, "Target.attachedToTarget: sessionID=%q, targetID=%q, url=%q",
 		params.SessionID, params.TargetInfo.TargetID, params.TargetInfo.URL)
 
 	// Add to session manager
@@ -495,7 +495,7 @@ func (d *Daemon) handleTargetAttached(evt cdp.Event) {
 			// Log error but don't fail - session is still tracked
 			fmt.Fprintf(os.Stderr, "warning: failed to enable domains for session: %v\n", err)
 		}
-		d.debugf("enableDomainsForSession completed in %v for session %q", time.Since(startEnable), params.SessionID)
+		d.debugf(false, "enableDomainsForSession completed in %v for session %q", time.Since(startEnable), params.SessionID)
 	}()
 }
 
@@ -509,11 +509,11 @@ func (d *Daemon) handleTargetDetached(evt cdp.Event) {
 		return
 	}
 
-	d.debugf("Target.detachedFromTarget: sessionID=%q", params.SessionID)
+	d.debugf(false, "Target.detachedFromTarget: sessionID=%q", params.SessionID)
 
 	// Remove from session manager
 	newActive, changed := d.sessions.Remove(params.SessionID)
-	d.debugf("Session removed: newActiveID=%q, activeChanged=%v", newActive, changed)
+	d.debugf(false, "Session removed: newActiveID=%q, activeChanged=%v", newActive, changed)
 
 	// Purge entries for this session
 	d.purgeSessionEntries(params.SessionID)
@@ -539,7 +539,7 @@ func (d *Daemon) handleTargetInfoChanged(evt cdp.Event) {
 		return
 	}
 
-	d.debugf("Target.targetInfoChanged: targetID=%q, url=%q",
+	d.debugf(false, "Target.targetInfoChanged: targetID=%q, url=%q",
 		params.TargetInfo.TargetID, params.TargetInfo.URL)
 
 	// Update session by target ID
@@ -562,6 +562,11 @@ func (d *Daemon) purgeSessionEntries(sessionID string) {
 
 // handleFrameNavigated processes Page.frameNavigated events.
 // Signals any waiting navigation operations.
+//
+// This event is critical for history navigation (back/forward) because Chrome's
+// BFCache (Back/Forward Cache) optimization prevents Page.loadEventFired from
+// firing when navigating to cached pages. Page.frameNavigated DOES fire for all
+// navigation types, making it the reliable choice for history navigation waiting.
 func (d *Daemon) handleFrameNavigated(evt cdp.Event) {
 	var params struct {
 		Frame struct {
@@ -597,11 +602,11 @@ func (d *Daemon) handleFrameNavigated(evt cdp.Event) {
 // handleLoadEventFired processes Page.loadEventFired events.
 // Signals any waiting ready operations and marks navigation as complete.
 func (d *Daemon) handleLoadEventFired(evt cdp.Event) {
-	d.debugf("Page.loadEventFired: sessionID=%s", evt.SessionID)
+	d.debugf(false, "Page.loadEventFired: sessionID=%s", evt.SessionID)
 
 	// Signal ready waiters
 	if ch, ok := d.loadWaiters.LoadAndDelete(evt.SessionID); ok {
-		d.debugf("Page.loadEventFired: signaling ready waiter for session %s", evt.SessionID)
+		d.debugf(false, "Page.loadEventFired: signaling ready waiter for session %s", evt.SessionID)
 		waiter := ch.(chan struct{})
 		select {
 		case waiter <- struct{}{}:
@@ -611,7 +616,7 @@ func (d *Daemon) handleLoadEventFired(evt cdp.Event) {
 
 	// Mark navigation as complete by closing the navigating channel
 	if ch, ok := d.navigating.LoadAndDelete(evt.SessionID); ok {
-		d.debugf("Page.loadEventFired: closing navigating channel for session %s", evt.SessionID)
+		d.debugf(false, "Page.loadEventFired: closing navigating channel for session %s", evt.SessionID)
 		close(ch.(chan struct{}))
 	}
 }
@@ -621,12 +626,12 @@ func (d *Daemon) handleLoadEventFired(evt cdp.Event) {
 // This allows html/eval commands to proceed once DOM is ready, without waiting
 // for all resources (images, scripts, ads) to finish loading.
 func (d *Daemon) handleDOMContentEventFired(evt cdp.Event) {
-	d.debugf("Page.domContentEventFired: sessionID=%s", evt.SessionID)
+	d.debugf(false, "Page.domContentEventFired: sessionID=%s", evt.SessionID)
 
 	// Mark navigation as complete by closing the navigating channel
 	// This fires before loadEventFired, allowing DOM operations to proceed sooner
 	if ch, ok := d.navigating.LoadAndDelete(evt.SessionID); ok {
-		d.debugf("Page.domContentEventFired: closing navigating channel for session %s", evt.SessionID)
+		d.debugf(false, "Page.domContentEventFired: closing navigating channel for session %s", evt.SessionID)
 		close(ch.(chan struct{}))
 	}
 }

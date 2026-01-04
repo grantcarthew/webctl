@@ -79,9 +79,9 @@ func (d *Daemon) handleNetwork() ipc.Response {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if _, err := d.sendToSession(ctx, activeID, "Network.enable", nil); err != nil {
-			d.debugf("warning: failed to enable Network domain: %v", err)
+			d.debugf(false, "warning: failed to enable Network domain: %v", err)
 		} else {
-			d.debugf("Network domain enabled lazily for session %s", activeID)
+			d.debugf(false, "Network domain enabled lazily for session %s", activeID)
 		}
 	}
 
@@ -161,7 +161,7 @@ func (d *Daemon) handleScreenshot(req ipc.Request) ipc.Response {
 // Gets window ObjectID first, then uses Runtime.callFunctionOn.
 // This avoids the networkIdle blocking that occurs with direct Runtime.evaluate.
 func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
-	d.debugf("handleHTML called")
+	d.debugf(false, "handleHTML called")
 
 	// Check if browser is connected (fail-fast if not)
 	if ok, resp := d.requireBrowser(); !ok {
@@ -193,11 +193,11 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 
 		// Step 1: Get window ObjectID using Runtime.evaluate.
 		// Chrome handles "window" specially - it's always available.
-		d.debugf("html: calling Runtime.evaluate for window")
+		d.debugf(false, "html: calling Runtime.evaluate for window")
 		windowResult, err := d.sendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 			"expression": "window",
 		})
-		d.debugf("html: Runtime.evaluate(window) completed in %v", time.Since(start))
+		d.debugf(false, "html: Runtime.evaluate(window) completed in %v", time.Since(start))
 		if err != nil {
 			return ipc.ErrorResponse(fmt.Sprintf("failed to get window: %v", err))
 		}
@@ -222,14 +222,14 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 
 		// Step 2: Use Runtime.callFunctionOn to get document.documentElement.
 		// By targeting the window object directly, we avoid context creation delays.
-		d.debugf("html: calling Runtime.callFunctionOn for document.documentElement")
+		d.debugf(false, "html: calling Runtime.callFunctionOn for document.documentElement")
 		callStart := time.Now()
 		callResult, err := d.sendToSession(ctx, activeID, "Runtime.callFunctionOn", map[string]any{
 			"objectId":            windowResp.Result.ObjectID,
 			"functionDeclaration": "function() { return document.documentElement; }",
 			"returnByValue":       false,
 		})
-		d.debugf("html: Runtime.callFunctionOn completed in %v", time.Since(callStart))
+		d.debugf(false, "html: Runtime.callFunctionOn completed in %v", time.Since(callStart))
 		if err != nil {
 			return ipc.ErrorResponse(fmt.Sprintf("failed to get documentElement: %v", err))
 		}
@@ -253,12 +253,12 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 		}
 
 		// Step 3: Get outer HTML using DOM.getOuterHTML with the ObjectID.
-		d.debugf("html: calling DOM.getOuterHTML with objectId=%s", callResp.Result.ObjectID)
+		d.debugf(false, "html: calling DOM.getOuterHTML with objectId=%s", callResp.Result.ObjectID)
 		htmlStart := time.Now()
 		htmlResult, err := d.sendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
 			"objectId": callResp.Result.ObjectID,
 		})
-		d.debugf("html: DOM.getOuterHTML completed in %v", time.Since(htmlStart))
+		d.debugf(false, "html: DOM.getOuterHTML completed in %v", time.Since(htmlStart))
 		if err != nil {
 			return ipc.ErrorResponse(fmt.Sprintf("failed to get outer HTML: %v", err))
 		}
@@ -270,7 +270,7 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 			return ipc.ErrorResponse(fmt.Sprintf("failed to parse HTML response: %v", err))
 		}
 
-		d.debugf("html: total time: %v", time.Since(start))
+		d.debugf(false, "html: total time: %v", time.Since(start))
 
 		return ipc.SuccessResponse(ipc.HTMLData{
 			HTML: htmlResp.OuterHTML,
@@ -378,7 +378,7 @@ func (d *Daemon) handleEval(req ipc.Request) ipc.Response {
 
 	timeout := cdp.DefaultTimeout
 	if params.Timeout > 0 {
-		timeout = time.Duration(params.Timeout) * time.Millisecond
+		timeout = time.Duration(params.Timeout) * time.Second
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -699,7 +699,7 @@ func (d *Daemon) handleFind(req ipc.Request) ipc.Response {
 	formattedHTML, err := htmlformat.Format(htmlResp.OuterHTML)
 	if err != nil {
 		// If formatting fails, fall back to original HTML
-		d.debugf("HTML formatting failed: %v", err)
+		d.debugf(false, "HTML formatting failed: %v", err)
 		formattedHTML = htmlResp.OuterHTML
 	}
 

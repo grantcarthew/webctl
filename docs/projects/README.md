@@ -28,13 +28,14 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-016 | CLI Serve Command | Completed | 2025-12-30 | 2025-12-30 |
 | P-017 | CLI CSS Commands | Completed | 2025-12-26 | 2025-12-28 |
 | P-018 | Browser Connection Failure Handling | Completed | 2025-12-27 | 2025-12-27 |
-| P-019 | Observation Commands Interface Redesign | In Progress | 2025-12-28 | - |
-| P-020 | HTML Command Implementation | Proposed | - | - |
-| P-021 | CSS Command Implementation | Proposed | - | - |
-| P-022 | Console Command Implementation | Proposed | - | - |
-| P-023 | Network Command Implementation | Proposed | - | - |
+| P-019 | Observation Commands Interface Redesign | Completed | 2025-12-28 | 2025-12-28 |
+| P-020 | HTML Command Implementation | Completed | 2025-12-28 | 2025-12-28 |
+| P-021 | CSS Command Implementation | Completed | 2025-12-28 | 2025-12-28 |
+| P-022 | Console Command Implementation | Completed | 2025-12-29 | 2025-12-29 |
+| P-023 | Network Command Implementation | Completed | 2025-12-30 | 2025-12-30 |
 | P-024 | Cookies Command Implementation | Completed | 2025-12-29 | 2025-12-30 |
 | P-025 | Interactive Test Suite | Completed | 2025-12-31 | 2026-01-03 |
+| P-026 | Testing start Command | Completed | 2025-12-31 | 2026-01-04 |
 
 Note: Completed projects are in `completed/`
 

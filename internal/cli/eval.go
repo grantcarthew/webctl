@@ -21,7 +21,7 @@ are automatically serialized to JSON. Non-serializable values (DOM nodes,
 functions, circular references) return undefined.
 
 Flags:
-  --timeout, -t     Timeout for async expressions (default 30s)
+  --timeout, -t     Timeout for async expressions (default 60s)
                     Accepts Go duration format: 10s, 1m, 500ms
 
 Simple expressions:
@@ -106,7 +106,7 @@ func runEval(cmd *cobra.Command, args []string) error {
 
 	params, err := json.Marshal(ipc.EvalParams{
 		Expression: expression,
-		Timeout:    int(timeout.Milliseconds()),
+		Timeout:    int(timeout.Seconds()),
 	})
 	if err != nil {
 		return outputError(err.Error())

@@ -14,7 +14,7 @@ import (
 // Returns immediately after sending Page.navigate without waiting for frameNavigated.
 // This avoids Chrome's internal blocking that occurs when waiting for navigation events.
 func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
-	d.debugf("handleNavigate called")
+	d.debugf(false, "handleNavigate called")
 
 	// Check if browser is connected (fail-fast if not)
 	if ok, resp := d.requireBrowser(); !ok {
@@ -38,12 +38,12 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 	// Mark session as navigating BEFORE sending command.
 	// Close any existing navigation channel first (handles rapid navigation).
 	if oldCh, loaded := d.navigating.LoadAndDelete(activeID); loaded {
-		d.debugf("navigate: closing old navigating channel for session %s", activeID)
+		d.debugf(false, "navigate: closing old navigating channel for session %s", activeID)
 		close(oldCh.(chan struct{}))
 	}
 	navDoneCh := make(chan struct{})
 	d.navigating.Store(activeID, navDoneCh)
-	d.debugf("navigate: created navigating channel for session %s", activeID)
+	d.debugf(false, "navigate: created navigating channel for session %s", activeID)
 
 	// Send navigate command
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -69,9 +69,9 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 	if params.Wait {
 		timeout := cdp.DefaultTimeout
 		if params.Timeout > 0 {
-			timeout = time.Duration(params.Timeout) * time.Millisecond
+			timeout = time.Duration(params.Timeout) * time.Second
 		}
-		d.debugf("navigate: waiting for page load (timeout=%v)", timeout)
+		d.debugf(false, "navigate: waiting for page load (timeout=%v)", timeout)
 		if err := d.waitForLoadEvent(activeID, timeout); err != nil {
 			return ipc.ErrorResponse(err.Error())
 		}
@@ -90,7 +90,7 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 
 	// Return immediately - don't wait for frameNavigated.
 	// Chrome's Page.navigate response includes the URL we navigated to.
-	d.debugf("navigate: returning immediately, frameId=%s", navResp.FrameID)
+	d.debugf(false, "navigate: returning immediately, frameId=%s", navResp.FrameID)
 	return ipc.SuccessResponse(ipc.NavigateData{
 		URL:   params.URL,
 		Title: "", // Title not available until page loads
@@ -119,12 +119,12 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 
 	// Mark session as navigating BEFORE sending command.
 	if oldCh, loaded := d.navigating.LoadAndDelete(activeID); loaded {
-		d.debugf("reload: closing old navigating channel for session %s", activeID)
+		d.debugf(false, "reload: closing old navigating channel for session %s", activeID)
 		close(oldCh.(chan struct{}))
 	}
 	navDoneCh := make(chan struct{})
 	d.navigating.Store(activeID, navDoneCh)
-	d.debugf("reload: created navigating channel for session %s", activeID)
+	d.debugf(false, "reload: created navigating channel for session %s", activeID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -140,9 +140,9 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 	if params.Wait {
 		timeout := cdp.DefaultTimeout
 		if params.Timeout > 0 {
-			timeout = time.Duration(params.Timeout) * time.Millisecond
+			timeout = time.Duration(params.Timeout) * time.Second
 		}
-		d.debugf("reload: waiting for page load (timeout=%v)", timeout)
+		d.debugf(false, "reload: waiting for page load (timeout=%v)", timeout)
 		if err := d.waitForLoadEvent(activeID, timeout); err != nil {
 			return ipc.ErrorResponse(err.Error())
 		}
@@ -171,7 +171,7 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 
 	// Return immediately - don't wait for frameNavigated
 	// Session URL stays the same for reload, so no need to update
-	d.debugf("reload: returning immediately")
+	d.debugf(false, "reload: returning immediately")
 	return ipc.SuccessResponse(ipc.NavigateData{
 		URL:   currentURL,
 		Title: "", // Title not available until frameNavigated
@@ -186,7 +186,7 @@ func (d *Daemon) handleBack(req ipc.Request) ipc.Response {
 			return ipc.ErrorResponse(fmt.Sprintf("invalid back parameters: %v", err))
 		}
 	}
-	return d.navigateHistory(-1, params)
+	return d.navigateHistory(-1, params, req.Debug)
 }
 
 // handleForward navigates to the next history entry.
@@ -197,12 +197,12 @@ func (d *Daemon) handleForward(req ipc.Request) ipc.Response {
 			return ipc.ErrorResponse(fmt.Sprintf("invalid forward parameters: %v", err))
 		}
 	}
-	return d.navigateHistory(1, params)
+	return d.navigateHistory(1, params, req.Debug)
 }
 
 // navigateHistory navigates forward or backward in history.
 // Returns immediately after sending navigation command unless wait=true.
-func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams) ipc.Response {
+func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams, debug bool) ipc.Response {
 	// Check if browser is connected (fail-fast if not)
 	if ok, resp := d.requireBrowser(); !ok {
 		return resp
@@ -243,40 +243,53 @@ func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams) ipc.Respon
 
 	// Mark session as navigating BEFORE sending command.
 	if oldCh, loaded := d.navigating.LoadAndDelete(activeID); loaded {
-		d.debugf("navigateHistory: closing old navigating channel for session %s", activeID)
+		d.debugf(debug, "navigateHistory: closing old navigating channel for session %s", activeID)
 		close(oldCh.(chan struct{}))
 	}
 	navDoneCh := make(chan struct{})
 	d.navigating.Store(activeID, navDoneCh)
-	d.debugf("navigateHistory: created navigating channel for session %s", activeID)
+	d.debugf(debug, "navigateHistory: created navigating channel for session %s", activeID)
+
+	// If wait requested, register frame navigation waiter BEFORE sending command to avoid race
+	var frameNavCh chan *frameNavigatedInfo
+	if params.Wait {
+		frameNavCh = make(chan *frameNavigatedInfo, 1)
+		d.navWaiters.Store(activeID, frameNavCh)
+		d.debugf(debug, "navigateHistory: registered frame navigation waiter before sending command")
+	}
 
 	// Navigate to history entry
 	_, err = d.sendToSession(ctx, activeID, "Page.navigateToHistoryEntry", map[string]any{
 		"entryId": history.Entries[targetIndex].ID,
 	})
 	if err != nil {
+		// Clean up waiter on error
+		if params.Wait {
+			d.navWaiters.Delete(activeID)
+		}
 		return ipc.ErrorResponse(fmt.Sprintf("failed to navigate history: %v", err))
 	}
 
-	// If wait requested, wait for page load
+	// If wait requested, wait for frame navigation (not loadEventFired, which doesn't fire for BFCache)
 	if params.Wait {
 		timeout := cdp.DefaultTimeout
 		if params.Timeout > 0 {
-			timeout = time.Duration(params.Timeout) * time.Millisecond
+			timeout = time.Duration(params.Timeout) * time.Second
 		}
-		d.debugf("navigateHistory: waiting for page load (timeout=%v)", timeout)
-		if err := d.waitForLoadEvent(activeID, timeout); err != nil {
-			return ipc.ErrorResponse(err.Error())
-		}
-		// Get title after page load
-		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel2()
-		title := d.getPageTitle(ctx2, activeID)
+		d.debugf(debug, "navigateHistory: waiting for frame navigation (timeout=%v)", timeout)
+
+		defer d.navWaiters.Delete(activeID)
+
 		targetURL := history.Entries[targetIndex].URL
-		return ipc.SuccessResponse(ipc.NavigateData{
-			URL:   targetURL,
-			Title: title,
-		})
+		select {
+		case info := <-frameNavCh:
+			return ipc.SuccessResponse(ipc.NavigateData{
+				URL:   targetURL,
+				Title: info.Title,
+			})
+		case <-time.After(timeout):
+			return ipc.ErrorResponse(fmt.Sprintf("timeout waiting for navigation to %s", targetURL))
+		}
 	}
 
 	// Return immediately - don't wait for frameNavigated
@@ -285,7 +298,7 @@ func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams) ipc.Respon
 	// Update session URL immediately so REPL prompt reflects the change
 	d.sessions.Update(activeID, targetURL, "")
 
-	d.debugf("navigateHistory: returning immediately, target URL=%s", targetURL)
+	d.debugf(debug, "navigateHistory: returning immediately, target URL=%s", targetURL)
 	return ipc.SuccessResponse(ipc.NavigateData{
 		URL:   targetURL, // We know the target URL from history
 		Title: "",        // Title not available until frameNavigated
@@ -314,7 +327,7 @@ func (d *Daemon) handleReady(req ipc.Request) ipc.Response {
 
 	timeout := cdp.DefaultTimeout
 	if params.Timeout > 0 {
-		timeout = time.Duration(params.Timeout) * time.Millisecond
+		timeout = time.Duration(params.Timeout) * time.Second
 	}
 
 	// Mode detection (order matters)
@@ -614,10 +627,25 @@ func (d *Daemon) waitForFrameNavigated(sessionID string, timeout time.Duration) 
 }
 
 // waitForLoadEvent waits for a Page.loadEventFired event for the given session.
+// Creates and registers a waiter channel internally.
 func (d *Daemon) waitForLoadEvent(sessionID string, timeout time.Duration) error {
+	// Check if navigation already completed (navigating channel was closed/deleted)
+	// This handles race condition where fast navigations (e.g., from cache) complete
+	// before we register the waiter.
+	if _, navigating := d.navigating.Load(sessionID); !navigating {
+		d.debugf(false, "waitForLoadEvent: navigation already complete for session %s", sessionID)
+		return nil
+	}
+
 	ch := make(chan struct{}, 1)
 	d.loadWaiters.Store(sessionID, ch)
 	defer d.loadWaiters.Delete(sessionID)
+
+	// Check again after registering waiter (double-check pattern)
+	if _, navigating := d.navigating.Load(sessionID); !navigating {
+		d.debugf(false, "waitForLoadEvent: navigation completed while registering waiter for session %s", sessionID)
+		return nil
+	}
 
 	select {
 	case <-ch:
@@ -626,3 +654,4 @@ func (d *Daemon) waitForLoadEvent(sessionID string, timeout time.Duration) error
 		return fmt.Errorf("timeout waiting for page load")
 	}
 }
+

@@ -66,7 +66,7 @@ echo "Should block until page loads"
 read -p "Press Enter to continue..."
 
 heading "Back with custom timeout"
-cmd "webctl back --wait --timeout 60000"
+cmd "webctl back --wait --timeout 60"
 
 echo ""
 echo "Should wait up to 60 seconds"
@@ -138,7 +138,7 @@ read -p "Press Enter to continue..."
 
 heading "Back with hash navigation"
 cmd "webctl navigate https://developer.mozilla.org/en-US/"
-cmd "webctl navigate https://developer.mozilla.org/en-US/#footer"
+cmd "webctl navigate https://developer.mozilla.org/en-US/#content"
 cmd "webctl back"
 
 echo ""
@@ -158,6 +158,12 @@ read -p "Press Enter to continue..."
 
 heading "Back at beginning of history"
 cmd "webctl navigate example.com"
+cmd "webctl back"
+
+echo ""
+echo "Should navigate to about:blank (OK)"
+read -p "Press Enter to continue..."
+
 cmd "webctl back"
 
 echo ""

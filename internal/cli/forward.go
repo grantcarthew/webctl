@@ -18,7 +18,7 @@ var forwardCmd = &cobra.Command{
 
 func init() {
 	forwardCmd.Flags().Bool("wait", false, "Wait for page load completion")
-	forwardCmd.Flags().Int("timeout", 30000, "Timeout in milliseconds (used with --wait)")
+	forwardCmd.Flags().Int("timeout", 60, "Timeout in seconds (used with --wait)")
 	rootCmd.AddCommand(forwardCmd)
 }
 

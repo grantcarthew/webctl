@@ -18,7 +18,7 @@ var reloadCmd = &cobra.Command{
 
 func init() {
 	reloadCmd.Flags().Bool("wait", false, "Wait for page load completion")
-	reloadCmd.Flags().Int("timeout", 30000, "Timeout in milliseconds (used with --wait)")
+	reloadCmd.Flags().Int("timeout", 60, "Timeout in seconds (used with --wait)")
 	rootCmd.AddCommand(reloadCmd)
 }
 
