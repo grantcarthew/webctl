@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
@@ -24,6 +25,8 @@ type REPL struct {
 	readline    *readline.Instance
 	history     []string
 	shutdown    func()
+	closeOnce   sync.Once
+	closeErr    error
 }
 
 // NewREPL creates a new REPL with the given handler, command executor, and shutdown callback.
@@ -40,6 +43,18 @@ func NewREPL(handler ipc.Handler, cmdExec ipc.CommandExecutor, shutdown func()) 
 // SetSessionProvider sets the session provider for dynamic prompt generation.
 func (r *REPL) SetSessionProvider(sp SessionProvider) {
 	r.sessionProv = sp
+}
+
+// Close closes the readline instance if it exists.
+// Safe to call multiple times (idempotent).
+// Returns the error from the first close attempt on all subsequent calls.
+func (r *REPL) Close() error {
+	r.closeOnce.Do(func() {
+		if r.readline != nil {
+			r.closeErr = r.readline.Close()
+		}
+	})
+	return r.closeErr
 }
 
 // IsStdinTTY returns true if stdin is a terminal.
@@ -61,7 +76,7 @@ func (r *REPL) Run() error {
 		return err
 	}
 	r.readline = rl
-	defer r.readline.Close()
+	defer r.Close()
 
 	for {
 		// Update prompt dynamically before each read
