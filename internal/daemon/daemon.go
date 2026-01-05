@@ -17,6 +17,7 @@ import (
 	"github.com/grantcarthew/webctl/internal/cdp"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/grantcarthew/webctl/internal/server"
+	"golang.org/x/term"
 )
 
 // DefaultBufferSize is the default capacity for event buffers.
@@ -59,7 +60,9 @@ type Daemon struct {
 	devServerMu  sync.Mutex      // Protects devServer
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
-	debug        bool
+	debug           bool
+	terminalState   *term.State // Saved terminal state for restoration
+	terminalStateMu sync.Mutex
 
 	// Navigation event waiting
 	navWaiters  sync.Map // map[string]chan *frameNavigatedInfo for sessionID -> waiter
@@ -169,8 +172,25 @@ func (d *Daemon) Handler() ipc.Handler {
 	return d.handleRequest
 }
 
+// restoreTerminalState restores the saved terminal state if it exists.
+func (d *Daemon) restoreTerminalState() {
+	d.terminalStateMu.Lock()
+	defer d.terminalStateMu.Unlock()
+
+	if d.terminalState != nil {
+		stdinFd := int(os.Stdin.Fd())
+		if err := term.Restore(stdinFd, d.terminalState); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to restore terminal state: %v\n", err)
+		}
+		d.terminalState = nil
+	}
+}
+
 // Run starts the daemon and blocks until shutdown.
 func (d *Daemon) Run(ctx context.Context) error {
+	// Restore terminal state on exit (all paths)
+	defer d.restoreTerminalState()
+
 	// Write PID file
 	if err := d.writePIDFile(); err != nil {
 		return fmt.Errorf("failed to write PID file: %w", err)
@@ -256,10 +276,22 @@ func (d *Daemon) Run(ctx context.Context) error {
 	// it stays open so the select below doesn't trigger early exit.
 	replDone := make(chan struct{})
 	if IsStdinTTY() {
+		// Save terminal state before REPL starts
+		stdinFd := int(os.Stdin.Fd())
+		oldState, err := term.GetState(stdinFd)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to save terminal state: %v\n", err)
+		} else {
+			d.terminalStateMu.Lock()
+			d.terminalState = oldState
+			d.terminalStateMu.Unlock()
+		}
+
 		repl := NewREPL(d.handleRequest, d.config.CommandExecutor, func() { close(d.shutdown) })
 		repl.SetSessionProvider(func() (*ipc.PageSession, int) {
 			return d.sessions.Active(), d.sessions.Count()
 		})
+
 		go func() {
 			defer close(replDone)
 			repl.Run()

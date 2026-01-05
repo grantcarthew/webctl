@@ -65,4 +65,37 @@ Cleanup verification:
 
 ## Issues Discovered
 
-(Issues will be documented here during testing)
+### Issue #1: Terminal Echo Not Restored on External Stop
+
+**Discovered:** 2026-01-05
+
+**Description:**
+When stopping the daemon from an external terminal using `webctl stop`, the terminal echo was not being restored, leaving the terminal in a state where typed input was not visible.
+
+**Root Cause:**
+The readline library's `Close()` method was not reliably restoring terminal state when called from a different goroutine while `Readline()` was blocked. The daemon exit triggered readline cleanup from the daemon goroutine, but the REPL goroutine was still blocked waiting for input, causing terminal state restoration to fail.
+
+**Solution:**
+Implemented explicit terminal state management at the daemon level:
+
+1. **Save terminal state** before REPL starts (daemon.go:280)
+   - Use `term.GetState()` to capture initial terminal state
+   - Store in daemon struct for later restoration
+
+2. **Restore terminal state explicitly** before daemon exits (daemon.go:308-322)
+   - Added `restoreTerminalState()` method to daemon
+   - Call explicitly in every exit path of `daemon.Run()` select statement
+   - Handles all shutdown scenarios: external stop, SIGINT, context cancellation, errors, and REPL exit
+
+3. **Made REPL.Close() idempotent** (repl.go:49-56)
+   - Use `sync.Once` to prevent double-close issues
+   - Both REPL goroutine and daemon can safely call Close()
+
+**Files Modified:**
+- `internal/daemon/daemon.go`: Added terminal state management
+- `internal/daemon/repl.go`: Made Close() idempotent with sync.Once
+
+**Testing:**
+- Verified terminal echo restored when stopping from external terminal ✓
+- Verified terminal echo restored when stopping from REPL ✓
+- Verified terminal echo restored on Ctrl+C ✓
