@@ -65,21 +65,65 @@ read -p "Press Enter after testing..."
 
 title "Proxy Mode"
 
-heading "Proxy to localhost backend"
-echo "NOTE: Requires backend server running on localhost:3000"
-echo "Skip if no backend available"
+heading "Start test backend server"
+echo "Starting test backend in background on port 3000..."
+echo "In a separate terminal, run:"
+cmd "cd \$(git rev-parse --show-toplevel)/testdata && ./start-backend.sh"
+
+echo ""
+echo "The backend provides endpoints:"
+echo "  - GET  /                - Backend HTML page"
+echo "  - GET  /api/hello       - Hello message (JSON)"
+echo "  - GET  /api/users       - User list (JSON)"
+echo "  - GET  /status/200      - 200 OK response"
+echo "  - GET  /status/404      - 404 Not Found"
+echo ""
+echo "Start the backend, then continue"
+read -p "Press Enter when backend is running..."
+
+heading "Verify backend is accessible"
+echo "Testing backend endpoints to ensure it's running correctly..."
+cmd "curl -s http://localhost:3000/api/hello | head -1"
+
+echo ""
+echo "Should show: {\"message\":\"Hello from test backend!\"}"
+read -p "Press Enter after verifying backend..."
+
+heading "Test backend endpoints directly"
+echo "Test a few endpoints to verify backend works before proxying:"
+cmd "curl -s http://localhost:3000/api/users | head -5"
+cmd "curl -s http://localhost:3000/status/404"
+
+echo ""
+echo "Verify responses are correct"
+read -p "Press Enter to continue to proxy tests..."
+
+heading "Proxy to localhost backend (shorthand)"
 cmd "webctl serve --proxy localhost:3000"
 
 echo ""
-echo "Test only if backend available"
-read -p "Press Enter to continue..."
-
-heading "Proxy with full URL"
-cmd "webctl serve --proxy http://localhost:8080"
+echo "The proxy server is now running. Test these in the browser:"
+echo "  1. Visit http://localhost:XXXX/ - See backend HTML page (pink gradient)"
+echo "  2. Visit http://localhost:XXXX/api/hello - See JSON response"
+echo "  3. Visit http://localhost:XXXX/api/users - See user list"
+echo ""
+echo "In another terminal, you can also test with curl:"
+cmd "curl -s http://localhost:XXXX/api/hello"
 
 echo ""
-echo "Test only if backend available"
-read -p "Press Enter to continue..."
+echo "Verify: Backend responses show through proxy"
+read -p "Press Enter after testing (stop with Ctrl+C)..."
+
+heading "Proxy with full URL"
+cmd "webctl serve --proxy http://localhost:3000"
+
+echo ""
+echo "Verify: Same behavior as shorthand localhost:3000"
+read -p "Press Enter after testing (stop with Ctrl+C)..."
+
+heading "Stop backend server"
+echo "Switch to backend terminal and press Ctrl+C to stop it"
+read -p "Press Enter when backend stopped..."
 
 title "Port and Host Options"
 
