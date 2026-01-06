@@ -408,3 +408,95 @@ func (r *REPL) printHistory() {
 		fmt.Printf("  %d  %s\n", i+1, cmd)
 	}
 }
+
+// displayExternalCommand shows an external command notification in the REPL.
+// Clears the current prompt line, prints the notification, and refreshes the prompt.
+func (r *REPL) displayExternalCommand(summary string) {
+	if r.readline == nil {
+		return
+	}
+
+	// Clear current line and print notification in dim text
+	fmt.Print("\r\033[K")
+	if shouldUseREPLColor() {
+		dim := color.New(color.Faint)
+		dim.Printf("< %s\n", summary)
+	} else {
+		fmt.Printf("< %s\n", summary)
+	}
+
+	// Refresh prompt with updated state
+	r.readline.SetPrompt(r.prompt())
+	r.readline.Refresh()
+}
+
+// formatCommandSummary extracts the primary argument from a request for display.
+func formatCommandSummary(req ipc.Request) string {
+	switch req.Cmd {
+	case "navigate":
+		var params ipc.NavigateParams
+		if json.Unmarshal(req.Params, &params) == nil && params.URL != "" {
+			return "navigate " + params.URL
+		}
+	case "click":
+		var params ipc.ClickParams
+		if json.Unmarshal(req.Params, &params) == nil && params.Selector != "" {
+			return "click " + params.Selector
+		}
+	case "focus":
+		var params ipc.FocusParams
+		if json.Unmarshal(req.Params, &params) == nil && params.Selector != "" {
+			return "focus " + params.Selector
+		}
+	case "type":
+		var params ipc.TypeParams
+		if json.Unmarshal(req.Params, &params) == nil && params.Selector != "" {
+			return "type " + params.Selector
+		}
+	case "select":
+		var params ipc.SelectParams
+		if json.Unmarshal(req.Params, &params) == nil && params.Selector != "" {
+			return "select " + params.Selector
+		}
+	case "scroll":
+		var params ipc.ScrollParams
+		if json.Unmarshal(req.Params, &params) == nil {
+			if params.Selector != "" {
+				return "scroll " + params.Selector
+			}
+			if params.Mode == "to" {
+				return fmt.Sprintf("scroll to %d,%d", params.ToX, params.ToY)
+			}
+			if params.Mode == "by" {
+				return fmt.Sprintf("scroll by %d,%d", params.ByX, params.ByY)
+			}
+		}
+	case "css":
+		var params ipc.CSSParams
+		if json.Unmarshal(req.Params, &params) == nil {
+			if params.Action == "computed" && params.Selector != "" {
+				return "css computed " + params.Selector
+			}
+			if params.Action == "get" && params.Selector != "" {
+				return "css get " + params.Selector
+			}
+		}
+	case "cookies":
+		var params ipc.CookiesParams
+		if json.Unmarshal(req.Params, &params) == nil {
+			if params.Action == "set" && params.Name != "" {
+				return "cookies set " + params.Name
+			}
+			if params.Action == "delete" && params.Name != "" {
+				return "cookies delete " + params.Name
+			}
+		}
+	case "clear":
+		if req.Target != "" {
+			return "clear " + req.Target
+		}
+	}
+
+	// Default: just the command name
+	return req.Cmd
+}

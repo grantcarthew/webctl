@@ -254,8 +254,68 @@ REPL:
   exit, quit  Stop daemon and exit
 ```
 
+## External Command Notifications
+
+When commands are received from external sources (CLI or remote), the REPL displays them to provide visibility into daemon activity.
+
+Display format:
+
+- Prefix: `< ` (less-than + space)
+- Style: Dim text
+- Content: Command name + primary argument (URL, selector)
+- Sensitive data omitted (typed text, JS expressions, cookie values)
+
+Command formatting:
+
+| Command | Display |
+|---------|---------|
+| navigate | `< navigate <url>` |
+| reload | `< reload` |
+| back | `< back` |
+| forward | `< forward` |
+| click | `< click <selector>` |
+| type | `< type <selector>` |
+| select | `< select <selector>` |
+| scroll | `< scroll <target>` |
+| eval | `< eval` |
+| html | `< html` |
+| css | `< css` or `< css computed <selector>` |
+| console | `< console` |
+| network | `< network` |
+| cookies | `< cookies` or `< cookies set <name>` |
+| screenshot | `< screenshot` |
+| ready | `< ready` |
+| clear | `< clear <target>` |
+| status | `< status` |
+| stop | `< stop` |
+
+Example session:
+
+```
+webctl [about:blank]>
+< navigate https://example.com
+< back
+< status
+webctl [example.com]>
+```
+
+Prompt behaviour:
+
+- Previous prompt line is overwritten after each external command
+- Prompt reprints with updated state (URL, session count)
+- Partial user input is not preserved (acceptable trade-off for simplicity)
+- Notification appears immediately when command arrives (before execution completes)
+
+Architecture:
+
+- Daemon exposes `OnExternalCommand` callback field
+- IPC server handler invokes callback for each incoming request
+- REPL registers callback during initialization to handle display
+- REPL-originated commands do not trigger notification (direct execution path)
+
 ## Updates
 
 - 2025-12-15: Initial version
 - 2025-12-24: Replaced peterh/liner with chzyer/readline to support ANSI colored prompts (DR-019). The liner library rejected prompts containing control characters (ANSI escape codes), while readline explicitly supports them.
 - 2025-12-26: Documented command abbreviation feature (unique prefix matching). Extended abbreviation support from REPL-only to both REPL and CLI. Added `find` command to abbreviation list.
+- 2026-01-06: Added External Command Notifications section. REPL displays commands received from external CLI/remote sources with `< ` prefix in dim text.

@@ -7,16 +7,15 @@ import (
 )
 
 func TestREPL_handleSpecialCommand(t *testing.T) {
-	shutdownCalled := false
 	r := NewREPL(func(req ipc.Request) ipc.Response {
 		return ipc.SuccessResponse(nil)
-	}, nil, func() { shutdownCalled = true })
+	}, nil, func() {})
 
 	tests := []struct {
-		name         string
-		line         string
-		wantHandled  bool
-		wantShutdown bool
+		name        string
+		line        string
+		wantHandled bool
+		wantExit    bool // true if error should be io.EOF
 	}{
 		{"exit", "exit", true, true},
 		{"quit", "quit", true, true},
@@ -30,15 +29,17 @@ func TestREPL_handleSpecialCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shutdownCalled = false
-			handled := r.handleSpecialCommand(tt.line)
+			handled, err := r.handleSpecialCommand(tt.line)
 
 			if handled != tt.wantHandled {
-				t.Errorf("handleSpecialCommand() = %v, want %v", handled, tt.wantHandled)
+				t.Errorf("handleSpecialCommand() handled = %v, want %v", handled, tt.wantHandled)
 			}
 
-			if tt.wantShutdown && !shutdownCalled {
-				t.Error("expected shutdown to be called")
+			if tt.wantExit && err == nil {
+				t.Error("expected io.EOF error for exit command")
+			}
+			if !tt.wantExit && err != nil {
+				t.Errorf("unexpected error: %v", err)
 			}
 		})
 	}
@@ -319,16 +320,15 @@ func TestExpandAbbreviation(t *testing.T) {
 }
 
 func TestREPL_handleSpecialCommand_abbreviations(t *testing.T) {
-	shutdownCalled := false
 	r := NewREPL(func(req ipc.Request) ipc.Response {
 		return ipc.SuccessResponse(nil)
-	}, nil, func() { shutdownCalled = true })
+	}, nil, func() {})
 
 	tests := []struct {
-		name         string
-		line         string
-		wantHandled  bool
-		wantShutdown bool
+		name        string
+		line        string
+		wantHandled bool
+		wantExit    bool // true if error should be io.EOF
 	}{
 		{"e -> exit", "e", true, true},
 		{"q -> quit", "q", true, true},
@@ -339,15 +339,17 @@ func TestREPL_handleSpecialCommand_abbreviations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			shutdownCalled = false
-			handled := r.handleSpecialCommand(tt.line)
+			handled, err := r.handleSpecialCommand(tt.line)
 
 			if handled != tt.wantHandled {
-				t.Errorf("handleSpecialCommand(%q) = %v, want %v", tt.line, handled, tt.wantHandled)
+				t.Errorf("handleSpecialCommand(%q) handled = %v, want %v", tt.line, handled, tt.wantHandled)
 			}
 
-			if tt.wantShutdown && !shutdownCalled {
-				t.Errorf("expected shutdown to be called for %q", tt.line)
+			if tt.wantExit && err == nil {
+				t.Errorf("expected io.EOF error for %q", tt.line)
+			}
+			if !tt.wantExit && err != nil {
+				t.Errorf("unexpected error for %q: %v", tt.line, err)
 			}
 		})
 	}

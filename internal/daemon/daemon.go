@@ -63,6 +63,7 @@ type Daemon struct {
 	debug           bool
 	terminalState   *term.State // Saved terminal state for restoration
 	terminalStateMu sync.Mutex
+	repl            *REPL       // REPL instance for external command notifications
 
 	// Navigation event waiting
 	navWaiters  sync.Map // map[string]chan *frameNavigatedInfo for sessionID -> waiter
@@ -253,8 +254,16 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	d.debugf(false, "Target discovery and attachment enabled")
 
-	// Start IPC server
-	server, err := ipc.NewServer(d.config.SocketPath, d.handleRequest)
+	// Start IPC server with wrapper handler for external command notifications
+	ipcHandler := func(req ipc.Request) ipc.Response {
+		// Notify REPL of external command (if REPL exists)
+		if d.repl != nil {
+			summary := formatCommandSummary(req)
+			d.repl.displayExternalCommand(summary)
+		}
+		return d.handleRequest(req)
+	}
+	server, err := ipc.NewServer(d.config.SocketPath, ipcHandler)
 	if err != nil {
 		return fmt.Errorf("failed to start IPC server: %w", err)
 	}
@@ -291,6 +300,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		repl.SetSessionProvider(func() (*ipc.PageSession, int) {
 			return d.sessions.Active(), d.sessions.Count()
 		})
+		d.repl = repl // Store reference for external command notifications
 
 		go func() {
 			defer close(replDone)
