@@ -10,6 +10,15 @@ import (
 
 // newProxyHandler creates an HTTP handler for proxying requests to a backend server.
 func newProxyHandler(targetURL string, debugLog func(format string, args ...any)) (http.Handler, error) {
+	// Auto-add http:// if no scheme is present
+	// This allows "localhost:3000" to work as well as "http://localhost:3000"
+	if len(targetURL) > 0 && targetURL[0] != 'h' {
+		// Check if it doesn't start with http:// or https://
+		if len(targetURL) < 7 || (targetURL[:7] != "http://" && (len(targetURL) < 8 || targetURL[:8] != "https://")) {
+			targetURL = "http://" + targetURL
+		}
+	}
+
 	// Parse target URL
 	target, err := url.Parse(targetURL)
 	if err != nil {
@@ -17,9 +26,6 @@ func newProxyHandler(targetURL string, debugLog func(format string, args ...any)
 	}
 
 	// Validate target URL
-	if target.Scheme == "" {
-		target.Scheme = "http"
-	}
 	if target.Scheme != "http" && target.Scheme != "https" {
 		return nil, fmt.Errorf("invalid proxy URL scheme: %s (must be http or https)", target.Scheme)
 	}
