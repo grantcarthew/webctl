@@ -256,12 +256,13 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	// Start IPC server with wrapper handler for external command notifications
 	ipcHandler := func(req ipc.Request) ipc.Response {
-		// Notify REPL of external command (if REPL exists)
+		resp := d.handleRequest(req)
+		// Notify REPL of external command AFTER handling (so prompt reflects updated state)
 		if d.repl != nil {
 			summary := formatCommandSummary(req)
 			d.repl.displayExternalCommand(summary)
 		}
-		return d.handleRequest(req)
+		return resp
 	}
 	server, err := ipc.NewServer(d.config.SocketPath, ipcHandler)
 	if err != nil {

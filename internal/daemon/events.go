@@ -548,6 +548,11 @@ func (d *Daemon) handleTargetInfoChanged(evt cdp.Event) {
 		params.TargetInfo.URL,
 		params.TargetInfo.Title,
 	)
+
+	// Refresh REPL prompt to show updated URL
+	if d.repl != nil {
+		d.repl.refreshPrompt()
+	}
 }
 
 // purgeSessionEntries removes all buffer entries for a session.
