@@ -45,6 +45,15 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 	d.navigating.Store(activeID, navDoneCh)
 	d.debugf(false, "navigate: created navigating channel for session %s", activeID)
 
+	// If wait requested, register load waiter BEFORE sending command to avoid race
+	// where loadEventFired fires before we register (especially for cached pages)
+	var loadWaiterCh chan struct{}
+	if params.Wait {
+		loadWaiterCh = make(chan struct{}, 1)
+		d.loadWaiters.Store(activeID, loadWaiterCh)
+		d.debugf(false, "navigate: registered load waiter before sending command")
+	}
+
 	// Send navigate command
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -53,6 +62,10 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 		"url": params.URL,
 	})
 	if err != nil {
+		// Clean up waiter on error
+		if params.Wait {
+			d.loadWaiters.Delete(activeID)
+		}
 		return ipc.ErrorResponse(fmt.Sprintf("navigation failed: %v", err))
 	}
 
@@ -62,6 +75,10 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 		FrameID   string `json:"frameId"`
 	}
 	if err := json.Unmarshal(result, &navResp); err == nil && navResp.ErrorText != "" {
+		// Clean up waiter on error
+		if params.Wait {
+			d.loadWaiters.Delete(activeID)
+		}
 		return ipc.ErrorResponse(navResp.ErrorText)
 	}
 
@@ -72,9 +89,16 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 			timeout = time.Duration(params.Timeout) * time.Second
 		}
 		d.debugf(false, "navigate: waiting for page load (timeout=%v)", timeout)
-		if err := d.waitForLoadEvent(activeID, timeout); err != nil {
-			return ipc.ErrorResponse(err.Error())
+
+		defer d.loadWaiters.Delete(activeID)
+
+		select {
+		case <-loadWaiterCh:
+			// Load event fired
+		case <-time.After(timeout):
+			return ipc.ErrorResponse("timeout waiting for page load")
 		}
+
 		// Get title after page load
 		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel2()
@@ -126,6 +150,14 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 	d.navigating.Store(activeID, navDoneCh)
 	d.debugf(false, "reload: created navigating channel for session %s", activeID)
 
+	// If wait requested, register load waiter BEFORE sending command to avoid race
+	var loadWaiterCh chan struct{}
+	if params.Wait {
+		loadWaiterCh = make(chan struct{}, 1)
+		d.loadWaiters.Store(activeID, loadWaiterCh)
+		d.debugf(false, "reload: registered load waiter before sending command")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -133,6 +165,10 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 		"ignoreCache": params.IgnoreCache,
 	})
 	if err != nil {
+		// Clean up waiter on error
+		if params.Wait {
+			d.loadWaiters.Delete(activeID)
+		}
 		return ipc.ErrorResponse(fmt.Sprintf("reload failed: %v", err))
 	}
 
@@ -143,9 +179,16 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 			timeout = time.Duration(params.Timeout) * time.Second
 		}
 		d.debugf(false, "reload: waiting for page load (timeout=%v)", timeout)
-		if err := d.waitForLoadEvent(activeID, timeout); err != nil {
-			return ipc.ErrorResponse(err.Error())
+
+		defer d.loadWaiters.Delete(activeID)
+
+		select {
+		case <-loadWaiterCh:
+			// Load event fired
+		case <-time.After(timeout):
+			return ipc.ErrorResponse("timeout waiting for page load")
 		}
+
 		// Get URL and title after page load
 		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel2()
