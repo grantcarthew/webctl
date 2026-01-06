@@ -173,18 +173,24 @@ read -p "Press Enter after testing..."
 
 title "Output Formats"
 
-heading "JSON output"
+heading "JSON output (requires daemon already running)"
+echo "First, ensure daemon is running in another terminal"
+cmd "webctl start"
+
+echo ""
+echo "Then test JSON output from this terminal:"
 cmd "webctl serve \$(git rev-parse --show-toplevel)/testdata --json"
 
 echo ""
-echo "Check for JSON formatted startup message"
+echo "Should show JSON output and return immediately"
+echo "NOTE: --json is silently ignored during auto-start (interactive mode)"
 read -p "Press Enter after testing..."
 
 heading "Debug output"
 cmd "webctl serve \$(git rev-parse --show-toplevel)/testdata --debug"
 
 echo ""
-echo "Watch for verbose debug logs"
+echo "Watch for verbose debug logs during auto-start"
 read -p "Press Enter after testing..."
 
 title "Error Cases"
