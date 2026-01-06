@@ -18,6 +18,12 @@ Run the interactive test script:
 ## Code References
 
 - internal/cli/serve.go
+- internal/daemon/handlers_serve.go
+- internal/daemon/daemon.go
+- internal/daemon/repl.go
+- internal/server/server.go
+- internal/server/static.go
+- testdata/index.html
 
 ## Command Signature
 
@@ -107,4 +113,75 @@ CLI vs REPL:
 
 ## Issues Discovered
 
-(Issues will be documented here during testing)
+### Issue 1: Browser Navigation Failure on Auto-Start (FIXED)
+**Severity:** High
+**Status:** ✅ Fixed (2026-01-06)
+
+**Problem:**
+When `webctl serve` auto-started the daemon, the browser showed `about:blank` instead of loading the served URL. The navigation code checked for browser connection immediately, but the browser session hadn't been created yet (takes ~500ms after daemon starts).
+
+**Root Cause:**
+- `handleServeStart` in `internal/daemon/handlers_serve.go` checked `d.browserConnected()` immediately
+- `browserConnected()` requires at least one session to exist
+- Sessions are created asynchronously via `Target.attachedToTarget` events
+- The check happened before the session was ready
+
+**Fix:**
+Modified `handleServeStart` to wait up to 10 seconds for a browser session before navigating, checking every 100ms. This ensures the session exists before attempting navigation.
+
+**Files Modified:**
+- `internal/daemon/handlers_serve.go` (lines 83-117)
+
+---
+
+### Issue 2: Ctrl+C Not Exiting Serve Mode (FIXED)
+**Severity:** High
+**Status:** ✅ Fixed (2026-01-06)
+
+**Problem:**
+Pressing Ctrl+C during `webctl serve` would stop the server but the process wouldn't exit, leaving the terminal hung. User had to kill the process manually.
+
+**Root Cause:**
+Two separate issues:
+1. The readline library intercepts SIGINT before the daemon's signal handler
+2. When daemon exits cleanly (returns nil), the goroutine in `runServeWithDaemon` didn't send to the `daemonErr` channel, causing line 195 to block forever
+
+**Fix:**
+1. Added SIGINT handler in REPL after readline creation that triggers shutdown and closes readline
+2. Used `shutdownOnce.Do` to safely close shutdown channel (prevents double-close panic)
+3. Changed `runServeWithDaemon` to always send daemon result to channel (not just errors)
+
+**Files Modified:**
+- `internal/daemon/repl.go` (added signal handling, lines 83-98)
+- `internal/daemon/daemon.go` (safe shutdown callback, lines 300-304)
+- `internal/cli/serve.go` (always send result, line 118)
+
+---
+
+### Issue 3: Directory Display Shows "." (FIXED)
+**Severity:** Low
+**Status:** ✅ Fixed (2026-01-06)
+
+**Problem:**
+When running `webctl serve` without arguments, the output showed `Directory: .` which is not informative about the actual directory being served.
+
+**Fix:**
+Added `filepath.Abs()` to resolve the directory to an absolute path before displaying it.
+
+**Files Modified:**
+- `internal/cli/serve.go` (lines 226-230)
+
+---
+
+### Enhancement: Comprehensive Test Page
+**Status:** ✅ Added (2026-01-06)
+
+Created `testdata/index.html` with comprehensive testing features:
+- Visual design with gradient background and modern UI
+- Live clock and page load counter (tests hot reload)
+- Console test buttons (log, warn, error, info)
+- Network request test button
+- User agent display
+- Console output mirroring
+
+This provides a complete test environment for serve command functionality.

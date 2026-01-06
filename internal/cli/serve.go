@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/grantcarthew/webctl/internal/daemon"
@@ -115,9 +116,7 @@ func runServeWithDaemon(mode, directory, proxyURL string) error {
 	// Start daemon in background goroutine
 	daemonErr := make(chan error, 1)
 	go func() {
-		if err := d.Run(context.Background()); err != nil {
-			daemonErr <- err
-		}
+		daemonErr <- d.Run(context.Background())
 	}()
 
 	// Wait for daemon to start (give it a moment to initialize)
@@ -222,6 +221,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 		// Validate directory exists
 		if _, err := os.Stat(directory); os.IsNotExist(err) {
 			return outputError(fmt.Sprintf("directory does not exist: %s", directory))
+		}
+
+		// Resolve to absolute path for display
+		absDir, err := filepath.Abs(directory)
+		if err == nil {
+			directory = absDir
 		}
 	}
 

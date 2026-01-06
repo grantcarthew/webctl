@@ -297,7 +297,11 @@ func (d *Daemon) Run(ctx context.Context) error {
 			d.terminalStateMu.Unlock()
 		}
 
-		repl := NewREPL(d.handleRequest, d.config.CommandExecutor, func() { close(d.shutdown) })
+		repl := NewREPL(d.handleRequest, d.config.CommandExecutor, func() {
+			d.shutdownOnce.Do(func() {
+				close(d.shutdown)
+			})
+		})
 		repl.SetSessionProvider(func() (*ipc.PageSession, int) {
 			return d.sessions.Active(), d.sessions.Count()
 		})

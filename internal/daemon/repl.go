@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
@@ -77,6 +79,23 @@ func (r *REPL) Run() error {
 	}
 	r.readline = rl
 	defer r.Close()
+
+	// Set up signal handler AFTER readline is created
+	// This ensures we catch SIGINT even though readline intercepts it
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT)
+	defer signal.Stop(sigCh)
+
+	// Monitor signals in background goroutine
+	go func() {
+		<-sigCh
+		// Trigger shutdown on SIGINT
+		if r.shutdown != nil {
+			r.shutdown()
+		}
+		// Also close readline to unblock Readline() call
+		r.Close()
+	}()
 
 	for {
 		// Update prompt dynamically before each read

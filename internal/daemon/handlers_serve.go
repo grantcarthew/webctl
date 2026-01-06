@@ -81,26 +81,40 @@ func (d *Daemon) handleServeStart(params ipc.ServeParams) ipc.Response {
 	d.debugf(false, "Development server started: %s", srv.URL())
 
 	// Navigate browser to server URL if browser is running
-	if d.browserConnected() {
-		// Get active session
-		session := d.sessions.Active()
-		if session != nil {
-			// Navigate to server URL
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
+	// Do this in a goroutine to not block the response
+	go func() {
+		// Wait for browser connection and session (with timeout)
+		timeout := time.After(10 * time.Second)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
 
-				_, err := d.sendToSession(ctx, session.ID, "Page.navigate", map[string]any{
-					"url": srv.URL(),
-				})
-				if err != nil {
-					d.debugf(false, "Failed to navigate to server URL: %v", err)
-				} else {
-					d.debugf(false, "Navigated to server URL: %s", srv.URL())
+		for {
+			select {
+			case <-timeout:
+				d.debugf(false, "Timeout waiting for browser session - navigation skipped")
+				return
+			case <-ticker.C:
+				if d.browserConnected() {
+					session := d.sessions.Active()
+					if session != nil {
+						// Navigate to server URL
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+
+						_, err := d.sendToSession(ctx, session.ID, "Page.navigate", map[string]any{
+							"url": srv.URL(),
+						})
+						if err != nil {
+							d.debugf(false, "Failed to navigate to server URL: %v", err)
+						} else {
+							d.debugf(false, "Navigated to server URL: %s", srv.URL())
+						}
+						return
+					}
 				}
-			}()
+			}
 		}
-	}
+	}()
 
 	return ipc.SuccessResponse(ipc.ServeData{
 		Running: true,
