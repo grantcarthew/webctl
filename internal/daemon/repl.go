@@ -409,6 +409,16 @@ func (r *REPL) printHistory() {
 	}
 }
 
+// refreshPrompt updates the REPL prompt to reflect current session state.
+// Called when session info changes (e.g., from CDP events).
+func (r *REPL) refreshPrompt() {
+	if r.readline == nil {
+		return
+	}
+	r.readline.SetPrompt(r.prompt())
+	r.readline.Refresh()
+}
+
 // displayExternalCommand shows an external command notification in the REPL.
 // Clears the current prompt line, prints the notification, and refreshes the prompt.
 func (r *REPL) displayExternalCommand(summary string) {
@@ -426,8 +436,7 @@ func (r *REPL) displayExternalCommand(summary string) {
 	}
 
 	// Refresh prompt with updated state
-	r.readline.SetPrompt(r.prompt())
-	r.readline.Refresh()
+	r.refreshPrompt()
 }
 
 // formatCommandSummary extracts the primary argument from a request for display.
