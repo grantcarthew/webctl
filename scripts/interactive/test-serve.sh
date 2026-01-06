@@ -8,7 +8,7 @@ title() { echo -e "\n\033[1;34m=== $1 ===\033[0m"; }
 heading() { echo -e "\n\033[1;32m## $1\033[0m"; }
 cmd() {
     echo -e "\n\033[0;33m$ $1\033[0m"
-    echo "$1" | xclip -selection clipboard
+    if [[ "$OSTYPE" == "darwin"* ]]; then echo "$1" | pbcopy; else echo "$1" | xclip -selection clipboard; fi
     echo "(Command copied to clipboard - paste and execute)"
     read -p "Press Enter to continue..."
 }
@@ -20,7 +20,7 @@ echo "Tests development server with static and proxy modes"
 echo ""
 echo "Prerequisites:"
 echo "  - webctl must be built"
-echo "  - xclip must be installed"
+echo "  - Clipboard tool (pbcopy on macOS, xclip on Linux)"
 echo "  - Test directory with HTML files"
 echo "  - Backend server for proxy tests (optional)"
 echo ""
