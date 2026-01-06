@@ -37,7 +37,7 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-025 | Interactive Test Suite | Completed | 2025-12-31 | 2026-01-03 |
 | P-026 | Testing start Command | Completed | 2025-12-31 | 2026-01-04 |
 | P-027 | Testing stop Command | Completed | 2025-12-31 | 2026-01-06 |
-| P-028 | Testing navigate Command | In Progress | 2026-01-06 | - |
+| P-028 | Testing navigate Command | Completed | 2026-01-06 | 2026-01-06 |
 
 Note: Completed projects are in `completed/`
 

@@ -12,7 +12,7 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-- Active Project: docs/projects/p-028-testing-navigate.md
+- Active Project: docs/projects/p-029-testing-serve.md
 - Design Record: N/A
 
 When projects are completed, move them to docs/projects/completed/, update docs/projects/README.md, and update the active project above to the next project.
@@ -20,6 +20,7 @@ When projects are completed, move them to docs/projects/completed/, update docs/
 ## Completed Projects
 
 Completed projects are in docs/projects/completed/
+- P-028: Testing navigate Command (2026-01-06)
 - P-027: Testing stop Command (2026-01-06)
 - P-026: Testing start Command (2026-01-04)
 - P-025: Interactive Test Suite (2026-01-03)
