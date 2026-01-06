@@ -38,6 +38,8 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-026 | Testing start Command | Completed | 2025-12-31 | 2026-01-04 |
 | P-027 | Testing stop Command | Completed | 2025-12-31 | 2026-01-06 |
 | P-028 | Testing navigate Command | Completed | 2026-01-06 | 2026-01-06 |
+| P-029 | Testing serve Command | Completed | 2025-12-31 | 2026-01-06 |
+| P-030 | Testing status Command | In Progress | 2025-12-31 | - |
 
 Note: Completed projects are in `completed/`
 
