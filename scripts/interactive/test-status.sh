@@ -15,7 +15,7 @@ cmd() {
 
 clear
 title "webctl status Command Test Suite"
-echo "Project: P-028"
+echo "Project: P-030"
 echo "Tests daemon status reporting"
 echo ""
 echo "Prerequisites:"
@@ -117,7 +117,8 @@ heading "Status with debug flag"
 cmd "webctl status --debug"
 
 echo ""
-echo "Should show additional debug information"
+echo "Note: --debug shows no extra output for status command"
+echo "(status is a simple IPC query with no CDP interaction)"
 read -p "Press Enter to continue..."
 
 title "Cleanup"
@@ -129,5 +130,5 @@ read -p "Press Enter when daemon stopped..."
 title "Test Suite Complete"
 echo "All status command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-028-testing-status.md"
+echo "Review checklist in docs/projects/p-030-testing-status.md"
 echo "Document any issues discovered during testing"

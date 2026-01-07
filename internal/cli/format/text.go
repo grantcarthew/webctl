@@ -80,14 +80,37 @@ func ActionError(w io.Writer, msg string, opts OutputOptions) error {
 	return nil
 }
 
+// formatHTTPStatus outputs an HTTP status code with appropriate coloring.
+// Format: " (status)" - e.g., " (200)", " (404)"
+func formatHTTPStatus(w io.Writer, status int, opts OutputOptions) {
+	if opts.UseColor {
+		fmt.Fprint(w, " (")
+		switch {
+		case status >= 200 && status < 300:
+			colorFprintf(w, color.FgGreen, "%d", status)
+		case status >= 300 && status < 400:
+			colorFprintf(w, color.FgCyan, "%d", status)
+		case status >= 400 && status < 500:
+			colorFprintf(w, color.FgYellow, "%d", status)
+		case status >= 500:
+			colorFprintf(w, color.FgRed, "%d", status)
+		default:
+			fmt.Fprintf(w, "%d", status)
+		}
+		fmt.Fprint(w, ")")
+	} else {
+		fmt.Fprintf(w, " (%d)", status)
+	}
+}
+
 // Status outputs daemon status in text format.
 func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 	// Not running state
 	if !data.Running {
 		if opts.UseColor {
-			colorFprint(w, color.FgYellow, "Not running\n")
+			colorFprint(w, color.FgYellow, "Not running (start with: webctl start)\n")
 		} else {
-			fmt.Fprintln(w, "Not running")
+			fmt.Fprintln(w, "Not running (start with: webctl start)")
 		}
 		return nil
 	}
@@ -136,13 +159,18 @@ func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 				if opts.UseColor {
 					fmt.Fprint(w, "  ")
 					colorFprint(w, color.FgCyan, "* ")
-					fmt.Fprintln(w, session.URL)
+					fmt.Fprint(w, session.URL)
 				} else {
-					fmt.Fprintf(w, "  * %s\n", session.URL)
+					fmt.Fprintf(w, "  * %s", session.URL)
 				}
 			} else {
-				fmt.Fprintf(w, "    %s\n", session.URL)
+				fmt.Fprintf(w, "    %s", session.URL)
 			}
+			// Append HTTP status if available
+			if session.Status > 0 {
+				formatHTTPStatus(w, session.Status, opts)
+			}
+			fmt.Fprintln(w)
 		}
 	}
 

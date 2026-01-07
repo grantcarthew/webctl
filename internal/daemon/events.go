@@ -488,6 +488,11 @@ func (d *Daemon) handleTargetAttached(evt cdp.Event) {
 		params.TargetInfo.Title,
 	)
 
+	// Refresh REPL prompt to show new session
+	if d.repl != nil {
+		d.repl.refreshPrompt()
+	}
+
 	// Enable domains for this session (async to not block event loop)
 	go func() {
 		startEnable := time.Now()

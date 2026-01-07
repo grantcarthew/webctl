@@ -90,6 +90,7 @@ type PageSession struct {
 	Title  string `json:"title"`
 	URL    string `json:"url"`
 	Active bool   `json:"active,omitempty"`
+	Status int    `json:"status,omitempty"` // HTTP status of last document load
 }
 
 // TargetData is the response data for the "target" command.
