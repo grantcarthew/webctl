@@ -118,4 +118,10 @@ CLI vs REPL:
 
 ## Issues Discovered
 
-(Issues will be documented here during testing)
+### Fixed: --find filter applied before HTML formatting
+
+**Problem:** The `--find` flag was applied to raw HTML (often a single long line) before formatting. This caused the entire page to match if any part contained the search text.
+
+**Fix:** Moved `--find` filter to run after HTML formatting, so line-based search works correctly on prettified HTML.
+
+**File:** `internal/cli/html.go:273-290`
