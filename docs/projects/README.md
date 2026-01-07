@@ -40,6 +40,9 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-028 | Testing navigate Command | Completed | 2026-01-06 | 2026-01-06 |
 | P-029 | Testing serve Command | Completed | 2025-12-31 | 2026-01-06 |
 | P-030 | Testing status Command | Completed | 2025-12-31 | 2026-01-07 |
+| P-031 | Testing reload Command | Completed | 2025-12-31 | 2026-01-07 |
+| P-032 | Testing back Command | Completed | 2025-12-31 | 2026-01-07 |
+| P-033 | Testing forward Command | Completed | 2025-12-31 | 2026-01-07 |
 
 Note: Completed projects are in `completed/`
 

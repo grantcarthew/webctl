@@ -60,6 +60,8 @@ type Daemon struct {
 	devServerMu  sync.Mutex      // Protects devServer
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
+	browserLost  bool           // Set when shutdown triggered by browser disconnection
+	browserLostMu sync.Mutex
 	debug           bool
 	terminalState   *term.State // Saved terminal state for restoration
 	terminalStateMu sync.Mutex
@@ -118,6 +120,9 @@ func (d *Daemon) requireBrowser() (ok bool, resp ipc.Response) {
 	// Browser is dead - clear state and trigger shutdown
 	d.debugf(false, "Browser not connected - clearing state and shutting down daemon")
 	d.sessions.Clear()
+	d.browserLostMu.Lock()
+	d.browserLost = true
+	d.browserLostMu.Unlock()
 	go d.shutdownOnce.Do(func() {
 		close(d.shutdown)
 	})
@@ -143,6 +148,9 @@ func (d *Daemon) sendToSession(ctx context.Context, sessionID, method string, pa
 	if err != nil && d.isConnectionError(err) {
 		d.debugf(false, "Connection error detected in %s: %v - shutting down daemon", method, err)
 		d.sessions.Clear()
+		d.browserLostMu.Lock()
+		d.browserLost = true
+		d.browserLostMu.Unlock()
 		go d.shutdownOnce.Do(func() {
 			close(d.shutdown)
 		})
@@ -322,6 +330,12 @@ func (d *Daemon) Run(ctx context.Context) error {
 	case <-sigCh:
 		return nil
 	case <-d.shutdown:
+		d.browserLostMu.Lock()
+		lost := d.browserLost
+		d.browserLostMu.Unlock()
+		if lost {
+			fmt.Fprintln(os.Stderr, "Error: browser connection lost - daemon shutting down")
+		}
 		return nil
 	case err := <-errCh:
 		return err
