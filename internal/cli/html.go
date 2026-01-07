@@ -270,14 +270,6 @@ func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
 
 	html := data.HTML
 
-	// Apply --find filter if specified
-	if find != "" {
-		html, err = filterHTMLByText(html, find)
-		if err != nil {
-			return "", err
-		}
-	}
-
 	// Format HTML unless --raw flag is set
 	if !raw {
 		formatted, err := htmlformat.Format(html)
@@ -286,6 +278,14 @@ func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
 			debugf("HTML formatting failed: %v", err)
 		} else {
 			html = formatted
+		}
+	}
+
+	// Apply --find filter if specified (after formatting so line-based search works)
+	if find != "" {
+		html, err = filterHTMLByText(html, find)
+		if err != nil {
+			return "", err
 		}
 	}
 
