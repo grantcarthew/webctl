@@ -12,7 +12,7 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-- Active Project: docs/projects/p-031-testing-reload.md
+- Active Project: docs/projects/p-034-testing-html.md
 - Design Record: N/A
 
 When projects are completed, move them to docs/projects/completed/, update docs/projects/README.md, and update the active project above to the next project.
@@ -20,6 +20,9 @@ When projects are completed, move them to docs/projects/completed/, update docs/
 ## Completed Projects
 
 Completed projects are in docs/projects/completed/
+- P-033: Testing forward Command (2026-01-07)
+- P-032: Testing back Command (2026-01-07)
+- P-031: Testing reload Command (2026-01-07)
 - P-030: Testing status Command (2026-01-07)
 - P-029: Testing serve Command (2026-01-06)
 - P-028: Testing navigate Command (2026-01-06)
