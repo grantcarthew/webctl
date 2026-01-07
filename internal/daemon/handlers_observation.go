@@ -17,22 +17,54 @@ import (
 
 // handleStatus returns the daemon status.
 func (d *Daemon) handleStatus() ipc.Response {
+	sessions := d.sessions.All()
+
+	// Look up HTTP status for each session from network buffer
+	d.enrichSessionsWithHTTPStatus(sessions)
+
 	status := ipc.StatusData{
 		Running:  true,
 		PID:      os.Getpid(),
-		Sessions: d.sessions.All(),
+		Sessions: sessions,
 	}
 
-	// Get active session info
-	active := d.sessions.Active()
-	if active != nil {
-		status.ActiveSession = active
-		// Populate deprecated fields for backwards compatibility
-		status.URL = active.URL
-		status.Title = active.Title
+	// Get active session info (find it in the already-enriched sessions list)
+	for i := range sessions {
+		if sessions[i].Active {
+			status.ActiveSession = &sessions[i]
+			// Populate deprecated fields for backwards compatibility
+			status.URL = sessions[i].URL
+			status.Title = sessions[i].Title
+			break
+		}
 	}
 
 	return ipc.SuccessResponse(status)
+}
+
+// enrichSessionsWithHTTPStatus looks up the HTTP status code for each session
+// from the network buffer. Finds the most recent Document-type request matching
+// each session's URL.
+func (d *Daemon) enrichSessionsWithHTTPStatus(sessions []ipc.PageSession) {
+	if len(sessions) == 0 {
+		return
+	}
+
+	// Build a map of URL -> most recent Document status
+	// Network entries are ordered oldest-to-newest, so later entries overwrite
+	urlStatus := make(map[string]int)
+	for _, entry := range d.networkBuf.All() {
+		if entry.Type == "Document" && entry.Status > 0 {
+			urlStatus[entry.URL] = entry.Status
+		}
+	}
+
+	// Apply status to sessions
+	for i := range sessions {
+		if status, ok := urlStatus[sessions[i].URL]; ok {
+			sessions[i].Status = status
+		}
+	}
 }
 
 // handleConsole returns buffered console entries filtered to active session.

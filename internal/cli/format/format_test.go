@@ -99,7 +99,7 @@ func TestStatus(t *testing.T) {
 		{
 			name: "not running",
 			data: ipc.StatusData{Running: false},
-			expected: "Not running\n",
+			expected: "Not running (start with: webctl start)\n",
 		},
 		{
 			name: "running with PID but no browser",
