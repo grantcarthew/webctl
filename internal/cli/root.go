@@ -37,6 +37,10 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&Debug, "debug", false, "Enable verbose debug output")
 	rootCmd.PersistentFlags().BoolVar(&JSONOutput, "json", false, "Output in JSON format (default is text)")
 	rootCmd.PersistentFlags().BoolVar(&NoColor, "no-color", false, "Disable color output")
+	rootCmd.SetVersionTemplate(`webctl version {{.Version}}
+Repository: https://github.com/grantcarthew/webctl
+Report issues: https://github.com/grantcarthew/webctl/issues/new
+`)
 }
 
 // debugf logs a debug message if debug mode is enabled.
