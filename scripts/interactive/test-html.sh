@@ -16,7 +16,7 @@ cmd() {
 clear
 title "webctl html Command Test Suite"
 echo "Project: P-034"
-echo "Tests HTML extraction with show/save modes and filtering"
+echo "Tests HTML extraction with stdout default and save mode"
 echo ""
 echo "Prerequisites:"
 echo "  - webctl must be built"
@@ -42,58 +42,41 @@ echo "Wait for page to fully load"
 read -p "Press Enter when page loaded..."
 
 # Default mode tests
-title "Default Mode (Save to Temp)"
+title "Default Mode (Output to Stdout)"
 
-heading "Extract full page HTML to temp"
+heading "Extract full page HTML to stdout"
 cmd "webctl html"
-
-echo ""
-echo "Verify: File saved to /tmp/webctl-html/"
-echo "Verify: Auto-generated filename with timestamp"
-echo "Verify: JSON response shows file path"
-read -p "Press Enter to continue..."
-
-heading "Extract specific element to temp"
-cmd "webctl html --select \"h1\""
-
-echo ""
-echo "Verify: Only h1 element(s) in HTML file"
-read -p "Press Enter to continue..."
-
-heading "Search for text and save"
-cmd "webctl html --find \"Example\""
-
-echo ""
-echo "Verify: HTML contains 'Example' text"
-read -p "Press Enter to continue..."
-
-# Show mode tests
-title "Show Mode (Output to Stdout)"
-
-heading "Show full page HTML"
-cmd "webctl html show"
 
 echo ""
 echo "Verify: HTML output to stdout"
 echo "Verify: No file created"
 read -p "Press Enter to continue..."
 
-heading "Show specific element"
-cmd "webctl html show --select \"body\""
+heading "Extract specific element to stdout"
+cmd "webctl html --select \"h1\""
 
 echo ""
-echo "Verify: Only body element shown"
+echo "Verify: Only h1 element(s) shown"
 read -p "Press Enter to continue..."
 
-heading "Show with text search"
-cmd "webctl html show --find \"domain\""
+heading "Search for text in HTML"
+cmd "webctl html --find \"Example\""
 
 echo ""
-echo "Verify: HTML containing 'domain' shown"
+echo "Verify: HTML containing 'Example' shown"
 read -p "Press Enter to continue..."
 
 # Save mode tests
-title "Save Mode (Custom Path)"
+title "Save Mode (File Output)"
+
+heading "Save to temp (no path)"
+cmd "webctl html save"
+
+echo ""
+echo "Verify: File saved to /tmp/webctl-html/"
+echo "Verify: Auto-generated filename with timestamp"
+echo "Verify: JSON response shows file path"
+read -p "Press Enter to continue..."
 
 heading "Save to custom file"
 cmd "webctl html save ./page.html"
@@ -120,21 +103,21 @@ read -p "Press Enter to continue..."
 title "Select Flag Tests"
 
 heading "Select by ID"
-cmd "webctl html show --select \"#main\""
+cmd "webctl html --select \"#main\""
 
 echo ""
 echo "Check if element with id 'main' exists, or try another ID"
 read -p "Press Enter to continue..."
 
 heading "Select by class"
-cmd "webctl html show --select \"div\""
+cmd "webctl html --select \"div\""
 
 echo ""
 echo "Verify: Only div elements shown"
 read -p "Press Enter to continue..."
 
 heading "Complex selector"
-cmd "webctl html show --select \"body > div\""
+cmd "webctl html --select \"body > div\""
 
 echo ""
 echo "Verify: Only direct div children of body shown"
@@ -144,21 +127,21 @@ read -p "Press Enter to continue..."
 title "Find Flag Tests"
 
 heading "Find simple text"
-cmd "webctl html show --find \"Example\""
+cmd "webctl html --find \"Example\""
 
 echo ""
 echo "Verify: HTML contains 'Example'"
 read -p "Press Enter to continue..."
 
 heading "Find with no matches (should error)"
-cmd "webctl html show --find \"ThisTextDoesNotExist123\""
+cmd "webctl html --find \"ThisTextDoesNotExist123\""
 
 echo ""
 echo "Verify: Error message about no matches"
 read -p "Press Enter to continue..."
 
 heading "Find combined with select"
-cmd "webctl html show --select \"h1\" --find \"Example\""
+cmd "webctl html --select \"h1\" --find \"Example\""
 
 echo ""
 echo "Verify: h1 elements containing 'Example'"
@@ -168,14 +151,14 @@ read -p "Press Enter to continue..."
 title "Raw Flag Tests"
 
 heading "Raw output (no formatting)"
-cmd "webctl html show --raw"
+cmd "webctl html --raw"
 
 echo ""
 echo "Verify: Unformatted HTML as-is from browser"
 read -p "Press Enter to continue..."
 
 heading "Raw with select"
-cmd "webctl html show --raw --select \"h1\""
+cmd "webctl html --raw --select \"h1\""
 
 echo ""
 echo "Verify: Raw HTML of selected elements"
@@ -184,22 +167,22 @@ read -p "Press Enter to continue..."
 # Output format tests
 title "Output Format Tests"
 
-heading "JSON output with show mode"
-cmd "webctl html show --json"
+heading "JSON output"
+cmd "webctl html --json"
 
 echo ""
 echo "Verify: JSON formatted output"
 read -p "Press Enter to continue..."
 
 heading "No color output"
-cmd "webctl html show --no-color"
+cmd "webctl html --no-color"
 
 echo ""
 echo "Verify: No ANSI color codes"
 read -p "Press Enter to continue..."
 
 heading "Debug verbose output"
-cmd "webctl html show --debug"
+cmd "webctl html --debug"
 
 echo ""
 echo "Verify: Debug logging information"
@@ -209,7 +192,7 @@ read -p "Press Enter to continue..."
 title "Error Cases"
 
 heading "Selector matches no elements"
-cmd "webctl html show --select \"#nonexistent-id-xyz\""
+cmd "webctl html --select \"#nonexistent-id-xyz\""
 
 echo ""
 echo "Verify: Error message about selector not matching"
@@ -227,7 +210,7 @@ title "REPL Mode Tests"
 
 heading "Test html in REPL"
 echo "Switch to daemon terminal and execute:"
-cmd "html show"
+cmd "html"
 
 echo ""
 echo "Should work identically to CLI mode"
@@ -235,7 +218,7 @@ read -p "Press Enter when tested in REPL..."
 
 heading "Test html with flags in REPL"
 echo "In REPL, try:"
-cmd "html show --select \"h1\" --find \"Example\""
+cmd "html --select \"h1\" --find \"Example\""
 
 echo ""
 echo "Should work identically to CLI mode"
@@ -252,7 +235,7 @@ echo "Wait for GitHub to load"
 read -p "Press Enter when loaded..."
 
 heading "Extract navigation menu"
-cmd "webctl html show --select \"nav\""
+cmd "webctl html --select \"nav\""
 
 echo ""
 echo "Verify: Navigation HTML shown"

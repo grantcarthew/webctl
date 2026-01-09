@@ -17,30 +17,38 @@ import (
 
 var screenshotCmd = &cobra.Command{
 	Use:   "screenshot",
-	Short: "Capture screenshot of current page",
+	Short: "Capture screenshot of current page (default: save to temp)",
 	Long: `Captures a PNG screenshot of the current page and saves it to a file.
 
-By default captures the current viewport. Use --full-page to capture the
-entire scrollable page content.
+By default captures the current viewport and saves to temp directory.
+Use --full-page to capture the entire scrollable page content.
+
+Default behavior (no subcommand):
+  Saves screenshot to /tmp/webctl-screenshots/ with auto-generated filename
+
+Subcommands:
+  save [path]       Save screenshot to file (temp dir if no path given)
 
 Flags:
   --full-page       Capture entire scrollable page instead of viewport only
-  --output, -o      Save to specified path instead of temp directory
 
 File location:
   Default: /tmp/webctl-screenshots/YY-MM-DD-HHMMSS-{title}.png
-  Custom:  Specified path with --output flag
+  Custom:  Specified path with save subcommand
 
 The filename includes a timestamp and normalised page title for easy
 identification when browsing the temp directory.
 
-Viewport screenshot (default):
-  screenshot                            # Current visible area
-  screenshot -o ./debug/page.png        # Save to specific location
+Examples:
 
-Full-page screenshot:
-  screenshot --full-page                # Entire scrollable content
-  screenshot --full-page -o ./full.png  # Full page to specific path
+Default mode (save to temp):
+  screenshot                            # Current visible area to temp
+  screenshot --full-page                # Entire scrollable content to temp
+
+Save mode (custom path):
+  screenshot save                       # Same as default (to temp)
+  screenshot save ./page.png            # Save to specific location
+  screenshot save ./full.png --full-page  # Full page to specific path
 
 Common patterns:
   # Capture after navigation
@@ -48,12 +56,12 @@ Common patterns:
   screenshot
 
   # Before/after comparison
-  screenshot -o ./before.png
+  screenshot save ./before.png
   click "#toggle-dark-mode"
-  screenshot -o ./after.png
+  screenshot save ./after.png
 
   # Document visual state
-  screenshot --full-page -o ./docs/homepage-full.png
+  screenshot save ./docs/homepage-full.png --full-page
 
   # Debug layout issue
   navigate localhost:3000 --wait
@@ -61,16 +69,16 @@ Common patterns:
   # Examine the screenshot file for layout issues
 
   # CI/CD test artifacts
-  screenshot --full-page -o ./test-results/homepage-${BUILD_ID}.png
+  screenshot save ./test-results/homepage-${BUILD_ID}.png --full-page
 
   # Multi-tab capture
   target "Admin Panel"
-  screenshot -o ./admin.png
+  screenshot save ./admin.png
   target "Dashboard"
-  screenshot -o ./dashboard.png
+  screenshot save ./dashboard.png
 
 Response:
-  {"ok": true, "path": "/tmp/webctl-screenshots/24-12-24-143052-example-domain.png"}
+  /tmp/webctl-screenshots/24-12-24-143052-example-domain.png
 
 Error cases:
   - "failed to capture screenshot" - CDP capture failed
@@ -80,23 +88,65 @@ Error cases:
 
 Note: Screenshots are PNG format (lossless) for accurate debugging. Large
 full-page screenshots of complex pages may take a moment to capture.`,
-	RunE: runScreenshot,
+	RunE: runScreenshotDefault,
+}
+
+var screenshotSaveCmd = &cobra.Command{
+	Use:   "save [path]",
+	Short: "Save screenshot to file",
+	Long: `Saves screenshot to a file.
+
+If no path is provided, saves to temp directory with auto-generated filename.
+If path is a directory, auto-generates filename.
+If path is a file, uses exact path.
+
+Examples:
+  screenshot save                       # Save to temp dir
+  screenshot save ./page.png            # Save to file
+  screenshot save ./output/             # Save to dir
+  screenshot save ./full.png --full-page`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runScreenshotSave,
 }
 
 func init() {
-	screenshotCmd.Flags().Bool("full-page", false, "Capture entire scrollable page instead of viewport")
-	screenshotCmd.Flags().StringP("output", "o", "", "Save to specified path instead of temp directory")
+	screenshotCmd.PersistentFlags().Bool("full-page", false, "Capture entire scrollable page instead of viewport")
+
+	screenshotCmd.AddCommand(screenshotSaveCmd)
 	rootCmd.AddCommand(screenshotCmd)
 }
 
-func runScreenshot(cmd *cobra.Command, args []string) error {
+// runScreenshotDefault handles default behavior: save to temp directory
+func runScreenshotDefault(cmd *cobra.Command, args []string) error {
+	// Validate that no arguments were provided (catches unknown subcommands)
+	if len(args) > 0 {
+		return outputError(fmt.Sprintf("unknown command %q for \"webctl screenshot\"", args[0]))
+	}
+
+	return captureAndSaveScreenshot(cmd, "")
+}
+
+// runScreenshotSave handles save subcommand: save to file
+func runScreenshotSave(cmd *cobra.Command, args []string) error {
+	path := ""
+	if len(args) > 0 {
+		path = args[0]
+	}
+	return captureAndSaveScreenshot(cmd, path)
+}
+
+// captureAndSaveScreenshot captures a screenshot and saves it to the specified path
+// If path is empty, saves to temp directory with auto-generated filename
+func captureAndSaveScreenshot(cmd *cobra.Command, path string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
 
-	// Read flags from command
+	// Read flags from command, falling back to parent for persistent flags
 	fullPage, _ := cmd.Flags().GetBool("full-page")
-	output, _ := cmd.Flags().GetString("output")
+	if !fullPage && cmd.Parent() != nil {
+		fullPage, _ = cmd.Parent().PersistentFlags().GetBool("full-page")
+	}
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -132,13 +182,24 @@ func runScreenshot(cmd *cobra.Command, args []string) error {
 
 	// Determine output path
 	var outputPath string
-	if output != "" {
-		outputPath = output
-	} else {
-		// Generate filename in temp directory
+	if path == "" {
+		// No path provided - save to temp directory
 		outputPath, err = generateScreenshotPath(exec)
 		if err != nil {
 			return outputError(err.Error())
+		}
+	} else {
+		// Path provided - check if directory
+		fileInfo, err := os.Stat(path)
+		if err == nil && fileInfo.IsDir() {
+			// Path is a directory - auto-generate filename
+			filename, err := generateScreenshotFilename(exec)
+			if err != nil {
+				return outputError(err.Error())
+			}
+			outputPath = filepath.Join(path, filename)
+		} else {
+			outputPath = path
 		}
 	}
 
@@ -169,6 +230,16 @@ func runScreenshot(cmd *cobra.Command, args []string) error {
 // generateScreenshotPath generates a filename in /tmp/webctl-screenshots/
 // using the pattern: YY-MM-DD-HHMMSS-{normalized-title}.png
 func generateScreenshotPath(exec executor.Executor) (string, error) {
+	filename, err := generateScreenshotFilename(exec)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join("/tmp/webctl-screenshots", filename), nil
+}
+
+// generateScreenshotFilename generates a filename using the pattern:
+// YY-MM-DD-HHMMSS-{normalized-title}.png
+func generateScreenshotFilename(exec executor.Executor) (string, error) {
 	// Get current session for title
 	resp, err := exec.Execute(ipc.Request{Cmd: "status"})
 	if err != nil {
@@ -195,10 +266,7 @@ func generateScreenshotPath(exec executor.Executor) (string, error) {
 	timestamp := now.Format("06-01-02-150405")
 
 	// Generate filename
-	filename := fmt.Sprintf("%s-%s.png", timestamp, title)
-
-	// Return path in /tmp/webctl-screenshots/
-	return filepath.Join("/tmp/webctl-screenshots", filename), nil
+	return fmt.Sprintf("%s-%s.png", timestamp, title), nil
 }
 
 // normalizeTitle normalizes a page title for use in filenames.

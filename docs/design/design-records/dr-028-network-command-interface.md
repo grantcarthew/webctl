@@ -22,9 +22,8 @@ Redesign network command to follow the universal observation pattern with compre
 
 ```bash
 # Universal pattern
-webctl network              # Save all requests to temp
-webctl network show         # Output all requests to stdout
-webctl network save <path>  # Save all requests to custom path
+webctl network              # Output all requests to stdout (Unix convention)
+webctl network save [path]  # Save to file (temp if no path, custom if path given)
 
 # Universal flags
 --find, -f TEXT             # Search within URLs and response bodies
@@ -43,27 +42,25 @@ webctl network save <path>  # Save all requests to custom path
 --head N / --tail N / --range N-M   # Limit results
 ```
 
-The network command uses the universal pattern with no network-specific subcommands. All filtering is provided through network-specific flags that apply to all output modes.
+The network command outputs to stdout by default (Unix convention), with a save subcommand for file output. All filtering is provided through network-specific flags that apply to all output modes.
 
 Complete specification: docs/design/interface/network.md
 
 ## Why
 
-Universal Pattern Adoption:
+Unix Convention (stdout by default):
 
-Applying the default/show/save pattern to network requests provides consistent behavior across all observation commands. Users get predictable output mode control and file preservation capabilities for request/response data.
+Following Unix philosophy, observation commands output to stdout by default. This enables:
+- Piping to other tools (grep, less, jq)
+- Quick inspection without file management
+- Consistent with standard CLI tools
 
-Default to Temp File:
+Save Subcommand for Files:
 
-Saving network requests to temp by default preserves debugging data for later analysis. Network request data is often needed for troubleshooting API issues, performance analysis, and security auditing. Automatic preservation prevents data loss.
-
-Show Subcommand for Interactive Debugging:
-
-Explicit show subcommand outputs requests to stdout for real-time monitoring and piping to analysis tools. This matches the current network command behavior while making the intent explicit.
-
-Save Subcommand for Analysis:
-
-The save subcommand enables saving requests to specific locations for performance analysis, CI/CD validation, security auditing, or long-term analysis. This fills a critical gap in the current implementation.
+When file output is needed, the save subcommand provides flexibility:
+- `network save` - saves to temp directory with auto-generated filename
+- `network save ./requests.json` - saves to custom path
+- Directory paths auto-generate filenames, file paths use exact names
 
 Extensive Network-Specific Filters:
 
@@ -200,20 +197,15 @@ Simplify Filter Flags:
 Output Modes:
 
 Default (no subcommand):
-- Saves all network requests to /tmp/webctl-network/
-- Auto-generates filename: YY-MM-DD-HHMMSS-network.json
-- Returns JSON with file path
-- Formatted text or JSON based on --json flag
-
-Show subcommand:
-- Outputs network requests to stdout
+- Outputs network requests to stdout (Unix convention)
 - Formatted table with method, status, URL, duration, size
 - Color-coded by status (2xx green, 4xx yellow, 5xx red)
-- Current behavior users expect
+- Useful for piping to other tools
 
 Save subcommand:
-- Requires path argument
-- Directory: auto-generates filename
+- Optional path argument
+- No path: saves to /tmp/webctl-network/ with auto-generated filename
+- Directory: auto-generates filename in that directory
 - File: saves to exact path
 - Creates parent directories if needed
 
@@ -302,36 +294,28 @@ All filters are AND-combined for precise targeting.
 
 ## Usage Examples
 
-Default behavior (save to temp):
+Default behavior (stdout):
 
 ```bash
 webctl network
-# {"ok": true, "path": "/tmp/webctl-network/25-12-28-143052-network.json"}
-
-webctl network --status 4xx,5xx
-# {"ok": true, "path": "/tmp/webctl-network/25-12-28-143115-network.json"}
-# (only error responses)
-```
-
-Show to stdout:
-
-```bash
-webctl network show
 # GET  | 200 | https://example.com/api/user | 250ms | 1.2KB
 # POST | 201 | https://example.com/api/data | 150ms | 500B
 # GET  | 404 | https://example.com/missing  | 50ms  | 200B
 
-webctl network show --status 4xx,5xx
+webctl network --status 4xx,5xx
 # GET | 404 | https://example.com/missing | 50ms | 200B
 # GET | 500 | https://example.com/error   | 1.2s | 150B
 
-webctl network show --type xhr,fetch
+webctl network --type xhr,fetch
 # (only AJAX requests)
 ```
 
-Save to custom path:
+Save to file:
 
 ```bash
+webctl network save
+# {"ok": true, "path": "/tmp/webctl-network/25-12-28-143052-network.json"}
+
 webctl network save ./requests.json
 # {"ok": true, "path": "./requests.json"}
 
@@ -346,57 +330,57 @@ Network-specific filters:
 
 ```bash
 # Status filtering
-webctl network show --status 200
-webctl network show --status 4xx
-webctl network show --status 200-299
-webctl network show --status 4xx,5xx
+webctl network --status 200
+webctl network --status 4xx
+webctl network --status 200-299
+webctl network --status 4xx,5xx
 
 # Type filtering
-webctl network show --type xhr,fetch
-webctl network show --type document
-webctl network show --type script,stylesheet
+webctl network --type xhr,fetch
+webctl network --type document
+webctl network --type script,stylesheet
 
 # Method filtering
-webctl network show --method POST
-webctl network show --method POST,PUT,DELETE
+webctl network --method POST
+webctl network --method POST,PUT,DELETE
 
 # URL filtering
-webctl network show --url "api/user"
-webctl network show --url "^https://example.com"
+webctl network --url "api/user"
+webctl network --url "^https://example.com"
 
 # MIME type filtering
-webctl network show --mime application/json
-webctl network show --mime image/png,image/jpeg
+webctl network --mime application/json
+webctl network --mime image/png,image/jpeg
 
 # Performance filtering
-webctl network show --min-duration 1s
-webctl network show --min-size 1048576  # 1MB+
-webctl network show --min-duration 500ms --min-size 500000
+webctl network --min-duration 1s
+webctl network --min-size 1048576  # 1MB+
+webctl network --min-duration 500ms --min-size 500000
 
 # Failed requests
-webctl network show --failed
+webctl network --failed
 
 # Search within requests
-webctl network show --find "api/"
-webctl network show --find "error"
+webctl network --find "api/"
+webctl network --find "error"
 
 # Limit results
-webctl network show --head 20
-webctl network show --tail 50
-webctl network show --range 10-30
+webctl network --head 20
+webctl network --tail 50
+webctl network --range 10-30
 ```
 
 Complex filtering (AND-combined):
 
 ```bash
 # Slow API errors
-webctl network show --url "api/" --status 5xx --min-duration 500ms
+webctl network --url "api/" --status 5xx --min-duration 500ms
 
 # Large image requests
-webctl network show --type image --min-size 500000
+webctl network --type image --min-size 500000
 
 # Failed POST requests to API
-webctl network show --method POST --url "api/" --failed
+webctl network --method POST --url "api/" --failed
 
 # Recent API errors
 webctl network save ./recent-api-errors.json \
@@ -408,7 +392,7 @@ webctl network save ./recent-api-errors.json \
 JSON output:
 
 ```bash
-webctl network show --json
+webctl network --json
 # {
 #   "ok": true,
 #   "requests": [
@@ -447,7 +431,7 @@ Identifier: Fixed to "network" (no variation needed)
 
 ## Output Format
 
-Text Mode (default for show):
+Text Mode (default):
 
 Formatted table with color-coding:
 ```
@@ -498,13 +482,12 @@ Array of network entry objects:
 
 From DR-009 (Network Command Interface):
 
-1. Changed: Default behavior now saves to temp instead of stdout
-2. Added: show subcommand for explicit stdout output (matches old default)
-3. Added: save subcommand for custom path specification
+1. Changed: Default behavior now outputs to stdout (Unix convention)
+2. Removed: show subcommand (not needed - stdout is default)
+3. Changed: save subcommand now takes optional path (temp if no path)
 4. Added: --find flag for text search within URLs and bodies
-5. Added: Default output to JSON file format
-6. Retained: All filter flags (--type, --method, --status, --url, --mime, --min-duration, --min-size, --failed, --head, --tail, --range)
-7. Retained: Color-coded output for show mode
+5. Retained: All filter flags (--type, --method, --status, --url, --mime, --min-duration, --min-size, --failed, --head, --tail, --range)
+6. Retained: Color-coded output for default mode
 
 Migration Guide:
 
@@ -515,17 +498,18 @@ webctl network --status 5xx          # Stdout with errors only
 webctl network --type xhr --tail 20  # Recent AJAX requests
 ```
 
-New pattern (DR-028):
+New pattern (DR-028 after P-051):
 ```bash
-webctl network show                       # Stdout with all requests (changed)
-webctl network show --status 5xx          # Stdout with errors only (changed)
-webctl network show --type xhr --tail 20  # Recent AJAX requests (changed)
-webctl network                            # Save to temp (new behavior)
-webctl network save ./requests.json       # Save to custom path (new feature)
+webctl network                       # Output to stdout (same as before)
+webctl network --status 5xx          # Stdout with errors only (same)
+webctl network --type xhr --tail 20  # Recent AJAX requests (same)
+webctl network save                  # Save to temp (new)
+webctl network save ./requests.json  # Save to custom path (new feature)
 ```
 
-For users who want the old default behavior (stdout), update scripts to use `webctl network show`.
+The default stdout behavior is preserved. Use `webctl network save` when file output is needed.
 
 ## Updates
 
+- 2026-01-09: Updated to stdout default, removed show subcommand (P-051)
 - 2025-12-28: Initial version (supersedes DR-009)

@@ -22,9 +22,8 @@ Redesign CSS command to follow universal observation pattern for stylesheet extr
 
 ```bash
 # Universal pattern (stylesheet extraction)
-webctl css                  # Save all stylesheets to temp
-webctl css show             # Output all stylesheets to stdout
-webctl css save <path>      # Save all stylesheets to custom path
+webctl css                  # Output to stdout (Unix convention)
+webctl css save [path]      # Save to file (temp if no path, custom if path given)
 
 # Universal flags (apply to universal pattern)
 --select, -s SELECTOR       # Filter to element's computed styles
@@ -184,19 +183,14 @@ webctl css get <selector> <property>    # Single property mode
 Universal Pattern (Stylesheet Extraction):
 
 Default (no subcommand):
-- Saves all page stylesheets to /tmp/webctl-css/
-- Auto-generates filename: YY-MM-DD-HHMMSS-{title}.css
-- Returns JSON with file path
-- Formatted by default (use --raw for unformatted)
-
-Show subcommand:
-- Outputs all stylesheets to stdout
+- Outputs all page stylesheets to stdout (Unix convention)
 - Formatted by default (use --raw for minified)
-- Useful for piping or quick inspection
+- Useful for piping to other tools or quick inspection
 
 Save subcommand:
-- Requires path argument
-- Directory: auto-generates filename
+- Optional path argument
+- No path: saves to /tmp/webctl-css/ with auto-generated filename
+- Directory: auto-generates filename in that directory
 - File: saves to exact path
 - Creates parent directories if needed
 
@@ -246,33 +240,26 @@ inject <css>:
 
 ## Usage Examples
 
-Default behavior (save all stylesheets to temp):
+Default behavior (stdout):
 
 ```bash
 webctl css
-# {"ok": true, "path": "/tmp/webctl-css/25-12-28-143052-example-domain.css"}
-
-webctl css --find "background"
-# {"ok": true, "path": "/tmp/webctl-css/25-12-28-143115-example-domain.css"}
-# (filtered CSS with background rules)
-```
-
-Show to stdout:
-
-```bash
-webctl css show
 # body { margin: 0; ... }
 
-webctl css show --find "button"
-# .button { display: inline-block; ... }
+webctl css --find "background"
+# .header { background: #fff; ... }
+# (filtered CSS with background rules)
 
-webctl css show --raw
+webctl css --raw
 # body{margin:0;padding:0}...
 ```
 
-Save to custom path:
+Save to file:
 
 ```bash
+webctl css save
+# {"ok": true, "path": "/tmp/webctl-css/25-12-28-143052-example-domain.css"}
+
 webctl css save ./styles.css
 # {"ok": true, "path": "./styles.css"}
 
@@ -284,13 +271,13 @@ Computed styles via universal pattern:
 
 ```bash
 webctl css --select ".button"
-# {"ok": true, "path": "/tmp/webctl-css/25-12-28-143120-button.css"}
-# (computed styles saved to file)
-
-webctl css show --select ".button"
 # display: flex;
 # background-color: rgb(0, 113, 227);
 # ...
+
+webctl css save --select ".button"
+# {"ok": true, "path": "/tmp/webctl-css/25-12-28-143120-button.css"}
+# (computed styles saved to file)
 
 webctl css save ./button-styles.css --select ".button"
 # {"ok": true, "path": "./button-styles.css"}
@@ -329,7 +316,7 @@ webctl css inject --file ./dark-mode.css
 Combining universal flags:
 
 ```bash
-webctl css show --select ".button" --find "hover"
+webctl css --select ".button" --find "hover"
 # (computed styles for .button, filtered for "hover")
 
 webctl css save ./results.css --find "media" --raw
@@ -340,14 +327,13 @@ webctl css save ./results.css --find "media" --raw
 
 From DR-023 (CSS Command Architecture):
 
-1. Changed: css save removed as subcommand (now universal pattern)
-2. Added: Default behavior (no subcommand) saves to temp
-3. Added: show subcommand for stdout output
-4. Added: save subcommand with required path argument
-5. Added: --select flag for computed styles (alternative to computed subcommand)
-6. Added: --find flag for CSS text search
-7. Added: --raw flag for unformatted output
-8. Retained: computed, get, inject subcommands (behavior unchanged)
+1. Changed: Default behavior now outputs to stdout (Unix convention)
+2. Removed: show subcommand (not needed - stdout is default)
+3. Changed: save subcommand now takes optional path (temp if no path)
+4. Added: --select flag for computed styles (alternative to computed subcommand)
+5. Added: --find flag for CSS text search
+6. Added: --raw flag for unformatted output
+7. Retained: computed, get, inject subcommands (behavior unchanged)
 
 Migration Guide:
 
@@ -361,11 +347,12 @@ webctl css get ".button" color       # Single property to stdout
 webctl css inject "..."              # Inject CSS
 ```
 
-New pattern (DR-026):
+New pattern (DR-026 after P-051):
 ```bash
-webctl css                           # All stylesheets to temp (changed)
-webctl css save ./styles.css         # All stylesheets to custom path (changed)
-webctl css --select "#header"        # Computed styles to temp (changed)
+webctl css                           # Output to stdout (changed)
+webctl css save                      # Save to temp (changed)
+webctl css save ./styles.css         # Save to custom path (changed)
+webctl css --select "#header"        # Computed styles to stdout (changed)
 webctl css computed ".button"        # Computed styles to stdout (same)
 webctl css get ".button" color       # Single property to stdout (same)
 webctl css inject "..."              # Inject CSS (same)
@@ -373,4 +360,5 @@ webctl css inject "..."              # Inject CSS (same)
 
 ## Updates
 
+- 2026-01-09: Updated to stdout default, removed show subcommand (P-051)
 - 2025-12-28: Initial version (supersedes DR-023)

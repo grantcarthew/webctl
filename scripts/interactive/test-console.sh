@@ -67,37 +67,10 @@ echo "Console logs injected"
 read -p "Press Enter to continue..."
 
 # Default mode tests
-title "Default Mode (Save to Temp)"
-
-heading "Save all console logs to temp"
-cmd "webctl console"
-
-echo ""
-echo "Verify: File saved to /tmp/webctl-console/"
-echo "Verify: Auto-generated filename (YY-MM-DD-HHMMSS-console.json)"
-echo "Verify: JSON response shows file path"
-echo "Verify: JSON file contains logs array"
-read -p "Press Enter to continue..."
-
-heading "Save only errors to temp"
-cmd "webctl console --type error"
-
-echo ""
-echo "Verify: Only error type logs saved"
-read -p "Press Enter to continue..."
-
-heading "Search and save logs"
-cmd "webctl console --find \"Test\""
-
-echo ""
-echo "Verify: Logs containing 'Test' saved"
-read -p "Press Enter to continue..."
-
-# Show mode tests
-title "Show Mode (Output to Stdout)"
+title "Default Mode (Output to Stdout)"
 
 heading "Show all console logs"
-cmd "webctl console show"
+cmd "webctl console"
 
 echo ""
 echo "Verify: Formatted logs to stdout"
@@ -106,35 +79,37 @@ echo "Verify: No file created"
 read -p "Press Enter to continue..."
 
 heading "Show only errors"
-cmd "webctl console show --type error"
+cmd "webctl console --type error"
 
 echo ""
 echo "Verify: Only error logs shown"
 read -p "Press Enter to continue..."
 
 heading "Show errors and warnings (CSV)"
-cmd "webctl console show --type error,warn"
-
-echo ""
-echo "Verify: Both errors and warnings shown"
-read -p "Press Enter to continue..."
-
-heading "Show errors and warnings (repeatable)"
-cmd "webctl console show --type error --type warn"
+cmd "webctl console --type error,warn"
 
 echo ""
 echo "Verify: Both errors and warnings shown"
 read -p "Press Enter to continue..."
 
 heading "Show with text search"
-cmd "webctl console show --find \"warning\""
+cmd "webctl console --find \"Test\""
 
 echo ""
-echo "Verify: Logs containing 'warning' shown"
+echo "Verify: Logs containing 'Test' shown"
 read -p "Press Enter to continue..."
 
 # Save mode tests
-title "Save Mode (Custom Path)"
+title "Save Mode (File Output)"
+
+heading "Save to temp (no path)"
+cmd "webctl console save"
+
+echo ""
+echo "Verify: File saved to /tmp/webctl-console/"
+echo "Verify: Auto-generated filename (YY-MM-DD-HHMMSS-console.json)"
+echo "Verify: JSON response shows file path"
+read -p "Press Enter to continue..."
 
 heading "Save to custom file"
 cmd "webctl console save ./logs.json"
@@ -161,35 +136,35 @@ read -p "Press Enter to continue..."
 title "Type Filter Tests"
 
 heading "Filter by log type"
-cmd "webctl console show --type log"
+cmd "webctl console --type log"
 
 echo ""
 echo "Verify: Only 'log' entries shown"
 read -p "Press Enter to continue..."
 
 heading "Filter by warn type"
-cmd "webctl console show --type warn"
+cmd "webctl console --type warn"
 
 echo ""
 echo "Verify: Only 'warn' entries shown"
 read -p "Press Enter to continue..."
 
 heading "Filter by error type"
-cmd "webctl console show --type error"
+cmd "webctl console --type error"
 
 echo ""
 echo "Verify: Only 'error' entries shown"
 read -p "Press Enter to continue..."
 
 heading "Filter by info type"
-cmd "webctl console show --type info"
+cmd "webctl console --type info"
 
 echo ""
 echo "Verify: Only 'info' entries shown"
 read -p "Press Enter to continue..."
 
 heading "Filter by debug type"
-cmd "webctl console show --type debug"
+cmd "webctl console --type debug"
 
 echo ""
 echo "Verify: Only 'debug' entries shown"
@@ -199,21 +174,21 @@ read -p "Press Enter to continue..."
 title "Find Flag Tests"
 
 heading "Find simple text"
-cmd "webctl console show --find \"Test\""
+cmd "webctl console --find \"Test\""
 
 echo ""
 echo "Verify: Case-insensitive search for 'Test'"
 read -p "Press Enter to continue..."
 
 heading "Find with no matches (should error)"
-cmd "webctl console show --find \"ThisTextDoesNotExist123\""
+cmd "webctl console --find \"ThisTextDoesNotExist123\""
 
 echo ""
 echo "Verify: Error message about no matches"
 read -p "Press Enter to continue..."
 
 heading "Find combined with type filter"
-cmd "webctl console show --type error --find \"Test\""
+cmd "webctl console --type error --find \"Test\""
 
 echo ""
 echo "Verify: Only errors containing 'Test'"
@@ -223,21 +198,21 @@ read -p "Press Enter to continue..."
 title "Head Flag Tests"
 
 heading "Get first 10 entries"
-cmd "webctl console show --head 10"
+cmd "webctl console --head 10"
 
 echo ""
 echo "Verify: First 10 log entries shown"
 read -p "Press Enter to continue..."
 
 heading "Get first entry"
-cmd "webctl console show --head 1"
+cmd "webctl console --head 1"
 
 echo ""
 echo "Verify: Only first log entry shown"
 read -p "Press Enter to continue..."
 
 heading "Head with type filter"
-cmd "webctl console show --head 5 --type error"
+cmd "webctl console --head 5 --type error"
 
 echo ""
 echo "Verify: First 5 error entries"
@@ -247,21 +222,21 @@ read -p "Press Enter to continue..."
 title "Tail Flag Tests"
 
 heading "Get last 20 entries"
-cmd "webctl console show --tail 20"
+cmd "webctl console --tail 20"
 
 echo ""
 echo "Verify: Last 20 log entries shown"
 read -p "Press Enter to continue..."
 
 heading "Get last entry"
-cmd "webctl console show --tail 1"
+cmd "webctl console --tail 1"
 
 echo ""
 echo "Verify: Only last log entry shown"
 read -p "Press Enter to continue..."
 
 heading "Tail with type filter"
-cmd "webctl console show --tail 5 --type warn"
+cmd "webctl console --tail 5 --type warn"
 
 echo ""
 echo "Verify: Last 5 warning entries"
@@ -271,21 +246,21 @@ read -p "Press Enter to continue..."
 title "Range Flag Tests"
 
 heading "Get entries 10-20"
-cmd "webctl console show --range 10-20"
+cmd "webctl console --range 10-20"
 
 echo ""
 echo "Verify: Entries from index 10 to 20"
 read -p "Press Enter to continue..."
 
 heading "Get first 10 entries via range"
-cmd "webctl console show --range 0-10"
+cmd "webctl console --range 0-10"
 
 echo ""
 echo "Verify: First 10 entries"
 read -p "Press Enter to continue..."
 
 heading "Range with type filter"
-cmd "webctl console show --range 0-5 --type error"
+cmd "webctl console --range 0-5 --type error"
 
 echo ""
 echo "Verify: First 5 error entries"
@@ -295,21 +270,21 @@ read -p "Press Enter to continue..."
 title "Mutual Exclusivity Tests"
 
 heading "Head and tail together (should error)"
-cmd "webctl console show --head 10 --tail 10"
+cmd "webctl console --head 10 --tail 10"
 
 echo ""
 echo "Verify: Error message about mutually exclusive flags"
 read -p "Press Enter to continue..."
 
 heading "Head and range together (should error)"
-cmd "webctl console show --head 10 --range 0-10"
+cmd "webctl console --head 10 --range 0-10"
 
 echo ""
 echo "Verify: Error message about mutually exclusive flags"
 read -p "Press Enter to continue..."
 
 heading "Tail and range together (should error)"
-cmd "webctl console show --tail 10 --range 0-10"
+cmd "webctl console --tail 10 --range 0-10"
 
 echo ""
 echo "Verify: Error message about mutually exclusive flags"
@@ -319,14 +294,14 @@ read -p "Press Enter to continue..."
 title "Raw Flag Tests"
 
 heading "Raw output (JSON format)"
-cmd "webctl console show --raw"
+cmd "webctl console --raw"
 
 echo ""
 echo "Verify: Raw JSON output instead of formatted text"
 read -p "Press Enter to continue..."
 
 heading "Raw with filters"
-cmd "webctl console show --raw --type error --tail 10"
+cmd "webctl console --raw --type error --tail 10"
 
 echo ""
 echo "Verify: Raw JSON with filtered results"
@@ -335,22 +310,22 @@ read -p "Press Enter to continue..."
 # Output format tests
 title "Output Format Tests"
 
-heading "JSON output with show mode"
-cmd "webctl console show --json"
+heading "JSON output"
+cmd "webctl console --json"
 
 echo ""
 echo "Verify: JSON formatted output"
 read -p "Press Enter to continue..."
 
 heading "No color output"
-cmd "webctl console show --no-color"
+cmd "webctl console --no-color"
 
 echo ""
 echo "Verify: No ANSI color codes"
 read -p "Press Enter to continue..."
 
 heading "Debug verbose output"
-cmd "webctl console show --debug"
+cmd "webctl console --debug"
 
 echo ""
 echo "Verify: Debug logging information"
@@ -361,7 +336,7 @@ title "REPL Mode Tests"
 
 heading "Test console in REPL"
 echo "Switch to daemon terminal and execute:"
-cmd "console show"
+cmd "console"
 
 echo ""
 echo "Should work identically to CLI mode"
@@ -369,7 +344,7 @@ read -p "Press Enter when tested in REPL..."
 
 heading "Test console with filters in REPL"
 echo "In REPL, try:"
-cmd "console show --type error --tail 10"
+cmd "console --type error --tail 10"
 
 echo ""
 echo "Should show last 10 errors"
@@ -386,7 +361,7 @@ echo "Wait for GitHub to load (may have console messages)"
 read -p "Press Enter when loaded..."
 
 heading "Check for console logs"
-cmd "webctl console show"
+cmd "webctl console"
 
 echo ""
 echo "Verify: Any console logs from GitHub shown"
@@ -400,14 +375,14 @@ echo "20 logs injected (mix of log and warn)"
 read -p "Press Enter to continue..."
 
 heading "Get last 10 warnings"
-cmd "webctl console show --type warn --tail 10"
+cmd "webctl console --type warn --tail 10"
 
 echo ""
 echo "Verify: Last 10 warning messages"
 read -p "Press Enter to continue..."
 
 heading "Find logs containing numbers"
-cmd "webctl console show --find \"10\""
+cmd "webctl console --find \"10\""
 
 echo ""
 echo "Verify: Logs containing '10'"

@@ -15,20 +15,18 @@ import (
 
 var cookiesCmd = &cobra.Command{
 	Use:   "cookies",
-	Short: "Extract cookies from current page (default: save to temp)",
+	Short: "Extract cookies from current page (default: stdout)",
 	Long: `Extracts cookies from the current page with flexible output modes.
 
 Default behavior (no subcommand):
-  Saves cookies to /tmp/webctl-cookies/ with auto-generated filename
-  Returns JSON with file path
+  Outputs cookies to stdout for piping or inspection
 
 Subcommands:
-  show              Output cookies to stdout
-  save <path>       Save cookies to custom path
+  save [path]       Save cookies to file (temp dir if no path given)
   set <name> <value>  Set a cookie (mutation)
   delete <name>     Delete a cookie (mutation)
 
-Universal flags (work with default/show/save modes):
+Universal flags (work with default/save modes):
   --find, -f        Search for text within cookie names and values
   --raw             Skip formatting (return raw JSON)
   --json            Output in JSON format (global flag)
@@ -39,20 +37,16 @@ Cookies-specific filter flags (observation only):
 
 Examples:
 
-Default mode (save to temp):
-  cookies                                  # All cookies to temp
-  cookies --domain ".github.com"           # Only GitHub cookies to temp
-  cookies --find "session"                 # Search and save matches
+Default mode (stdout):
+  cookies                                  # All cookies to stdout
+  cookies --domain ".github.com"           # Only GitHub cookies
+  cookies --find "session"                 # Search and show matches
 
-Show mode (stdout):
-  cookies show                             # All cookies to stdout
-  cookies show --domain ".github.com"      # Only GitHub cookies
-  cookies show --find "session"            # Search and show matches
-
-Save mode (custom path):
-  cookies save ./cookies.json              # Save to file
+Save mode (file):
+  cookies save                             # Save to temp with auto-filename
+  cookies save ./cookies.json              # Save to custom file
   cookies save ./output/                   # Save to dir (auto-filename)
-  cookies save ./auth-cookies.json --find "auth"
+  cookies save --find "auth"
 
 Mutation subcommands:
   cookies set session abc123               # Set session cookie
@@ -60,8 +54,8 @@ Mutation subcommands:
   cookies delete session                   # Delete cookie
 
 Response formats:
-  Default/Save: {"ok": true, "path": "/tmp/webctl-cookies/25-12-28-143052-cookies.json"}
-  Show:         session | abc123 | .example.com | / | Session | Secure, HttpOnly
+  Default:  session | abc123 | .example.com | / | Session | Secure, HttpOnly
+  Save:     /tmp/webctl-cookies/25-12-28-143052-cookies.json
 
 Error cases:
   - "no matches found for 'text'" - find text not in cookies
@@ -69,32 +63,21 @@ Error cases:
 	RunE: runCookiesDefault,
 }
 
-var cookiesShowCmd = &cobra.Command{
-	Use:   "show",
-	Short: "Output cookies to stdout",
-	Long: `Outputs cookies to stdout for real-time inspection and piping.
-
-Examples:
-  cookies show                             # All cookies
-  cookies show --domain ".github.com"      # Only GitHub cookies
-  cookies show --find "session"            # Search within cookies
-  cookies show --name "session_id"         # Exact name match`,
-	RunE: runCookiesShow,
-}
-
 var cookiesSaveCmd = &cobra.Command{
-	Use:   "save <path>",
-	Short: "Save cookies to custom path",
-	Long: `Saves cookies to a custom file path.
+	Use:   "save [path]",
+	Short: "Save cookies to file",
+	Long: `Saves cookies to a file.
 
+If no path is provided, saves to temp directory with auto-generated filename.
 If path is a directory, auto-generates filename.
 If path is a file, uses exact path.
 
 Examples:
+  cookies save                             # Save to temp dir
   cookies save ./cookies.json              # Save to file
   cookies save ./output/                   # Save to dir
-  cookies save ./github-cookies.json --domain ".github.com"`,
-	Args: cobra.ExactArgs(1),
+  cookies save --domain ".github.com"`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runCookiesSave,
 }
 
@@ -202,7 +185,7 @@ Common patterns:
 }
 
 func init() {
-	// Universal flags on root command (inherited by default/show/save subcommands)
+	// Universal flags on root command (inherited by default/save subcommands)
 	cookiesCmd.PersistentFlags().StringP("find", "f", "", "Search for text within cookie names and values")
 	cookiesCmd.PersistentFlags().Bool("raw", false, "Skip formatting (return raw JSON)")
 
@@ -222,52 +205,18 @@ func init() {
 	cookiesDeleteCmd.Flags().String("domain", "", "Cookie domain (required if ambiguous)")
 
 	// Add all subcommands
-	cookiesCmd.AddCommand(cookiesShowCmd, cookiesSaveCmd, cookiesSetCmd, cookiesDeleteCmd)
+	cookiesCmd.AddCommand(cookiesSaveCmd, cookiesSetCmd, cookiesDeleteCmd)
 
 	rootCmd.AddCommand(cookiesCmd)
 }
 
-// runCookiesDefault handles default behavior: save to temp directory
+// runCookiesDefault handles default behavior: output to stdout
 func runCookiesDefault(cmd *cobra.Command, args []string) error {
 	// Validate that no arguments were provided (catches unknown subcommands)
 	if len(args) > 0 {
 		return outputError(fmt.Sprintf("unknown command %q for \"webctl cookies\"", args[0]))
 	}
 
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	// Get cookies from daemon
-	cookies, err := getCookiesFromDaemon(cmd)
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	// Generate filename in temp directory
-	outputPath, err := generateCookiesPath()
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	// Write cookies to file
-	if err := writeCookiesToFile(outputPath, cookies); err != nil {
-		return outputError(err.Error())
-	}
-
-	// Return JSON response
-	if JSONOutput {
-		return outputJSON(os.Stdout, map[string]any{
-			"ok":   true,
-			"path": outputPath,
-		})
-	}
-
-	return format.FilePath(os.Stdout, outputPath)
-}
-
-// runCookiesShow handles show subcommand: output to stdout
-func runCookiesShow(cmd *cobra.Command, args []string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -308,13 +257,11 @@ func runCookiesShow(cmd *cobra.Command, args []string) error {
 	return format.Cookies(os.Stdout, cookies, format.NewOutputOptions(JSONOutput, NoColor))
 }
 
-// runCookiesSave handles save subcommand: save to custom path
+// runCookiesSave handles save subcommand: save to file
 func runCookiesSave(cmd *cobra.Command, args []string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
-
-	path := args[0]
 
 	// Get cookies from daemon
 	cookies, err := getCookiesFromDaemon(cmd)
@@ -322,16 +269,31 @@ func runCookiesSave(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
-	// Handle directory vs file path
-	fileInfo, err := os.Stat(path)
-	if err == nil && fileInfo.IsDir() {
-		// Path is a directory - auto-generate filename
-		filename := generateCookiesFilename()
-		path = filepath.Join(path, filename)
+	var outputPath string
+
+	if len(args) == 0 {
+		// No path provided - save to temp directory
+		outputPath, err = generateCookiesPath()
+		if err != nil {
+			return outputError(err.Error())
+		}
+	} else {
+		// Path provided
+		path := args[0]
+
+		// Handle directory vs file path
+		fileInfo, err := os.Stat(path)
+		if err == nil && fileInfo.IsDir() {
+			// Path is a directory - auto-generate filename
+			filename := generateCookiesFilename()
+			outputPath = filepath.Join(path, filename)
+		} else {
+			outputPath = path
+		}
 	}
 
 	// Write cookies to file
-	if err := writeCookiesToFile(path, cookies); err != nil {
+	if err := writeCookiesToFile(outputPath, cookies); err != nil {
 		return outputError(err.Error())
 	}
 
@@ -339,11 +301,11 @@ func runCookiesSave(cmd *cobra.Command, args []string) error {
 	if JSONOutput {
 		return outputJSON(os.Stdout, map[string]any{
 			"ok":   true,
-			"path": path,
+			"path": outputPath,
 		})
 	}
 
-	return format.FilePath(os.Stdout, path)
+	return format.FilePath(os.Stdout, outputPath)
 }
 
 // getCookiesFromDaemon fetches cookies from daemon, applying filters

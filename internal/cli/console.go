@@ -16,18 +16,16 @@ import (
 
 var consoleCmd = &cobra.Command{
 	Use:   "console",
-	Short: "Extract console logs from current page (default: save to temp)",
+	Short: "Extract console logs from current page (default: stdout)",
 	Long: `Extracts console logs from the current page with flexible output modes.
 
 Default behavior (no subcommand):
-  Saves console logs to /tmp/webctl-console/ with auto-generated filename
-  Returns JSON with file path
+  Outputs console logs to stdout for piping or inspection
 
 Subcommands:
-  show              Output console logs to stdout
-  save <path>       Save console logs to custom path
+  save [path]       Save console logs to file (temp dir if no path given)
 
-Universal flags (work with default/show/save modes):
+Universal flags (work with all modes):
   --find, -f        Search for text within log messages
   --raw             Skip formatting (return raw JSON)
   --json            Output in JSON format (global flag)
@@ -40,25 +38,21 @@ Console-specific filter flags:
 
 Examples:
 
-Default mode (save to temp):
-  console                                  # All logs to temp
-  console --type error                     # Only errors to temp
-  console --find "undefined"               # Search and save matches
+Default mode (stdout):
+  console                                  # All logs to stdout
+  console --type error                     # Only errors to stdout
+  console --find "undefined"               # Search and show matches
+  console --tail 20                        # Last 20 entries
 
-Show mode (stdout):
-  console show                             # All logs to stdout
-  console show --type error,warn           # Only errors/warnings
-  console show --find "TypeError"          # Search and show matches
-  console show --tail 20                   # Last 20 entries
-
-Save mode (custom path):
-  console save ./logs/debug.json           # Save to file
+Save mode (file):
+  console save                             # Save to temp with auto-filename
+  console save ./logs/debug.json           # Save to custom file
   console save ./output/                   # Save to dir (auto-filename)
-  console save ./errors.json --type error --tail 50
+  console save --type error --tail 50
 
 Response formats:
-  Default/Save: {"ok": true, "path": "/tmp/webctl-console/25-12-28-143052-console.json"}
-  Show:         [15:04:05] ERROR TypeError: undefined (to stdout)
+  Default:  [15:04:05] ERROR TypeError: undefined (to stdout)
+  Save:     /tmp/webctl-console/25-12-28-143052-console.json
 
 Error cases:
   - "no matches found for 'text'" - find text not in logs
@@ -66,37 +60,26 @@ Error cases:
 	RunE: runConsoleDefault,
 }
 
-var consoleShowCmd = &cobra.Command{
-	Use:   "show",
-	Short: "Output console logs to stdout",
-	Long: `Outputs console logs to stdout for real-time monitoring and piping.
-
-Examples:
-  console show                             # All logs
-  console show --type error                # Only errors
-  console show --find "undefined"          # Search within logs
-  console show --tail 20                   # Last 20 entries`,
-	RunE: runConsoleShow,
-}
-
 var consoleSaveCmd = &cobra.Command{
-	Use:   "save <path>",
-	Short: "Save console logs to custom path",
-	Long: `Saves console logs to a custom file path.
+	Use:   "save [path]",
+	Short: "Save console logs to file",
+	Long: `Saves console logs to a file.
 
+If no path is provided, saves to temp directory with auto-generated filename.
 If path is a directory, auto-generates filename.
 If path is a file, uses exact path.
 
 Examples:
+  console save                             # Save to temp dir
   console save ./logs/debug.json           # Save to file
   console save ./output/                   # Save to dir
-  console save ./errors.json --type error --find "fetch"`,
-	Args: cobra.ExactArgs(1),
+  console save --type error --find "fetch"`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runConsoleSave,
 }
 
 func init() {
-	// Universal flags on root command (inherited by default/show/save subcommands)
+	// Universal flags on root command (inherited by default/save subcommands)
 	consoleCmd.PersistentFlags().StringP("find", "f", "", "Search for text within log messages")
 	consoleCmd.PersistentFlags().Bool("raw", false, "Skip formatting (return raw JSON)")
 
@@ -108,12 +91,12 @@ func init() {
 	consoleCmd.MarkFlagsMutuallyExclusive("head", "tail", "range")
 
 	// Add all subcommands
-	consoleCmd.AddCommand(consoleShowCmd, consoleSaveCmd)
+	consoleCmd.AddCommand(consoleSaveCmd)
 
 	rootCmd.AddCommand(consoleCmd)
 }
 
-// runConsoleDefault handles default behavior: save to temp directory
+// runConsoleDefault handles default behavior: output to stdout
 func runConsoleDefault(cmd *cobra.Command, args []string) error {
 	// Validate that no arguments were provided (catches unknown subcommands)
 	if len(args) > 0 {
@@ -130,10 +113,69 @@ func runConsoleDefault(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
-	// Generate filename in temp directory
-	outputPath, err := generateConsolePath()
+	// JSON mode: output JSON
+	if JSONOutput {
+		result := map[string]any{
+			"ok":    true,
+			"logs":  entries,
+			"count": len(entries),
+		}
+		return outputJSON(os.Stdout, result)
+	}
+
+	// Check --raw flag
+	raw, _ := cmd.Flags().GetBool("raw")
+	if !raw && cmd.Parent() != nil {
+		raw, _ = cmd.Parent().PersistentFlags().GetBool("raw")
+	}
+
+	if raw {
+		// Raw mode: output as JSON array
+		result := map[string]any{
+			"ok":    true,
+			"logs":  entries,
+			"count": len(entries),
+		}
+		return outputJSON(os.Stdout, result)
+	}
+
+	// Text mode: use text formatter
+	return format.Console(os.Stdout, entries, format.NewOutputOptions(JSONOutput, NoColor))
+}
+
+// runConsoleSave handles save subcommand: save to file
+func runConsoleSave(cmd *cobra.Command, args []string) error {
+	if !execFactory.IsDaemonRunning() {
+		return outputError("daemon not running. Start with: webctl start")
+	}
+
+	// Get console logs from daemon
+	entries, err := getConsoleFromDaemon(cmd)
 	if err != nil {
 		return outputError(err.Error())
+	}
+
+	var outputPath string
+
+	if len(args) == 0 {
+		// No path provided - save to temp directory
+		outputPath, err = generateConsolePath()
+		if err != nil {
+			return outputError(err.Error())
+		}
+	} else {
+		// Path provided
+		path := args[0]
+
+		// Handle directory vs file path
+		fileInfo, err := os.Stat(path)
+		if err == nil && fileInfo.IsDir() {
+			// Path is a directory - auto-generate filename
+			filename := generateConsoleFilename()
+			outputPath = filepath.Join(path, filename)
+		} else {
+			outputPath = path
+		}
 	}
 
 	// Write console logs to file
@@ -150,86 +192,6 @@ func runConsoleDefault(cmd *cobra.Command, args []string) error {
 	}
 
 	return format.FilePath(os.Stdout, outputPath)
-}
-
-// runConsoleShow handles show subcommand: output to stdout
-func runConsoleShow(cmd *cobra.Command, args []string) error {
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	// Get console logs from daemon
-	entries, err := getConsoleFromDaemon(cmd)
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	// JSON mode: output JSON
-	if JSONOutput {
-		result := map[string]any{
-			"ok":      true,
-			"logs":    entries,
-			"count":   len(entries),
-		}
-		return outputJSON(os.Stdout, result)
-	}
-
-	// Check --raw flag
-	raw, _ := cmd.Flags().GetBool("raw")
-	if !raw && cmd.Parent() != nil {
-		raw, _ = cmd.Parent().PersistentFlags().GetBool("raw")
-	}
-
-	if raw {
-		// Raw mode: output as JSON array
-		result := map[string]any{
-			"ok":      true,
-			"logs":    entries,
-			"count":   len(entries),
-		}
-		return outputJSON(os.Stdout, result)
-	}
-
-	// Text mode: use text formatter
-	return format.Console(os.Stdout, entries, format.NewOutputOptions(JSONOutput, NoColor))
-}
-
-// runConsoleSave handles save subcommand: save to custom path
-func runConsoleSave(cmd *cobra.Command, args []string) error {
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	path := args[0]
-
-	// Get console logs from daemon
-	entries, err := getConsoleFromDaemon(cmd)
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	// Handle directory vs file path
-	fileInfo, err := os.Stat(path)
-	if err == nil && fileInfo.IsDir() {
-		// Path is a directory - auto-generate filename
-		filename := generateConsoleFilename()
-		path = filepath.Join(path, filename)
-	}
-
-	// Write console logs to file
-	if err := writeConsoleToFile(path, entries); err != nil {
-		return outputError(err.Error())
-	}
-
-	// Return JSON response
-	if JSONOutput {
-		return outputJSON(os.Stdout, map[string]any{
-			"ok":   true,
-			"path": path,
-		})
-	}
-
-	return format.FilePath(os.Stdout, path)
 }
 
 // getConsoleFromDaemon fetches console logs from daemon, applying filters
@@ -390,9 +352,9 @@ func writeConsoleToFile(path string, entries []ipc.ConsoleEntry) error {
 
 	// Marshal entries to JSON
 	data := map[string]any{
-		"ok":      true,
-		"logs":    entries,
-		"count":   len(entries),
+		"ok":    true,
+		"logs":  entries,
+		"count": len(entries),
 	}
 
 	jsonBytes, err := json.MarshalIndent(data, "", "  ")

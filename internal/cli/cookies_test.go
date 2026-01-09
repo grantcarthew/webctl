@@ -113,21 +113,19 @@ func TestRunCookiesDefault_Success(t *testing.T) {
 		t.Errorf("expected ok=true, got %v", result["ok"])
 	}
 
-	path, ok := result["path"].(string)
+	// Default mode now outputs to stdout, so we should have cookies and count (not path)
+	if result["count"] != float64(2) {
+		t.Errorf("expected count=2, got %v", result["count"])
+	}
+
+	resultCookies, ok := result["cookies"].([]any)
 	if !ok {
-		t.Fatalf("expected path to be string, got %T", result["path"])
+		t.Fatalf("expected cookies to be array, got %T", result["cookies"])
 	}
 
-	if !strings.HasPrefix(path, "/tmp/webctl-cookies/") {
-		t.Errorf("expected path to start with /tmp/webctl-cookies/, got %s", path)
+	if len(resultCookies) != 2 {
+		t.Errorf("expected 2 cookies, got %d", len(resultCookies))
 	}
-
-	if !strings.HasSuffix(path, "-cookies.json") {
-		t.Errorf("expected path to end with -cookies.json, got %s", path)
-	}
-
-	// Clean up temp file
-	os.Remove(path)
 }
 
 func TestRunCookiesDefault_UnknownSubcommand(t *testing.T) {
@@ -197,7 +195,7 @@ func TestRunCookiesShow_Success(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runCookiesShow(cookiesShowCmd, nil)
+	err := runCookiesDefault(cookiesCmd, nil)
 
 	w.Close()
 	os.Stdout = old

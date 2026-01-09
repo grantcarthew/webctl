@@ -23,9 +23,8 @@ Redesign cookies command to follow the universal observation pattern for cookie 
 
 ```bash
 # Universal pattern (observation)
-webctl cookies                  # Save all cookies to temp
-webctl cookies show             # Output all cookies to stdout
-webctl cookies save <path>      # Save all cookies to custom path
+webctl cookies                  # Output all cookies to stdout (Unix convention)
+webctl cookies save [path]      # Save to file (temp if no path, custom if path given)
 
 # Universal flags (observation)
 --find, -f TEXT                 # Search within cookie names and values
@@ -41,15 +40,18 @@ webctl cookies set <name> <value> [flags]    # Set cookie
 webctl cookies delete <name> [flags]         # Delete cookie
 ```
 
-The universal pattern applies to cookie observation (reading). Mutation operations (set/delete) remain as separate subcommands to maintain clear separation between read and write operations.
+The cookies command outputs to stdout by default (Unix convention), with a save subcommand for file output. Mutation operations (set/delete) remain as separate subcommands to maintain clear separation between read and write operations.
 
 Complete specification: docs/design/interface/cookies.md
 
 ## Why
 
-Universal Pattern for Cookie Observation:
+Unix Convention (stdout by default):
 
-The default/show/save pattern applies to reading cookies, providing consistent behavior with other observation commands. Users get predictable output mode control and file preservation for cookie data.
+Following Unix philosophy, observation commands output to stdout by default. This enables:
+- Piping to other tools (grep, less, jq)
+- Quick inspection without file management
+- Consistent with standard CLI tools
 
 Separation of Observation and Mutation:
 
@@ -58,19 +60,14 @@ Cookies have two distinct use cases:
 1. Observation: Reading current cookies for debugging, analysis, session transfer
 2. Mutation: Setting or deleting cookies for testing, authentication
 
-The universal pattern (default/show/save) applies to observation only. Mutation operations remain as separate subcommands (set/delete) to maintain clear distinction between read and write operations.
+The universal pattern applies to observation only. Mutation operations remain as separate subcommands (set/delete) to maintain clear distinction between read and write operations.
 
-Default to Temp File:
+Save Subcommand for Files:
 
-Saving cookies to temp by default preserves session data for later analysis. Cookie data is often needed for session debugging, authentication troubleshooting, and testing. Automatic preservation prevents data loss.
-
-Show Subcommand for Interactive Inspection:
-
-Explicit show subcommand outputs cookies to stdout for quick inspection and piping to analysis tools. This provides interactive debugging capability.
-
-Save Subcommand for Session Transfer:
-
-The save subcommand enables saving cookies to specific locations for session transfer between environments, automated testing, or archival. This fills a critical gap in cookie management workflows.
+When file output is needed, the save subcommand provides flexibility:
+- `cookies save` - saves to temp directory with auto-generated filename
+- `cookies save ./cookies.json` - saves to custom path
+- Directory paths auto-generate filenames, file paths use exact names
 
 Cookies-Specific Filter Flags:
 
@@ -193,19 +190,14 @@ webctl cookies              # Only observation with universal pattern
 Observation Pattern (Universal):
 
 Default (no subcommand):
-- Saves all cookies to /tmp/webctl-cookies/
-- Auto-generates filename: YY-MM-DD-HHMMSS-cookies.json
-- Returns JSON with file path
-- Formatted text or JSON based on --json flag
-
-Show subcommand:
-- Outputs all cookies to stdout
+- Outputs all cookies to stdout (Unix convention)
 - Formatted table with name, value, domain, path, expiry, flags
-- Current observation behavior
+- Useful for piping to other tools
 
 Save subcommand:
-- Requires path argument
-- Directory: auto-generates filename
+- Optional path argument
+- No path: saves to /tmp/webctl-cookies/ with auto-generated filename
+- Directory: auto-generates filename in that directory
 - File: saves to exact path
 - Creates parent directories if needed
 
@@ -259,36 +251,28 @@ delete <name>:
 
 ## Usage Examples
 
-Default behavior (save to temp):
+Default behavior (stdout):
 
 ```bash
 webctl cookies
-# {"ok": true, "path": "/tmp/webctl-cookies/25-12-28-143052-cookies.json"}
-
-webctl cookies --domain ".github.com"
-# {"ok": true, "path": "/tmp/webctl-cookies/25-12-28-143115-cookies.json"}
-# (only GitHub cookies)
-```
-
-Show to stdout:
-
-```bash
-webctl cookies show
 # session_id | abc123 | .example.com | / | Session | Secure, HttpOnly
 # remember   | xyz789 | example.com  | / | 2026-01-01 | Secure
 
-webctl cookies show --domain ".github.com"
+webctl cookies --domain ".github.com"
 # user_session | token123 | .github.com | / | 2026-01-01 | Secure, HttpOnly
 # _gh_sess     | sess456  | github.com  | / | Session | Secure
 
-webctl cookies show --find "session"
+webctl cookies --find "session"
 # session_id   | abc123 | .example.com | / | Session | Secure, HttpOnly
 # user_session | token123 | .github.com | / | 2026-01-01 | Secure, HttpOnly
 ```
 
-Save to custom path:
+Save to file:
 
 ```bash
+webctl cookies save
+# {"ok": true, "path": "/tmp/webctl-cookies/25-12-28-143052-cookies.json"}
+
 webctl cookies save ./cookies.json
 # {"ok": true, "path": "./cookies.json"}
 
@@ -303,18 +287,18 @@ Cookies-specific filters:
 
 ```bash
 # Domain filtering
-webctl cookies show --domain ".example.com"
-webctl cookies show --domain "github.com"
+webctl cookies --domain ".example.com"
+webctl cookies --domain "github.com"
 
 # Name filtering
-webctl cookies show --name "session_id"
+webctl cookies --name "session_id"
 
 # Search within cookies
-webctl cookies show --find "session"
-webctl cookies show --find "token"
+webctl cookies --find "session"
+webctl cookies --find "token"
 
 # Combined filtering
-webctl cookies show --domain ".github.com" --find "session"
+webctl cookies --domain ".github.com" --find "session"
 webctl cookies save ./github-sessions.json --domain ".github.com" --find "session"
 ```
 
@@ -363,7 +347,7 @@ webctl cookies save ./production-cookies.json --domain ".example.com"
 JSON output:
 
 ```bash
-webctl cookies show --json
+webctl cookies --json
 # {
 #   "ok": true,
 #   "cookies": [
@@ -401,7 +385,7 @@ Identifier: Fixed to "cookies" (no variation needed)
 
 ## Output Format
 
-Text Mode (default for show):
+Text Mode (default):
 
 Formatted table:
 ```
@@ -440,13 +424,12 @@ Array of cookie objects:
 
 From DR-015 (Cookies Command Interface):
 
-1. Changed: Default behavior now saves to temp instead of stdout (if stdout was default)
-2. Added: show subcommand for explicit stdout output
-3. Added: save subcommand for custom path specification
+1. Changed: Default behavior now outputs to stdout (Unix convention)
+2. Removed: show subcommand (not needed - stdout is default)
+3. Changed: save subcommand now takes optional path (temp if no path)
 4. Added: --find flag for text search within cookie names and values
 5. Added: --domain and --name filter flags
-6. Added: Default output to JSON file format
-7. Retained: set and delete subcommands (behavior unchanged)
+6. Retained: set and delete subcommands (behavior unchanged)
 
 Migration Guide:
 
@@ -457,19 +440,20 @@ webctl cookies set session abc123    # Set cookie
 webctl cookies delete session        # Delete cookie
 ```
 
-New pattern (DR-029):
+New pattern (DR-029 after P-051):
 ```bash
-webctl cookies show                  # Stdout (changed)
-webctl cookies                       # Save to temp (new behavior)
+webctl cookies                       # Output to stdout (same as before)
+webctl cookies save                  # Save to temp (new)
 webctl cookies save ./cookies.json   # Save to custom path (new feature)
 webctl cookies set session abc123    # Set cookie (same)
 webctl cookies delete session        # Delete cookie (same)
 ```
 
-For users who want stdout output, update scripts to use `webctl cookies show`.
+The default stdout behavior is preserved. Use `webctl cookies save` when file output is needed.
 
 Mutation subcommands (set/delete) remain unchanged for backward compatibility.
 
 ## Updates
 
+- 2026-01-09: Updated to stdout default, removed show subcommand (P-051)
 - 2025-12-28: Initial version (supersedes DR-015)

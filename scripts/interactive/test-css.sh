@@ -16,7 +16,7 @@ cmd() {
 clear
 title "webctl css Command Test Suite"
 echo "Project: P-035"
-echo "Tests CSS extraction with show/save/computed/get modes"
+echo "Tests CSS extraction with stdout default, save/computed/get modes"
 echo ""
 echo "Prerequisites:"
 echo "  - webctl must be built"
@@ -42,58 +42,41 @@ echo "Wait for page to fully load"
 read -p "Press Enter when page loaded..."
 
 # Default mode tests
-title "Default Mode (Save to Temp)"
+title "Default Mode (Output to Stdout)"
 
-heading "Extract all stylesheets to temp"
+heading "Extract all stylesheets to stdout"
 cmd "webctl css"
-
-echo ""
-echo "Verify: File saved to /tmp/webctl-css/"
-echo "Verify: Auto-generated filename with timestamp"
-echo "Verify: JSON response shows file path"
-read -p "Press Enter to continue..."
-
-heading "Extract computed styles for element to temp"
-cmd "webctl css --select \"body\""
-
-echo ""
-echo "Verify: Computed styles saved (not stylesheets)"
-read -p "Press Enter to continue..."
-
-heading "Search for CSS text and save"
-cmd "webctl css --find \"color\""
-
-echo ""
-echo "Verify: CSS containing 'color' saved"
-read -p "Press Enter to continue..."
-
-# Show mode tests
-title "Show Mode (Output to Stdout)"
-
-heading "Show all stylesheets"
-cmd "webctl css show"
 
 echo ""
 echo "Verify: CSS output to stdout"
 echo "Verify: No file created"
 read -p "Press Enter to continue..."
 
-heading "Show computed styles for element"
-cmd "webctl css show --select \"h1\""
+heading "Extract computed styles for element to stdout"
+cmd "webctl css --select \"body\""
 
 echo ""
-echo "Verify: Computed styles for h1 shown"
+echo "Verify: Computed styles shown (not stylesheets)"
 read -p "Press Enter to continue..."
 
-heading "Show with text search"
-cmd "webctl css show --find \"font\""
+heading "Search for CSS text"
+cmd "webctl css --find \"color\""
 
 echo ""
-echo "Verify: CSS containing 'font' shown"
+echo "Verify: CSS containing 'color' shown"
 read -p "Press Enter to continue..."
 
 # Save mode tests
-title "Save Mode (Custom Path)"
+title "Save Mode (File Output)"
+
+heading "Save to temp (no path)"
+cmd "webctl css save"
+
+echo ""
+echo "Verify: File saved to /tmp/webctl-css/"
+echo "Verify: Auto-generated filename with timestamp"
+echo "Verify: JSON response shows file path"
+read -p "Press Enter to continue..."
 
 heading "Save to custom file"
 cmd "webctl css save ./styles.css"
@@ -183,21 +166,21 @@ read -p "Press Enter to continue..."
 title "Select Flag Tests"
 
 heading "Select by ID for computed styles"
-cmd "webctl css show --select \"#main\""
+cmd "webctl css --select \"#main\""
 
 echo ""
 echo "Check if element with id 'main' exists, adjust selector if needed"
 read -p "Press Enter to continue..."
 
 heading "Select by class for computed styles"
-cmd "webctl css show --select \"div\""
+cmd "webctl css --select \"div\""
 
 echo ""
 echo "Verify: Computed styles for div elements"
 read -p "Press Enter to continue..."
 
 heading "Complex selector"
-cmd "webctl css show --select \"body > div\""
+cmd "webctl css --select \"body > div\""
 
 echo ""
 echo "Verify: Computed styles for direct div children of body"
@@ -207,21 +190,21 @@ read -p "Press Enter to continue..."
 title "Find Flag Tests"
 
 heading "Find text in CSS"
-cmd "webctl css show --find \"background\""
+cmd "webctl css --find \"background\""
 
 echo ""
 echo "Verify: CSS rules containing 'background'"
 read -p "Press Enter to continue..."
 
 heading "Find with no matches (should error)"
-cmd "webctl css show --find \"ThisTextDoesNotExist123\""
+cmd "webctl css --find \"ThisTextDoesNotExist123\""
 
 echo ""
 echo "Verify: Error message about no matches"
 read -p "Press Enter to continue..."
 
 heading "Find combined with select"
-cmd "webctl css show --select \"body\" --find \"color\""
+cmd "webctl css --select \"body\" --find \"color\""
 
 echo ""
 echo "Verify: Computed styles for body containing 'color'"
@@ -231,14 +214,14 @@ read -p "Press Enter to continue..."
 title "Raw Flag Tests"
 
 heading "Raw output (no formatting)"
-cmd "webctl css show --raw"
+cmd "webctl css --raw"
 
 echo ""
 echo "Verify: Unformatted CSS as-is from browser"
 read -p "Press Enter to continue..."
 
 heading "Raw with select"
-cmd "webctl css show --raw --select \"h1\""
+cmd "webctl css --raw --select \"h1\""
 
 echo ""
 echo "Verify: Raw computed styles for h1"
@@ -247,22 +230,22 @@ read -p "Press Enter to continue..."
 # Output format tests
 title "Output Format Tests"
 
-heading "JSON output with show mode"
-cmd "webctl css show --json"
+heading "JSON output"
+cmd "webctl css --json"
 
 echo ""
 echo "Verify: JSON formatted output"
 read -p "Press Enter to continue..."
 
 heading "No color output"
-cmd "webctl css show --no-color"
+cmd "webctl css --no-color"
 
 echo ""
 echo "Verify: No ANSI color codes"
 read -p "Press Enter to continue..."
 
 heading "Debug verbose output"
-cmd "webctl css show --debug"
+cmd "webctl css --debug"
 
 echo ""
 echo "Verify: Debug logging information"
@@ -297,7 +280,7 @@ title "REPL Mode Tests"
 
 heading "Test css in REPL"
 echo "Switch to daemon terminal and execute:"
-cmd "css show"
+cmd "css"
 
 echo ""
 echo "Should work identically to CLI mode"

@@ -25,12 +25,17 @@ Implement `webctl screenshot` command with the following interface:
 webctl screenshot [flags]
 ```
 
+Subcommands:
+
+| Subcommand | Description |
+|------------|-------------|
+| save [path] | Save screenshot to file (temp if no path, custom if path given) |
+
 Flags:
 
 | Flag | Short | Type | Description |
 |------|-------|------|-------------|
 | --full-page | | bool | Capture entire scrollable page instead of viewport |
-| --output | -o | string | Save to specified path instead of temp directory |
 
 Output format:
 
@@ -130,13 +135,13 @@ JPEG would only benefit file size at cost of quality and complexity.
 
 Custom output path support:
 
-While temp directory covers most use cases, --output enables:
+While temp directory covers most use cases, the save subcommand enables:
 
 - Organized test artifacts in CI/CD pipelines
 - Permanent documentation screenshots
 - Integration with existing tooling/workflows
 
-Optional flag keeps simple case simple while enabling advanced use.
+The save subcommand keeps simple case simple while enabling advanced use.
 
 ## Trade-offs
 
@@ -268,13 +273,13 @@ webctl screenshot --full-page
 # {"ok": true, "path": "/tmp/webctl-screenshots/25-12-17-212346-example-domain.png"}
 ```
 
-Custom output path:
+Custom output path (save subcommand):
 
 ```bash
-webctl screenshot --output ./docs/screenshot.png
+webctl screenshot save ./docs/screenshot.png
 # {"ok": true, "path": "./docs/screenshot.png"}
 
-webctl screenshot -o /tmp/debug/issue-123.png
+webctl screenshot save /tmp/debug/issue-123.png
 # {"ok": true, "path": "/tmp/debug/issue-123.png"}
 ```
 
@@ -299,7 +304,7 @@ CI/CD test artifact:
 
 ```bash
 webctl navigate https://staging.example.com
-webctl screenshot --full-page --output ./test-results/homepage-${CI_BUILD_ID}.png
+webctl screenshot save ./test-results/homepage-${CI_BUILD_ID}.png --full-page
 # Organized artifacts in test results directory
 ```
 
@@ -307,10 +312,10 @@ Multi-session debugging:
 
 ```bash
 webctl target "Admin Panel"
-webctl screenshot --output ./admin-screenshot.png
+webctl screenshot save ./admin-screenshot.png
 
 webctl target "User Dashboard"
-webctl screenshot --output ./dashboard-screenshot.png
+webctl screenshot save ./dashboard-screenshot.png
 # Capture different tabs explicitly
 ```
 
@@ -479,4 +484,5 @@ Capture at specific viewport dimensions. Deferred as browser window size is appr
 
 ## Updates
 
+- 2025-01-09: Updated to use save subcommand instead of --output flag (P-051)
 - 2025-12-17: Initial version
