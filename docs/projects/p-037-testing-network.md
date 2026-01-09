@@ -5,7 +5,7 @@
 
 ## Overview
 
-Test the webctl network command which extracts network requests from the current page. This command supports three modes (default/show/save) with extensive filtering capabilities including type, method, status, URL patterns, MIME types, duration, size, and failure state.
+Test the webctl network command which extracts network requests from the current page. This command outputs to stdout by default, with a save subcommand for file output.
 
 ## Test Script
 
@@ -23,12 +23,12 @@ Run the interactive test script:
 ## Command Signature
 
 ```
-webctl network [show|save <path>] [--find text] [--type type] [--method method] [--status status] [--url pattern] [--mime mime] [--min-duration duration] [--min-size bytes] [--failed] [--head N] [--tail N] [--range N-M] [--max-body-size bytes] [--raw]
+webctl network [save [path]] [--find text] [--type type] [--method method] [--status status] [--url pattern] [--mime mime] [--min-duration duration] [--min-size bytes] [--failed] [--head N] [--tail N] [--range N-M] [--max-body-size bytes] [--raw]
 ```
 
 Subcommands:
-- (default): Save to /tmp/webctl-network/ with auto-generated filename
-- show: Output network requests to stdout
+- (default): Output network requests to stdout
+- save: Save to /tmp/webctl-network/ with auto-generated filename
 - save <path>: Save to custom path
 
 Universal flags (work with default/show/save modes):
@@ -52,22 +52,22 @@ Network-specific filter flags:
 
 ## Test Checklist
 
-Default mode (save to temp):
-- [ ] network (all requests to temp)
-- [ ] network --status 4xx (only 4xx to temp)
-- [ ] network --find "api" (search and save)
+Default mode (stdout):
+- [ ] network (all requests to stdout)
+- [ ] network --status 4xx,5xx (only errors to stdout)
+- [ ] network --find "fetch" (search and output)
+- [ ] network --tail 20 (last 20 entries)
+- [ ] Verify formatted text output to stdout
+- [ ] Verify no file created
+
+Save mode (file output):
+- [ ] network save (all requests to temp)
+- [ ] network save --status 4xx (only 4xx to temp)
+- [ ] network save --find "api" (search and save)
 - [ ] Verify file saved to /tmp/webctl-network/
 - [ ] Verify auto-generated filename format (YY-MM-DD-HHMMSS-network.json)
 - [ ] Verify JSON response with file path
 - [ ] Verify JSON file structure (ok, entries, count)
-
-Show mode (stdout):
-- [ ] network show (all requests to stdout)
-- [ ] network show --status 4xx,5xx (only errors)
-- [ ] network show --find "fetch" (search and show)
-- [ ] network show --tail 20 (last 20 entries)
-- [ ] Verify formatted text output to stdout
-- [ ] Verify no file created
 
 Save mode (custom path):
 - [ ] network save ./logs/requests.json (save to file)
@@ -224,19 +224,19 @@ Error cases:
 
 CLI vs REPL:
 - [ ] CLI: webctl network
-- [ ] CLI: webctl network show
+- [ ] CLI: webctl network save
 - [ ] CLI: webctl network save ./requests.json
-- [ ] CLI: webctl network show --status 4xx --tail 10
-- [ ] CLI: webctl network show --type xhr,fetch --method POST
+- [ ] CLI: webctl network --status 4xx --tail 10
+- [ ] CLI: webctl network --type xhr,fetch --method POST
 - [ ] REPL: network
-- [ ] REPL: network show
+- [ ] REPL: network save
 - [ ] REPL: network save ./requests.json
-- [ ] REPL: network show --status 4xx --tail 10
+- [ ] REPL: network --status 4xx --tail 10
 
 ## Notes
 
-- Default mode saves to temp for quick debugging
-- Show mode useful for real-time monitoring and piping
+- Default mode outputs to stdout (Unix convention)
+- Save mode saves to temp or custom path
 - All filters are AND-combined (must match all specified filters)
 - StringSlice flags support both CSV and repeatable syntax
 - Status filter supports exact match (200), wildcard (4xx), and range (200-299)

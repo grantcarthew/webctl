@@ -496,7 +496,7 @@ read -p "Press Enter to continue..."
 # Output format tests
 title "Output Format Tests"
 
-heading "JSON output with show mode"
+heading "JSON output"
 cmd "webctl network --json"
 
 echo ""

@@ -182,7 +182,7 @@ echo "Navigate and capture screenshot"
 read -p "Press Enter to continue..."
 
 heading "navigate --wait && html"
-cmd "webctl navigate example.com --wait && webctl html show"
+cmd "webctl navigate example.com --wait && webctl html"
 
 echo ""
 echo "Navigate, wait, then show HTML"

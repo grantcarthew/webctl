@@ -163,7 +163,7 @@ cmd "webctl serve \$(git rev-parse --show-toplevel)/testdata"
 
 echo ""
 echo "In another terminal, test:"
-cmd "webctl console show"
+cmd "webctl console"
 echo ""
 echo "TIP: Click the console test buttons on the test page!"
 

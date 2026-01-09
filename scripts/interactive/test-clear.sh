@@ -49,14 +49,14 @@ echo "Verify: Console messages logged"
 read -p "Press Enter to continue..."
 
 heading "Verify console events exist"
-cmd "webctl console show"
+cmd "webctl console"
 
 echo ""
 echo "Verify: Shows console messages"
 read -p "Press Enter to continue..."
 
 heading "Verify network events exist"
-cmd "webctl network show"
+cmd "webctl network"
 
 echo ""
 echo "Verify: Shows network requests"
@@ -73,14 +73,14 @@ echo "Verify: Success message or OK"
 read -p "Press Enter to continue..."
 
 heading "Verify console buffer cleared"
-cmd "webctl console show"
+cmd "webctl console"
 
 echo ""
 echo "Verify: No console messages (empty)"
 read -p "Press Enter to continue..."
 
 heading "Verify network buffer cleared"
-cmd "webctl network show"
+cmd "webctl network"
 
 echo ""
 echo "Verify: No network requests (empty)"
@@ -97,8 +97,8 @@ echo ""
 read -p "Press Enter when ready..."
 
 heading "Verify both buffers have events"
-cmd "webctl console show"
-cmd "webctl network show"
+cmd "webctl console"
+cmd "webctl network"
 
 echo ""
 echo "Verify: Both show events"
@@ -112,14 +112,14 @@ echo "Verify: Success message"
 read -p "Press Enter to continue..."
 
 heading "Verify console buffer cleared"
-cmd "webctl console show"
+cmd "webctl console"
 
 echo ""
 echo "Verify: Console empty"
 read -p "Press Enter to continue..."
 
 heading "Verify network buffer NOT cleared"
-cmd "webctl network show"
+cmd "webctl network"
 
 echo ""
 echo "Verify: Network requests still present"
@@ -135,7 +135,7 @@ echo ""
 read -p "Press Enter to continue..."
 
 heading "Verify console has events"
-cmd "webctl console show"
+cmd "webctl console"
 
 echo ""
 echo "Verify: Shows console messages"
@@ -149,14 +149,14 @@ echo "Verify: Success message"
 read -p "Press Enter to continue..."
 
 heading "Verify network buffer cleared"
-cmd "webctl network show"
+cmd "webctl network"
 
 echo ""
 echo "Verify: Network empty"
 read -p "Press Enter to continue..."
 
 heading "Verify console buffer NOT cleared"
-cmd "webctl console show"
+cmd "webctl console"
 
 echo ""
 echo "Verify: Console messages still present"
@@ -173,8 +173,8 @@ echo ""
 read -p "Press Enter to continue..."
 
 heading "Observe events"
-cmd "webctl console show"
-cmd "webctl network show"
+cmd "webctl console"
+cmd "webctl network"
 
 echo ""
 echo "Verify: Events from scenario 1 present"
@@ -194,8 +194,8 @@ echo ""
 read -p "Press Enter to continue..."
 
 heading "Verify only scenario 2 events present"
-cmd "webctl console show"
-cmd "webctl network show"
+cmd "webctl console"
+cmd "webctl network"
 
 echo ""
 echo "Verify: Only new events from scenario 2"
@@ -355,7 +355,7 @@ echo ""
 read -p "Press Enter to continue..."
 
 heading "Verify console events still present"
-cmd "webctl console show"
+cmd "webctl console"
 
 echo ""
 echo "Verify: Console events still there"
@@ -374,7 +374,7 @@ echo ""
 read -p "Press Enter to continue..."
 
 heading "Verify network events still present"
-cmd "webctl network show"
+cmd "webctl network"
 
 echo ""
 echo "Verify: Network events still there"

@@ -230,7 +230,7 @@ echo "Forward and wait for ready state"
 read -p "Press Enter to continue..."
 
 heading "forward --wait && html"
-cmd "webctl forward --wait && webctl html show"
+cmd "webctl forward --wait && webctl html"
 
 echo ""
 echo "Forward, wait, then show HTML"

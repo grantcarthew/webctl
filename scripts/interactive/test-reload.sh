@@ -153,8 +153,8 @@ echo ""
 echo "Reload and wait for ready state"
 read -p "Press Enter to continue..."
 
-heading "reload --wait && console show"
-cmd "webctl reload --wait && webctl console show"
+heading "reload --wait && console"
+cmd "webctl reload --wait && webctl console"
 
 echo ""
 echo "Reload, wait, then show console logs"

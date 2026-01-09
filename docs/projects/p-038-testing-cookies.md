@@ -5,7 +5,7 @@
 
 ## Overview
 
-Test the webctl cookies command which extracts and manipulates cookies from the current page. This command supports five modes (default/show/save/set/delete) with filtering by domain, name, and text search.
+Test the webctl cookies command which extracts and manipulates cookies from the current page. This command outputs to stdout by default, with save/set/delete subcommands for file output and mutations.
 
 ## Test Script
 
@@ -23,12 +23,12 @@ Run the interactive test script:
 ## Command Signature
 
 ```
-webctl cookies [show|save <path>|set <name> <value>|delete <name>] [--find text] [--domain domain] [--name name] [--raw]
+webctl cookies [save [path]|set <name> <value>|delete <name>] [--find text] [--domain domain] [--name name] [--raw]
 ```
 
 Subcommands:
-- (default): Save to /tmp/webctl-cookies/ with auto-generated filename
-- show: Output cookies to stdout
+- (default): Output cookies to stdout
+- save: Save to /tmp/webctl-cookies/ with auto-generated filename
 - save <path>: Save to custom path
 - set <name> <value>: Set a cookie (mutation)
 - delete <name>: Delete a cookie (mutation)
@@ -55,22 +55,22 @@ Delete subcommand flags:
 
 ## Test Checklist
 
-Default mode (save to temp):
-- [ ] cookies (all cookies to temp)
+Default mode (stdout):
+- [ ] cookies (all cookies to stdout)
 - [ ] cookies --domain ".github.com" (only GitHub cookies)
-- [ ] cookies --find "session" (search and save)
+- [ ] cookies --find "session" (search and output)
+- [ ] cookies --name "session_id" (exact name match)
+- [ ] Verify formatted text output to stdout
+- [ ] Verify no file created
+
+Save mode (file output):
+- [ ] cookies save (all cookies to temp)
+- [ ] cookies save --domain ".github.com" (only GitHub cookies)
+- [ ] cookies save --find "session" (search and save)
 - [ ] Verify file saved to /tmp/webctl-cookies/
 - [ ] Verify auto-generated filename format (YY-MM-DD-HHMMSS-cookies.json)
 - [ ] Verify JSON response with file path
 - [ ] Verify JSON file structure (ok, cookies, count)
-
-Show mode (stdout):
-- [ ] cookies show (all cookies to stdout)
-- [ ] cookies show --domain ".github.com" (only GitHub cookies)
-- [ ] cookies show --find "session" (search and show)
-- [ ] cookies show --name "session_id" (exact name match)
-- [ ] Verify formatted text output to stdout
-- [ ] Verify no file created
 
 Save mode (custom path):
 - [ ] cookies save ./cookies.json (save to file)
@@ -197,23 +197,23 @@ Error cases:
 
 CLI vs REPL:
 - [ ] CLI: webctl cookies
-- [ ] CLI: webctl cookies show
+- [ ] CLI: webctl cookies save
 - [ ] CLI: webctl cookies save ./cookies.json
-- [ ] CLI: webctl cookies show --domain ".github.com"
+- [ ] CLI: webctl cookies --domain ".github.com"
 - [ ] CLI: webctl cookies set session abc123
 - [ ] CLI: webctl cookies set auth xyz --secure --httponly --max-age 3600
 - [ ] CLI: webctl cookies delete session
 - [ ] CLI: webctl cookies delete session --domain example.com
 - [ ] REPL: cookies
-- [ ] REPL: cookies show
+- [ ] REPL: cookies save
 - [ ] REPL: cookies save ./cookies.json
 - [ ] REPL: cookies set session abc123
 - [ ] REPL: cookies delete session
 
 ## Notes
 
-- Default mode saves to temp for quick debugging
-- Show mode useful for inspection and piping
+- Default mode outputs to stdout (Unix convention)
+- Save mode saves to temp or custom path
 - Set subcommand mutates browser state (creates/updates cookie)
 - Delete subcommand mutates browser state (removes cookie)
 - Domain filter matches exact domain and subdomains

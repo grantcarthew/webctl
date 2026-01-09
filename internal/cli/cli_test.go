@@ -1446,7 +1446,7 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 	os.Stdout = wOut1
 	os.Stderr = wErr1
 
-	recognized, err := ExecuteArgs([]string{"console", "show", "--json", "--tail", "2"})
+	recognized, err := ExecuteArgs([]string{"console", "--json", "--tail", "2"})
 	if !recognized {
 		t.Fatal("command not recognized")
 	}
@@ -1486,7 +1486,7 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 	os.Stdout = wOut2
 	os.Stderr = wErr2
 
-	recognized, err = ExecuteArgs([]string{"console", "show", "--json"})
+	recognized, err = ExecuteArgs([]string{"console", "--json"})
 	if !recognized {
 		t.Fatal("second command not recognized")
 	}
@@ -2764,8 +2764,8 @@ func TestRunEval_Timeout(t *testing.T) {
 	w.Close()
 	os.Stdout = old
 
-	if capturedTimeout != 5000 {
-		t.Errorf("expected timeout=5000ms, got %d", capturedTimeout)
+	if capturedTimeout != 5 {
+		t.Errorf("expected timeout=5s, got %d", capturedTimeout)
 	}
 }
 
@@ -5122,9 +5122,9 @@ func TestRunReady_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Default timeout should be 60 seconds = 60000ms
-	if capturedParams.Timeout != 60000 {
-		t.Errorf("expected Timeout=60000, got %d", capturedParams.Timeout)
+	// Default timeout should be 60 seconds
+	if capturedParams.Timeout != 60 {
+		t.Errorf("expected Timeout=60, got %d", capturedParams.Timeout)
 	}
 
 	var buf bytes.Buffer
@@ -5168,9 +5168,9 @@ func TestRunReady_WithCustomTimeout(t *testing.T) {
 	w.Close()
 	os.Stdout = old
 
-	// 10 seconds = 10000ms
-	if capturedParams.Timeout != 10000 {
-		t.Errorf("expected Timeout=10000, got %d", capturedParams.Timeout)
+	// 10 seconds
+	if capturedParams.Timeout != 10 {
+		t.Errorf("expected Timeout=10, got %d", capturedParams.Timeout)
 	}
 }
 

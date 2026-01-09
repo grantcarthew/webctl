@@ -16,7 +16,7 @@ cmd() {
 clear
 title "webctl cookies Command Test Suite"
 echo "Project: P-038"
-echo "Tests cookie extraction and manipulation (show/save/set/delete)"
+echo "Tests cookie extraction and manipulation (stdout/save/set/delete)"
 echo ""
 echo "Prerequisites:"
 echo "  - webctl must be built"
@@ -194,7 +194,7 @@ echo "Verify: Cookie created with default domain and path"
 read -p "Press Enter to continue..."
 
 heading "Verify cookie was set"
-cmd "webctl cookies show --name test_session"
+cmd "webctl cookies --name test_session"
 
 echo ""
 echo "Verify: test_session cookie shown with value abc123"
@@ -218,7 +218,7 @@ echo "Verify: Cookie created with expiry set"
 read -p "Press Enter to continue..."
 
 heading "Verify persistent cookie"
-cmd "webctl cookies show --name remember_me"
+cmd "webctl cookies --name remember_me"
 
 echo ""
 echo "Verify: Cookie shows expiry time"
@@ -256,7 +256,7 @@ echo "Verify: Cookie created with both flags"
 read -p "Press Enter to continue..."
 
 heading "Verify secure flags"
-cmd "webctl cookies show --find \"_test\""
+cmd "webctl cookies --find \"_test\""
 
 echo ""
 echo "Verify: Cookies show Secure and HttpOnly flags"
@@ -311,7 +311,7 @@ echo "Verify: Cookie created with SameSite=None and Secure"
 read -p "Press Enter to continue..."
 
 heading "Verify SameSite cookies"
-cmd "webctl cookies show --find \"samesite_\""
+cmd "webctl cookies --find \"samesite_\""
 
 echo ""
 echo "Verify: Cookies show SameSite attribute"
@@ -328,7 +328,7 @@ echo "Verify: Cookie created with all attributes"
 read -p "Press Enter to continue..."
 
 heading "Verify full featured cookie"
-cmd "webctl cookies show --name full_featured"
+cmd "webctl cookies --name full_featured"
 
 echo ""
 echo "Verify: All attributes set correctly"
@@ -345,7 +345,7 @@ echo "Verify: Cookie deleted successfully"
 read -p "Press Enter to continue..."
 
 heading "Verify deletion"
-cmd "webctl cookies show --name test_session"
+cmd "webctl cookies --name test_session"
 
 echo ""
 echo "Verify: Cookie no longer exists (error or empty)"

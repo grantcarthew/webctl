@@ -64,8 +64,8 @@ Server lifecycle:
 
 Integration with webctl commands:
   serve ./public                   # Start server
-  console show                     # Monitor console logs
-  network show --status 4xx        # Monitor network errors
+  console                          # Monitor console logs
+  network --status 4xx             # Monitor network errors
   html --select "#app"             # Inspect rendered HTML`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runServe,

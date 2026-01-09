@@ -90,13 +90,13 @@ webctl serve --proxy localhost:3000
 ### Test Console Capture
 1. Start serve: `cd testdata && webctl serve`
 2. Click console test buttons on the page
-3. Run: `webctl console show`
+3. Run: `webctl console`
 4. Verify captured logs
 
 ### Test Network Monitoring
 1. Start serve: `cd testdata && webctl serve`
 2. Click "Network Request" button on the page
-3. Run: `webctl network show`
+3. Run: `webctl network`
 4. Verify captured API request
 
 ### Test Proxy Mode

@@ -3,15 +3,12 @@
 ## Universal Pattern
 
 ```bash
-# Default: save full page to temp file
+# Default: output full page to stdout
 webctl html
-# → /tmp/webctl-html/25-12-28-HHMMSS-page-title.html
 
-# Show: output full page to stdout
-webctl html show
-
-# Save: save full page to custom path
-webctl html save <path>
+# Save: save full page to file
+webctl html save           # Save to temp file
+webctl html save <path>    # Save to custom path
 # If <path> is a directory, auto-generate filename
 webctl html save ./output/
 # → ./output/25-12-28-HHMMSS-page-title.html
@@ -29,30 +26,27 @@ webctl html save ./output/
 ## Examples with Flags
 
 ```bash
-# Get specific element
+# Get specific element to stdout
 webctl html --select "#main"
-# → /tmp/webctl-html/25-12-28-HHMMSS-main.html
 
-webctl html show --select "#main"
-# → stdout (just #main element)
-
+# Save specific element to file
 webctl html save ./main.html --select "#main"
 # → ./main.html (just #main element)
 
 # Search within HTML
 webctl html --find "login"
-# → /tmp/webctl-html/... (HTML with matches highlighted/filtered)
-
-webctl html show --find "login"
 # → stdout (HTML with matches)
 
+webctl html save --find "login"
+# → /tmp/webctl-html/... (HTML with matches)
+
 # Combine filters
-webctl html show --select "form" --find "password"
+webctl html --select "form" --find "password"
 # → stdout (forms containing "password")
 
 # Multiple elements (selector matches multiple)
 webctl html --select ".card"
-# → /tmp/webctl-html/... (all .card elements with separators)
+# → stdout (all .card elements with separators)
 ```
 
 ## Output Format
@@ -88,7 +82,7 @@ None. HTML uses only the universal pattern.
 
 **Universal pattern only:**
 - HTML extraction doesn't need special operations like CSS does
-- The universal pattern (default/show/save) covers all HTML use cases
+- The universal pattern (default stdout/save) covers all HTML use cases
 - Filtering via `--select` and `--find` provides necessary control
 
 **No inject subcommand:**
