@@ -84,10 +84,10 @@ echo "  - Full-page: entire scrollable page"
 read -p "Press Enter when compared..."
 
 # Custom output path tests
-title "Custom Output Path (File)"
+title "Save Mode (Custom Path)"
 
 heading "Save to custom file path"
-cmd "webctl screenshot -o ./debug/page.png"
+cmd "webctl screenshot save ./debug/page.png"
 
 echo ""
 echo "Verify: File saved to ./debug/page.png"
@@ -95,15 +95,15 @@ echo "Verify: Parent directory created if needed"
 echo "Verify: .png extension in filename"
 read -p "Press Enter to continue..."
 
-heading "Save with --output flag"
-cmd "webctl screenshot --output ./test.png"
+heading "Save viewport screenshot to custom path"
+cmd "webctl screenshot save ./test.png"
 
 echo ""
 echo "Verify: File saved to ./test.png"
 read -p "Press Enter to continue..."
 
 heading "Save full-page to custom path"
-cmd "webctl screenshot --full-page -o ./full.png"
+cmd "webctl screenshot save ./full.png --full-page"
 
 echo ""
 echo "Verify: Full-page screenshot saved to ./full.png"
@@ -111,10 +111,10 @@ echo "Verify: Larger file size than viewport"
 read -p "Press Enter to continue..."
 
 # Custom output path tests (directory)
-title "Custom Output Path (Directory)"
+title "Save Mode (Directory)"
 
 heading "Save to directory with auto-filename"
-cmd "webctl screenshot -o ./screenshots/"
+cmd "webctl screenshot save ./screenshots/"
 
 echo ""
 echo "Verify: Auto-generated filename in ./screenshots/"
@@ -122,7 +122,7 @@ echo "Verify: Directory exists or was created"
 read -p "Press Enter to continue..."
 
 heading "Full-page to directory"
-cmd "webctl screenshot --full-page -o ./screenshots/"
+cmd "webctl screenshot save ./screenshots/ --full-page"
 
 echo ""
 echo "Verify: Full-page screenshot in ./screenshots/ with auto-filename"
@@ -200,8 +200,8 @@ echo "Wait for Wikipedia to load"
 read -p "Press Enter when loaded..."
 
 heading "Compare viewport vs full-page on long page"
-cmd "webctl screenshot -o ./wiki-viewport.png"
-cmd "webctl screenshot --full-page -o ./wiki-full.png"
+cmd "webctl screenshot save ./wiki-viewport.png"
+cmd "webctl screenshot save --full-page ./wiki-full.png"
 
 echo ""
 echo "Open both files to compare:"
@@ -214,8 +214,8 @@ title "Full-Page Edge Cases"
 
 heading "Full-page on short page (fits in viewport)"
 cmd "webctl navigate https://example.com --wait"
-cmd "webctl screenshot --full-page -o ./example-full.png"
-cmd "webctl screenshot -o ./example-viewport.png"
+cmd "webctl screenshot save --full-page ./example-full.png"
+cmd "webctl screenshot save ./example-viewport.png"
 
 echo ""
 echo "Compare file sizes - should be similar (page fits in viewport)"
@@ -228,7 +228,7 @@ echo ""
 echo "Wait for long Wikipedia article to load"
 read -p "Press Enter when loaded..."
 
-cmd "webctl screenshot --full-page -o ./ww2-full.png"
+cmd "webctl screenshot save --full-page ./ww2-full.png"
 
 echo ""
 echo "Verify: Very large file created"
@@ -276,7 +276,7 @@ read -p "Press Enter to continue..."
 title "Error Cases"
 
 heading "Save to invalid path"
-cmd "webctl screenshot -o /root/invalid/path.png"
+cmd "webctl screenshot save /root/invalid/path.png"
 
 echo ""
 echo "Verify: Permission denied or path error"
@@ -290,15 +290,15 @@ read -p "Press Enter to skip or test manually..."
 title "File Operations"
 
 heading "Overwrite existing file"
-cmd "webctl screenshot -o ./overwrite-test.png"
-cmd "webctl screenshot -o ./overwrite-test.png"
+cmd "webctl screenshot save ./overwrite-test.png"
+cmd "webctl screenshot save ./overwrite-test.png"
 
 echo ""
 echo "Verify: File overwritten (second screenshot replaces first)"
 read -p "Press Enter to continue..."
 
 heading "Create nested directories"
-cmd "webctl screenshot -o ./deep/nested/dirs/screenshot.png"
+cmd "webctl screenshot save ./deep/nested/dirs/screenshot.png"
 
 echo ""
 echo "Verify: All parent directories created automatically"
@@ -326,7 +326,7 @@ read -p "Press Enter when tested in REPL..."
 
 heading "Test custom output in REPL"
 echo "In REPL, try:"
-cmd "screenshot -o ./repl-screenshot.png"
+cmd "screenshot save ./repl-screenshot.png"
 
 echo ""
 echo "Should save to custom path"
@@ -344,27 +344,27 @@ read -p "Press Enter to continue..."
 
 heading "Before/after comparison workflow"
 echo "1. Take before screenshot"
-cmd "webctl screenshot -o ./before.png"
+cmd "webctl screenshot save ./before.png"
 
 echo "2. Interact with page (manual or via evaluate/click)"
 read -p "Manually interact with page, then press Enter..."
 
 echo "3. Take after screenshot"
-cmd "webctl screenshot -o ./after.png"
+cmd "webctl screenshot save ./after.png"
 
 echo ""
 echo "Verify: Two screenshots showing before/after state"
 read -p "Press Enter to continue..."
 
 heading "Debug layout issues"
-cmd "webctl screenshot --full-page -o ./layout-debug.png"
+cmd "webctl screenshot save --full-page ./layout-debug.png"
 
 echo ""
 echo "Use case: Capture entire page to debug layout problems"
 read -p "Press Enter to continue..."
 
 heading "CI/CD artifact pattern"
-cmd "webctl screenshot -o ./artifacts/build-123-screenshot.png"
+cmd "webctl screenshot save ./artifacts/build-123-screenshot.png"
 
 echo ""
 echo "Use case: Save screenshots with build IDs for CI/CD"
@@ -380,13 +380,13 @@ echo ""
 echo "Wait for GitHub to load"
 read -p "Press Enter when loaded..."
 
-cmd "webctl screenshot -o ./github-initial.png"
+cmd "webctl screenshot save ./github-initial.png"
 
 echo ""
 echo "Screenshot of initial state captured"
 read -p "Scroll or interact with page, then press Enter..."
 
-cmd "webctl screenshot -o ./github-after-interaction.png"
+cmd "webctl screenshot save ./github-after-interaction.png"
 
 echo ""
 echo "Screenshot after interaction captured"

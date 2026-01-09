@@ -18,20 +18,18 @@ import (
 
 var cssCmd = &cobra.Command{
 	Use:   "css",
-	Short: "Extract CSS from current page (default: save to temp)",
+	Short: "Extract CSS from current page (default: stdout)",
 	Long: `Extracts CSS from the current page with flexible output modes.
 
 Default behavior (no subcommand):
-  Saves CSS to /tmp/webctl-css/ with auto-generated filename
-  Returns JSON with file path
+  Outputs CSS to stdout for piping or inspection
 
 Subcommands:
-  show              Output CSS to stdout
-  save <path>       Save CSS to custom path
+  save [path]       Save CSS to file (temp dir if no path given)
   computed <sel>    Get computed styles to stdout
   get <sel> <prop>  Get single CSS property to stdout
 
-Universal flags (work with default/show/save modes):
+Universal flags (work with default/save modes):
   --select, -s      Filter to element's computed styles
   --find, -f        Search for text within CSS
   --raw             Skip CSS formatting (return as-is from browser)
@@ -39,30 +37,26 @@ Universal flags (work with default/show/save modes):
 
 Examples:
 
-Default mode (save to temp):
-  css                                  # All stylesheets to temp
-  css --select "#header"               # Computed styles to temp
-  css --find "background"              # Search and save matches
+Default mode (stdout):
+  css                                  # All stylesheets to stdout
+  css --select "#header"               # Computed styles to stdout
+  css --find "background"              # Search and show matches
 
-Show mode (stdout):
-  css show                             # All stylesheets to stdout
-  css show --select ".button"          # Computed styles to stdout
-  css show --find "color"              # Search and show matches
-
-Save mode (custom path):
-  css save ./styles.css                # Save to file
+Save mode (file):
+  css save                             # Save to temp with auto-filename
+  css save ./styles.css                # Save to custom file
   css save ./output/                   # Save to dir (auto-filename)
-  css save ./debug.css --select "form" --find "border"
+  css save --select "form" --find "border"
 
 CSS-specific operations:
   css computed "#main"                 # All computed styles
   css get "#header" background-color   # Single property
 
 Response formats:
-  Default/Save: {"ok": true, "path": "/tmp/webctl-css/25-12-28-143052-example.css"}
-  Show:         body { margin: 0; ... } (to stdout)
-  Computed:     display: flex\ncolor: rgb(0,0,0) (to stdout)
-  Get:          rgb(0,0,0) (to stdout)
+  Default:  body { margin: 0; ... } (to stdout)
+  Save:     /tmp/webctl-css/25-12-28-143052-example.css
+  Computed: display: flex\ncolor: rgb(0,0,0) (to stdout)
+  Get:      rgb(0,0,0) (to stdout)
 
 Error cases:
   - "selector matched no elements" - nothing matches selector
@@ -71,32 +65,21 @@ Error cases:
 	RunE: runCSSDefault,
 }
 
-var cssShowCmd = &cobra.Command{
-	Use:   "show",
-	Short: "Output CSS to stdout",
-	Long: `Outputs CSS to stdout for piping or inspection.
-
-Examples:
-  css show                             # All stylesheets
-  css show --select "#main"            # Computed styles
-  css show --find "background"         # Search within CSS
-  css show --raw                       # Unformatted output`,
-	RunE: runCSSShow,
-}
-
 var cssSaveCmd = &cobra.Command{
-	Use:   "save <path>",
-	Short: "Save CSS to custom path",
-	Long: `Saves CSS to a custom file path.
+	Use:   "save [path]",
+	Short: "Save CSS to file",
+	Long: `Saves CSS to a file.
 
+If no path is provided, saves to temp directory with auto-generated filename.
 If path is a directory, auto-generates filename.
 If path is a file, uses exact path.
 
 Examples:
+  css save                             # Save to temp dir
   css save ./styles.css                # Save to file
   css save ./output/                   # Save to dir
-  css save ./debug.css --select "#app" --find "color"`,
-	Args: cobra.ExactArgs(1),
+  css save --select "#app" --find "color"`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runCSSSave,
 }
 
@@ -179,20 +162,19 @@ Common patterns:
 	RunE: runCSSGet,
 }
 
-
 func init() {
-	// Universal flags on root command (inherited by default/show/save subcommands)
+	// Universal flags on root command (inherited by default/save subcommands)
 	cssCmd.PersistentFlags().StringP("select", "s", "", "Filter to element's computed styles")
 	cssCmd.PersistentFlags().StringP("find", "f", "", "Search for text within CSS")
 	cssCmd.PersistentFlags().Bool("raw", false, "Skip CSS formatting")
 
 	// Add all subcommands
-	cssCmd.AddCommand(cssShowCmd, cssSaveCmd, cssComputedCmd, cssGetCmd)
+	cssCmd.AddCommand(cssSaveCmd, cssComputedCmd, cssGetCmd)
 
 	rootCmd.AddCommand(cssCmd)
 }
 
-// runCSSDefault handles default behavior: save to temp directory
+// runCSSDefault handles default behavior: output to stdout
 func runCSSDefault(cmd *cobra.Command, args []string) error {
 	// Validate that no arguments were provided (catches unknown subcommands)
 	if len(args) > 0 {
@@ -209,19 +191,65 @@ func runCSSDefault(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
-	// Get selector for filename generation
-	selector, _ := cmd.Flags().GetString("select")
+	// Output to stdout
+	fmt.Println(css)
+	return nil
+}
 
-	// Generate filename in temp directory
-	exec, err := execFactory.NewExecutor()
+// runCSSSave handles save subcommand: save to file
+func runCSSSave(cmd *cobra.Command, args []string) error {
+	if !execFactory.IsDaemonRunning() {
+		return outputError("daemon not running. Start with: webctl start")
+	}
+
+	// Get CSS from daemon
+	css, err := getCSSFromDaemon(cmd)
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
 
-	outputPath, err := generateCSSPath(exec, selector)
-	if err != nil {
-		return outputError(err.Error())
+	// Get selector for filename generation
+	selector, _ := cmd.Flags().GetString("select")
+	if selector == "" && cmd.Parent() != nil {
+		selector, _ = cmd.Parent().PersistentFlags().GetString("select")
+	}
+
+	var outputPath string
+
+	if len(args) == 0 {
+		// No path provided - save to temp directory
+		exec, err := execFactory.NewExecutor()
+		if err != nil {
+			return outputError(err.Error())
+		}
+		defer exec.Close()
+
+		outputPath, err = generateCSSPath(exec, selector)
+		if err != nil {
+			return outputError(err.Error())
+		}
+	} else {
+		// Path provided
+		path := args[0]
+
+		// Handle directory vs file path
+		fileInfo, err := os.Stat(path)
+		if err == nil && fileInfo.IsDir() {
+			// Path is a directory - auto-generate filename
+			exec, err := execFactory.NewExecutor()
+			if err != nil {
+				return outputError(err.Error())
+			}
+			defer exec.Close()
+
+			filename, err := generateCSSFilename(exec, selector)
+			if err != nil {
+				return outputError(err.Error())
+			}
+			outputPath = filepath.Join(path, filename)
+		} else {
+			outputPath = path
+		}
 	}
 
 	// Write CSS to file
@@ -238,71 +266,6 @@ func runCSSDefault(cmd *cobra.Command, args []string) error {
 	}
 
 	return format.FilePath(os.Stdout, outputPath)
-}
-
-// runCSSShow handles show subcommand: output to stdout
-func runCSSShow(cmd *cobra.Command, args []string) error {
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	// Get CSS from daemon
-	css, err := getCSSFromDaemon(cmd)
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	// Output to stdout
-	fmt.Println(css)
-	return nil
-}
-
-// runCSSSave handles save subcommand: save to custom path
-func runCSSSave(cmd *cobra.Command, args []string) error {
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	path := args[0]
-
-	// Get CSS from daemon
-	css, err := getCSSFromDaemon(cmd)
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	// Handle directory vs file path
-	fileInfo, err := os.Stat(path)
-	if err == nil && fileInfo.IsDir() {
-		// Path is a directory - auto-generate filename
-		exec, err := execFactory.NewExecutor()
-		if err != nil {
-			return outputError(err.Error())
-		}
-		defer exec.Close()
-
-		selector, _ := cmd.Flags().GetString("select")
-		filename, err := generateCSSFilename(exec, selector)
-		if err != nil {
-			return outputError(err.Error())
-		}
-		path = filepath.Join(path, filename)
-	}
-
-	// Write CSS to file
-	if err := writeCSSToFile(path, css); err != nil {
-		return outputError(err.Error())
-	}
-
-	// Return JSON response
-	if JSONOutput {
-		return outputJSON(os.Stdout, map[string]any{
-			"ok":   true,
-			"path": path,
-		})
-	}
-
-	return format.FilePath(os.Stdout, path)
 }
 
 func runCSSComputed(cmd *cobra.Command, args []string) error {
@@ -405,7 +368,6 @@ func runCSSGet(cmd *cobra.Command, args []string) error {
 	// Text mode: just output the value
 	return format.PropertyValue(os.Stdout, data.Value)
 }
-
 
 // getCSSFromDaemon fetches CSS from daemon, applying filters and formatting
 func getCSSFromDaemon(cmd *cobra.Command) (string, error) {

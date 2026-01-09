@@ -564,7 +564,7 @@ func TestRunConsole_Success(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runConsoleShow(consoleShowCmd, nil)
+	err := runConsoleDefault(consoleCmd, nil)
 
 	w.Close()
 	os.Stdout = old
@@ -629,7 +629,7 @@ func TestRunConsole_EmptyBuffer(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runConsoleShow(consoleShowCmd, nil)
+	err := runConsoleDefault(consoleCmd, nil)
 
 	w.Close()
 	os.Stdout = old
@@ -823,19 +823,18 @@ func TestRunConsoleDefault_Success(t *testing.T) {
 		t.Errorf("expected ok=true, got %v", result["ok"])
 	}
 
-	path, ok := result["path"].(string)
+	// Default mode now outputs to stdout, so we should have logs and count (not path)
+	if result["count"] != float64(1) {
+		t.Errorf("expected count=1, got %v", result["count"])
+	}
+
+	logs, ok := result["logs"].([]any)
 	if !ok {
-		t.Fatalf("expected path to be string, got %T", result["path"])
+		t.Fatalf("expected logs to be array, got %T", result["logs"])
 	}
 
-	// Verify path is in temp directory
-	if !strings.HasPrefix(path, "/tmp/webctl-console/") {
-		t.Errorf("expected path to start with /tmp/webctl-console/, got %s", path)
-	}
-
-	// Verify filename format: YY-MM-DD-HHMMSS-console.json
-	if !strings.HasSuffix(path, "-console.json") {
-		t.Errorf("expected path to end with -console.json, got %s", path)
+	if len(logs) != 1 {
+		t.Errorf("expected 1 log, got %d", len(logs))
 	}
 
 	if !exec.closed {
@@ -1064,7 +1063,7 @@ func TestRunConsoleShow_RawFlag(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runConsoleShow(consoleShowCmd, nil)
+	err := runConsoleDefault(consoleCmd, nil)
 
 	w.Close()
 	os.Stdout = old
@@ -1143,7 +1142,7 @@ func TestRunConsoleShow_CombinedFilters(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runConsoleShow(consoleShowCmd, nil)
+	err := runConsoleDefault(consoleCmd, nil)
 
 	w.Close()
 	os.Stdout = old
@@ -1203,7 +1202,7 @@ func TestRunConsoleShow_FindNoMatches(t *testing.T) {
 	consoleCmd.PersistentFlags().Set("find", "nonexistent-string-xyz")
 	t.Cleanup(func() { consoleCmd.PersistentFlags().Set("find", "") })
 
-	err := runConsoleShow(consoleShowCmd, nil)
+	err := runConsoleDefault(consoleCmd, nil)
 
 	if err == nil {
 		t.Fatal("expected error when no matches found")
@@ -1250,7 +1249,7 @@ func TestRunConsoleShow_TextOutput(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runConsoleShow(consoleShowCmd, nil)
+	err := runConsoleDefault(consoleCmd, nil)
 
 	w.Close()
 	os.Stdout = old
@@ -1751,19 +1750,18 @@ func TestRunNetwork_Success(t *testing.T) {
 		t.Errorf("expected ok=true, got %v", result["ok"])
 	}
 
-	path, ok := result["path"].(string)
+	// Default mode now outputs to stdout, so we should have entries and count (not path)
+	if result["count"] != float64(2) {
+		t.Errorf("expected count=2, got %v", result["count"])
+	}
+
+	entries, ok := result["entries"].([]any)
 	if !ok {
-		t.Fatalf("expected path to be string, got %T", result["path"])
+		t.Fatalf("expected entries to be array, got %T", result["entries"])
 	}
 
-	// Verify path is in temp directory
-	if !strings.HasPrefix(path, "/tmp/webctl-network/") {
-		t.Errorf("expected path to start with /tmp/webctl-network/, got %s", path)
-	}
-
-	// Verify filename format: YY-MM-DD-HHMMSS-network.json
-	if !strings.HasSuffix(path, "-network.json") {
-		t.Errorf("expected path to end with -network.json, got %s", path)
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(entries))
 	}
 }
 
@@ -2090,7 +2088,7 @@ func TestRunScreenshot_DaemonNotRunning(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	err := runScreenshot(screenshotCmd, []string{})
+	err := runScreenshotDefault(screenshotCmd, []string{})
 
 	w.Close()
 	os.Stderr = oldStderr
@@ -2155,15 +2153,14 @@ func TestRunScreenshot_Success(t *testing.T) {
 	})
 	defer restore()
 
-	// Set custom output path in temp dir via flag
-	screenshotCmd.Flags().Set("output", tmpDir+"/test-screenshot.png")
-	defer screenshotCmd.Flags().Set("output", "")
+	// Use save subcommand with custom path
+	customPath := tmpDir + "/test-screenshot.png"
 
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runScreenshot(screenshotCmd, []string{})
+	err := runScreenshotSave(screenshotSaveCmd, []string{customPath})
 
 	w.Close()
 	os.Stdout = old
@@ -2226,14 +2223,11 @@ func TestRunScreenshot_CustomOutput(t *testing.T) {
 	})
 	defer restore()
 
-	screenshotCmd.Flags().Set("output", customPath)
-	defer screenshotCmd.Flags().Set("output", "")
-
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runScreenshot(screenshotCmd, []string{})
+	err := runScreenshotSave(screenshotSaveCmd, []string{customPath})
 
 	w.Close()
 	os.Stdout = old
@@ -2285,17 +2279,15 @@ func TestRunScreenshot_FullPage(t *testing.T) {
 	defer restore()
 
 	tmpDir := t.TempDir()
-	screenshotCmd.Flags().Set("output", tmpDir+"/test.png")
-	defer screenshotCmd.Flags().Set("output", "")
 
-	screenshotCmd.Flags().Set("full-page", "true")
-	defer screenshotCmd.Flags().Set("full-page", "false")
+	screenshotCmd.PersistentFlags().Set("full-page", "true")
+	defer screenshotCmd.PersistentFlags().Set("full-page", "false")
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runScreenshot(screenshotCmd, []string{})
+	runScreenshotSave(screenshotSaveCmd, []string{tmpDir + "/test.png"})
 
 	w.Close()
 	os.Stdout = old
@@ -2788,7 +2780,7 @@ func TestRunCookiesList_DaemonNotRunning(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	err := runCookiesShow(cookiesShowCmd, []string{})
+	err := runCookiesDefault(cookiesCmd, []string{})
 
 	w.Close()
 	os.Stderr = old
@@ -2834,7 +2826,7 @@ func TestRunCookiesList_Success(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runCookiesShow(cookiesShowCmd, []string{})
+	err := runCookiesDefault(cookiesCmd, []string{})
 
 	w.Close()
 	os.Stdout = old

@@ -17,18 +17,16 @@ import (
 
 var networkCmd = &cobra.Command{
 	Use:   "network",
-	Short: "Extract network requests from current page (default: save to temp)",
+	Short: "Extract network requests from current page (default: stdout)",
 	Long: `Extracts network requests from the current page with flexible output modes.
 
 Default behavior (no subcommand):
-  Saves network requests to /tmp/webctl-network/ with auto-generated filename
-  Returns JSON with file path
+  Outputs network requests to stdout for piping or inspection
 
 Subcommands:
-  show              Output network requests to stdout
-  save <path>       Save network requests to custom path
+  save [path]       Save network requests to file (temp dir if no path given)
 
-Universal flags (work with default/show/save modes):
+Universal flags (work with all modes):
   --find, -f        Search for text within URLs and bodies
   --raw             Skip formatting (return raw JSON)
   --json            Output in JSON format (global flag)
@@ -52,25 +50,21 @@ and repeatable (--status 4xx --status 5xx) syntax.
 
 Examples:
 
-Default mode (save to temp):
-  network                                  # All requests to temp
-  network --status 4xx                     # Only 4xx to temp
-  network --find "api"                     # Search and save matches
+Default mode (stdout):
+  network                                  # All requests to stdout
+  network --status 4xx                     # Only 4xx to stdout
+  network --find "api"                     # Search and show matches
+  network --tail 20                        # Last 20 entries
 
-Show mode (stdout):
-  network show                             # All requests to stdout
-  network show --status 4xx,5xx            # Only errors
-  network show --find "fetch"              # Search and show matches
-  network show --tail 20                   # Last 20 entries
-
-Save mode (custom path):
-  network save ./logs/requests.json        # Save to file
+Save mode (file):
+  network save                             # Save to temp with auto-filename
+  network save ./logs/requests.json        # Save to custom file
   network save ./output/                   # Save to dir (auto-filename)
-  network save ./errors.json --status 5xx --tail 50
+  network save --status 5xx --tail 50
 
 Response formats:
-  Default/Save: {"ok": true, "path": "/tmp/webctl-network/25-12-28-143052-network.json"}
-  Show:         GET https://example.com 200 45ms (to stdout)
+  Default:  GET https://example.com 200 45ms (to stdout)
+  Save:     /tmp/webctl-network/25-12-28-143052-network.json
 
 Error cases:
   - "no matches found for 'text'" - find text not in requests
@@ -78,37 +72,26 @@ Error cases:
 	RunE: runNetworkDefault,
 }
 
-var networkShowCmd = &cobra.Command{
-	Use:   "show",
-	Short: "Output network requests to stdout",
-	Long: `Outputs network requests to stdout for real-time monitoring and piping.
-
-Examples:
-  network show                             # All requests
-  network show --status 4xx                # Only client errors
-  network show --find "api"                # Search within URLs/bodies
-  network show --tail 20                   # Last 20 entries`,
-	RunE: runNetworkShow,
-}
-
 var networkSaveCmd = &cobra.Command{
-	Use:   "save <path>",
-	Short: "Save network requests to custom path",
-	Long: `Saves network requests to a custom file path.
+	Use:   "save [path]",
+	Short: "Save network requests to file",
+	Long: `Saves network requests to a file.
 
+If no path is provided, saves to temp directory with auto-generated filename.
 If path is a directory, auto-generates filename.
 If path is a file, uses exact path.
 
 Examples:
+  network save                             # Save to temp dir
   network save ./logs/requests.json        # Save to file
   network save ./output/                   # Save to dir
-  network save ./errors.json --status 5xx --method POST`,
-	Args: cobra.ExactArgs(1),
+  network save --status 5xx --method POST`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runNetworkSave,
 }
 
 func init() {
-	// Universal flags on root command (inherited by default/show/save subcommands)
+	// Universal flags on root command (inherited by default/save subcommands)
 	networkCmd.PersistentFlags().StringP("find", "f", "", "Search for text within URLs and bodies")
 	networkCmd.PersistentFlags().Bool("raw", false, "Skip formatting (return raw JSON)")
 
@@ -128,61 +111,18 @@ func init() {
 	networkCmd.MarkFlagsMutuallyExclusive("head", "tail", "range")
 
 	// Add all subcommands
-	networkCmd.AddCommand(networkShowCmd, networkSaveCmd)
+	networkCmd.AddCommand(networkSaveCmd)
 
 	rootCmd.AddCommand(networkCmd)
 }
 
-// runNetworkDefault handles default behavior: save to temp directory
+// runNetworkDefault handles default behavior: output to stdout
 func runNetworkDefault(cmd *cobra.Command, args []string) error {
 	// Validate that no arguments were provided (catches unknown subcommands)
 	if len(args) > 0 {
 		return outputError(fmt.Sprintf("unknown command %q for \"webctl network\"", args[0]))
 	}
 
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	// Get network entries from daemon
-	entries, err := getNetworkFromDaemon(cmd)
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	// Generate filename in temp directory
-	outputPath, err := generateNetworkPath()
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	// Get max-body-size for JSON output
-	maxBodySize, _ := cmd.Flags().GetInt("max-body-size")
-	if maxBodySize == 0 && cmd.Parent() != nil {
-		maxBodySize, _ = cmd.Parent().PersistentFlags().GetInt("max-body-size")
-	}
-	if maxBodySize == 0 {
-		maxBodySize = 102400 // Default
-	}
-
-	// Write network requests to file
-	if err := writeNetworkToFile(outputPath, entries, maxBodySize); err != nil {
-		return outputError(err.Error())
-	}
-
-	// Return JSON response
-	if JSONOutput {
-		return outputJSON(os.Stdout, map[string]any{
-			"ok":   true,
-			"path": outputPath,
-		})
-	}
-
-	return format.FilePath(os.Stdout, outputPath)
-}
-
-// runNetworkShow handles show subcommand: output to stdout
-func runNetworkShow(cmd *cobra.Command, args []string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -227,13 +167,11 @@ func runNetworkShow(cmd *cobra.Command, args []string) error {
 	return format.Network(os.Stdout, entries, format.NewOutputOptions(JSONOutput, NoColor))
 }
 
-// runNetworkSave handles save subcommand: save to custom path
+// runNetworkSave handles save subcommand: save to file
 func runNetworkSave(cmd *cobra.Command, args []string) error {
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
-
-	path := args[0]
 
 	// Get network entries from daemon
 	entries, err := getNetworkFromDaemon(cmd)
@@ -241,12 +179,27 @@ func runNetworkSave(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
-	// Handle directory vs file path
-	fileInfo, err := os.Stat(path)
-	if err == nil && fileInfo.IsDir() {
-		// Path is a directory - auto-generate filename
-		filename := generateNetworkFilename()
-		path = filepath.Join(path, filename)
+	var outputPath string
+
+	if len(args) == 0 {
+		// No path provided - save to temp directory
+		outputPath, err = generateNetworkPath()
+		if err != nil {
+			return outputError(err.Error())
+		}
+	} else {
+		// Path provided
+		path := args[0]
+
+		// Handle directory vs file path
+		fileInfo, err := os.Stat(path)
+		if err == nil && fileInfo.IsDir() {
+			// Path is a directory - auto-generate filename
+			filename := generateNetworkFilename()
+			outputPath = filepath.Join(path, filename)
+		} else {
+			outputPath = path
+		}
 	}
 
 	// Get max-body-size for JSON output
@@ -255,11 +208,11 @@ func runNetworkSave(cmd *cobra.Command, args []string) error {
 		maxBodySize, _ = cmd.Parent().PersistentFlags().GetInt("max-body-size")
 	}
 	if maxBodySize == 0 {
-		maxBodySize = 102400
+		maxBodySize = 102400 // Default
 	}
 
 	// Write network requests to file
-	if err := writeNetworkToFile(path, entries, maxBodySize); err != nil {
+	if err := writeNetworkToFile(outputPath, entries, maxBodySize); err != nil {
 		return outputError(err.Error())
 	}
 
@@ -267,11 +220,11 @@ func runNetworkSave(cmd *cobra.Command, args []string) error {
 	if JSONOutput {
 		return outputJSON(os.Stdout, map[string]any{
 			"ok":   true,
-			"path": path,
+			"path": outputPath,
 		})
 	}
 
-	return format.FilePath(os.Stdout, path)
+	return format.FilePath(os.Stdout, outputPath)
 }
 
 // getNetworkFromDaemon fetches network entries from daemon, applying filters

@@ -43,37 +43,10 @@ echo "Wait for page to load (cookies will be set)"
 read -p "Press Enter when page loaded..."
 
 # Default mode tests
-title "Default Mode (Save to Temp)"
-
-heading "Save all cookies to temp"
-cmd "webctl cookies"
-
-echo ""
-echo "Verify: File saved to /tmp/webctl-cookies/"
-echo "Verify: Auto-generated filename (YY-MM-DD-HHMMSS-cookies.json)"
-echo "Verify: JSON response shows file path"
-echo "Verify: JSON file contains cookies array"
-read -p "Press Enter to continue..."
-
-heading "Save only GitHub domain cookies"
-cmd "webctl cookies --domain \".github.com\""
-
-echo ""
-echo "Verify: Only GitHub cookies saved"
-read -p "Press Enter to continue..."
-
-heading "Search and save cookies"
-cmd "webctl cookies --find \"session\""
-
-echo ""
-echo "Verify: Cookies containing 'session' saved"
-read -p "Press Enter to continue..."
-
-# Show mode tests
-title "Show Mode (Output to Stdout)"
+title "Default Mode (Output to Stdout)"
 
 heading "Show all cookies"
-cmd "webctl cookies show"
+cmd "webctl cookies"
 
 echo ""
 echo "Verify: Formatted cookies to stdout"
@@ -82,28 +55,37 @@ echo "Verify: No file created"
 read -p "Press Enter to continue..."
 
 heading "Show only GitHub cookies"
-cmd "webctl cookies show --domain \".github.com\""
+cmd "webctl cookies --domain \".github.com\""
 
 echo ""
 echo "Verify: Only GitHub domain cookies shown"
 read -p "Press Enter to continue..."
 
 heading "Show cookies by name"
-cmd "webctl cookies show --name \"logged_in\""
+cmd "webctl cookies --name \"logged_in\""
 
 echo ""
 echo "Verify: Only 'logged_in' cookie shown (if exists)"
 read -p "Press Enter to continue..."
 
 heading "Show with text search"
-cmd "webctl cookies show --find \"session\""
+cmd "webctl cookies --find \"session\""
 
 echo ""
 echo "Verify: Cookies containing 'session' shown"
 read -p "Press Enter to continue..."
 
 # Save mode tests
-title "Save Mode (Custom Path)"
+title "Save Mode (File Output)"
+
+heading "Save to temp (no path)"
+cmd "webctl cookies save"
+
+echo ""
+echo "Verify: File saved to /tmp/webctl-cookies/"
+echo "Verify: Auto-generated filename (YY-MM-DD-HHMMSS-cookies.json)"
+echo "Verify: JSON response shows file path"
+read -p "Press Enter to continue..."
 
 heading "Save to custom file"
 cmd "webctl cookies save ./cookies.json"
@@ -130,14 +112,14 @@ read -p "Press Enter to continue..."
 title "Domain Filter Tests"
 
 heading "Filter by exact domain"
-cmd "webctl cookies show --domain \"github.com\""
+cmd "webctl cookies --domain \"github.com\""
 
 echo ""
 echo "Verify: Cookies for github.com shown"
 read -p "Press Enter to continue..."
 
 heading "Filter by domain with leading dot"
-cmd "webctl cookies show --domain \".github.com\""
+cmd "webctl cookies --domain \".github.com\""
 
 echo ""
 echo "Verify: Cookies for github.com and subdomains shown"
@@ -147,14 +129,14 @@ read -p "Press Enter to continue..."
 title "Name Filter Tests"
 
 heading "Filter by exact name"
-cmd "webctl cookies show --name \"logged_in\""
+cmd "webctl cookies --name \"logged_in\""
 
 echo ""
 echo "Verify: Exact match for 'logged_in' cookie"
 read -p "Press Enter to continue..."
 
 heading "Name combined with domain"
-cmd "webctl cookies show --name \"logged_in\" --domain \".github.com\""
+cmd "webctl cookies --name \"logged_in\" --domain \".github.com\""
 
 echo ""
 echo "Verify: Named cookie from specific domain"
@@ -164,21 +146,21 @@ read -p "Press Enter to continue..."
 title "Find Flag Tests"
 
 heading "Find in cookie name"
-cmd "webctl cookies show --find \"session\""
+cmd "webctl cookies --find \"session\""
 
 echo ""
 echo "Verify: Case-insensitive search in names and values"
 read -p "Press Enter to continue..."
 
 heading "Find with no matches (should error)"
-cmd "webctl cookies show --find \"ThisTextDoesNotExist123\""
+cmd "webctl cookies --find \"ThisTextDoesNotExist123\""
 
 echo ""
 echo "Verify: Error message about no matches"
 read -p "Press Enter to continue..."
 
 heading "Find combined with domain"
-cmd "webctl cookies show --find \"git\" --domain \".github.com\""
+cmd "webctl cookies --find \"git\" --domain \".github.com\""
 
 echo ""
 echo "Verify: GitHub cookies containing 'git'"
@@ -188,14 +170,14 @@ read -p "Press Enter to continue..."
 title "Raw Flag Tests"
 
 heading "Raw output (JSON format)"
-cmd "webctl cookies show --raw"
+cmd "webctl cookies --raw"
 
 echo ""
 echo "Verify: Raw JSON output instead of formatted text"
 read -p "Press Enter to continue..."
 
 heading "Raw with filters"
-cmd "webctl cookies show --raw --domain \".github.com\""
+cmd "webctl cookies --raw --domain \".github.com\""
 
 echo ""
 echo "Verify: Raw JSON with filtered cookies"
@@ -436,22 +418,22 @@ read -p "Press Enter to continue..."
 # Output format tests
 title "Output Format Tests"
 
-heading "JSON output with show mode"
-cmd "webctl cookies show --json"
+heading "JSON output"
+cmd "webctl cookies --json"
 
 echo ""
 echo "Verify: JSON formatted output"
 read -p "Press Enter to continue..."
 
 heading "No color output"
-cmd "webctl cookies show --no-color"
+cmd "webctl cookies --no-color"
 
 echo ""
 echo "Verify: No ANSI color codes"
 read -p "Press Enter to continue..."
 
 heading "Debug verbose output"
-cmd "webctl cookies show --debug"
+cmd "webctl cookies --debug"
 
 echo ""
 echo "Verify: Debug logging information"
@@ -462,7 +444,7 @@ title "REPL Mode Tests"
 
 heading "Test cookies in REPL"
 echo "Switch to daemon terminal and execute:"
-cmd "cookies show"
+cmd "cookies"
 
 echo ""
 echo "Should work identically to CLI mode"
@@ -502,14 +484,14 @@ echo "Cookie set on example.com"
 read -p "Press Enter to continue..."
 
 heading "Show all cookies from all domains"
-cmd "webctl cookies show"
+cmd "webctl cookies"
 
 echo ""
 echo "Verify: Cookies from both github.com and example.com"
 read -p "Press Enter to continue..."
 
 heading "Filter by domain"
-cmd "webctl cookies show --domain example.com"
+cmd "webctl cookies --domain example.com"
 
 echo ""
 echo "Verify: Only example.com cookies shown"

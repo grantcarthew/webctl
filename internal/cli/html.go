@@ -18,16 +18,14 @@ import (
 
 var htmlCmd = &cobra.Command{
 	Use:   "html",
-	Short: "Extract HTML from current page (default: save to temp)",
+	Short: "Extract HTML from current page (default: stdout)",
 	Long: `Extracts HTML from the current page with flexible output modes.
 
 Default behavior (no subcommand):
-  Saves HTML to /tmp/webctl-html/ with auto-generated filename
-  Returns JSON with file path
+  Outputs HTML to stdout for piping or inspection
 
 Subcommands:
-  show              Output HTML to stdout
-  save <path>       Save HTML to custom path
+  save [path]       Save HTML to file (temp dir if no path given)
 
 Universal flags (work with all modes):
   --select, -s      Filter to element(s) matching CSS selector
@@ -37,24 +35,20 @@ Universal flags (work with all modes):
 
 Examples:
 
-Default mode (save to temp):
-  html                                  # Full page to temp
-  html --select "#main"                 # Element to temp
-  html --find "login"                   # Search and save matches
+Default mode (stdout):
+  html                                  # Full page to stdout
+  html --select "#main"                 # Element to stdout
+  html --find "login"                   # Search and show matches
 
-Show mode (stdout):
-  html show                             # Full page to stdout
-  html show --select ".content"         # Element to stdout
-  html show --find "error"              # Search and show matches
-
-Save mode (custom path):
-  html save ./page.html                 # Save to file
+Save mode (file):
+  html save                             # Save to temp with auto-filename
+  html save ./page.html                 # Save to custom file
   html save ./output/                   # Save to dir (auto-filename)
-  html save ./debug.html --select "form" --find "password"
+  html save --select "form" --find "password"
 
 Response formats:
-  Default/Save: {"ok": true, "path": "/tmp/webctl-html/25-12-28-143052-example.html"}
-  Show:         <html>...</html> (to stdout)
+  Default:  <html>...</html> (to stdout)
+  Save:     /tmp/webctl-html/25-12-28-143052-example.html
 
 Error cases:
   - "selector '.missing' matched no elements" - nothing matches
@@ -63,32 +57,21 @@ Error cases:
 	RunE: runHTMLDefault,
 }
 
-var htmlShowCmd = &cobra.Command{
-	Use:   "show",
-	Short: "Output HTML to stdout",
-	Long: `Outputs HTML to stdout for piping or inspection.
-
-Examples:
-  html show                             # Full page
-  html show --select "#main"            # Specific element
-  html show --find "login"              # Search within HTML
-  html show --raw                       # Unformatted output`,
-	RunE: runHTMLShow,
-}
-
 var htmlSaveCmd = &cobra.Command{
-	Use:   "save <path>",
-	Short: "Save HTML to custom path",
-	Long: `Saves HTML to a custom file path.
+	Use:   "save [path]",
+	Short: "Save HTML to file",
+	Long: `Saves HTML to a file.
 
+If no path is provided, saves to temp directory with auto-generated filename.
 If path is a directory, auto-generates filename.
 If path is a file, uses exact path.
 
 Examples:
+  html save                             # Save to temp dir
   html save ./page.html                 # Save to file
   html save ./output/                   # Save to dir
-  html save ./debug.html --select "#app" --find "error"`,
-	Args: cobra.ExactArgs(1),
+  html save --select "#app" --find "error"`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runHTMLSave,
 }
 
@@ -99,12 +82,12 @@ func init() {
 	htmlCmd.PersistentFlags().Bool("raw", false, "Skip HTML formatting")
 
 	// Add subcommands
-	htmlCmd.AddCommand(htmlShowCmd, htmlSaveCmd)
+	htmlCmd.AddCommand(htmlSaveCmd)
 
 	rootCmd.AddCommand(htmlCmd)
 }
 
-// runHTMLDefault handles default behavior: save to temp directory
+// runHTMLDefault handles default behavior: output to stdout
 func runHTMLDefault(cmd *cobra.Command, args []string) error {
 	// Validate that no arguments were provided (catches unknown subcommands)
 	if len(args) > 0 {
@@ -121,19 +104,65 @@ func runHTMLDefault(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
-	// Get selector for filename generation
-	selector, _ := cmd.Flags().GetString("select")
+	// Output to stdout
+	fmt.Println(html)
+	return nil
+}
 
-	// Generate filename in temp directory
-	exec, err := execFactory.NewExecutor()
+// runHTMLSave handles save subcommand: save to file
+func runHTMLSave(cmd *cobra.Command, args []string) error {
+	if !execFactory.IsDaemonRunning() {
+		return outputError("daemon not running. Start with: webctl start")
+	}
+
+	// Get HTML from daemon
+	html, err := getHTMLFromDaemon(cmd)
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
 
-	outputPath, err := generateHTMLPath(exec, selector)
-	if err != nil {
-		return outputError(err.Error())
+	// Get selector for filename generation
+	selector, _ := cmd.Flags().GetString("select")
+	if selector == "" && cmd.Parent() != nil {
+		selector, _ = cmd.Parent().PersistentFlags().GetString("select")
+	}
+
+	var outputPath string
+
+	if len(args) == 0 {
+		// No path provided - save to temp directory
+		exec, err := execFactory.NewExecutor()
+		if err != nil {
+			return outputError(err.Error())
+		}
+		defer exec.Close()
+
+		outputPath, err = generateHTMLPath(exec, selector)
+		if err != nil {
+			return outputError(err.Error())
+		}
+	} else {
+		// Path provided
+		path := args[0]
+
+		// Handle directory vs file path
+		fileInfo, err := os.Stat(path)
+		if err == nil && fileInfo.IsDir() {
+			// Path is a directory - auto-generate filename
+			exec, err := execFactory.NewExecutor()
+			if err != nil {
+				return outputError(err.Error())
+			}
+			defer exec.Close()
+
+			filename, err := generateHTMLFilename(exec, selector)
+			if err != nil {
+				return outputError(err.Error())
+			}
+			outputPath = filepath.Join(path, filename)
+		} else {
+			outputPath = path
+		}
 	}
 
 	// Write HTML to file
@@ -150,71 +179,6 @@ func runHTMLDefault(cmd *cobra.Command, args []string) error {
 	}
 
 	return format.FilePath(os.Stdout, outputPath)
-}
-
-// runHTMLShow handles show subcommand: output to stdout
-func runHTMLShow(cmd *cobra.Command, args []string) error {
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	// Get HTML from daemon
-	html, err := getHTMLFromDaemon(cmd)
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	// Output to stdout
-	fmt.Println(html)
-	return nil
-}
-
-// runHTMLSave handles save subcommand: save to custom path
-func runHTMLSave(cmd *cobra.Command, args []string) error {
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	path := args[0]
-
-	// Get HTML from daemon
-	html, err := getHTMLFromDaemon(cmd)
-	if err != nil {
-		return outputError(err.Error())
-	}
-
-	// Handle directory vs file path
-	fileInfo, err := os.Stat(path)
-	if err == nil && fileInfo.IsDir() {
-		// Path is a directory - auto-generate filename
-		exec, err := execFactory.NewExecutor()
-		if err != nil {
-			return outputError(err.Error())
-		}
-		defer exec.Close()
-
-		selector, _ := cmd.Flags().GetString("select")
-		filename, err := generateHTMLFilename(exec, selector)
-		if err != nil {
-			return outputError(err.Error())
-		}
-		path = filepath.Join(path, filename)
-	}
-
-	// Write HTML to file
-	if err := writeHTMLToFile(path, html); err != nil {
-		return outputError(err.Error())
-	}
-
-	// Return JSON response
-	if JSONOutput {
-		return outputJSON(os.Stdout, map[string]any{
-			"ok":   true,
-			"path": path,
-		})
-	}
-
-	return format.FilePath(os.Stdout, path)
 }
 
 // getHTMLFromDaemon fetches HTML from daemon, applying filters and formatting

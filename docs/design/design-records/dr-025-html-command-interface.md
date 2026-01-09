@@ -18,13 +18,12 @@ Users need a unified interface across all observation commands with consistent o
 
 ## Decision
 
-Redesign HTML command to follow the universal observation command pattern:
+Redesign HTML command to follow Unix convention (stdout by default):
 
 ```bash
-# Universal pattern
-webctl html                # Save to temp with auto-generated name
-webctl html show           # Output to stdout
-webctl html save <path>    # Save to custom path
+# Pattern
+webctl html                # Output to stdout (Unix convention)
+webctl html save [path]    # Save to file (temp if no path, custom if path given)
 
 # Universal flags
 --select, -s SELECTOR      # Filter to element(s)
@@ -33,27 +32,25 @@ webctl html save <path>    # Save to custom path
 --json                     # JSON output
 ```
 
-The HTML command uses ONLY the universal pattern with no HTML-specific subcommands. All functionality is provided through the base pattern and universal flags.
+The HTML command outputs to stdout by default (Unix convention), with a save subcommand for file output. The `show` subcommand is not needed - stdout is the default.
 
 Complete specification: docs/design/interface/html.md
 
 ## Why
 
-Universal Pattern Consistency:
+Unix Convention (stdout by default):
 
-The universal pattern (default/show/save) provides predictable behavior across all observation commands. Users learn once, apply everywhere. This reduces cognitive load and makes the CLI more intuitive.
+Following Unix philosophy, observation commands output to stdout by default. This enables:
+- Piping to other tools (grep, less, jq)
+- Quick inspection without file management
+- Consistent with standard CLI tools
 
-Default to Temp File:
+Save Subcommand for Files:
 
-Saving to temp by default preserves output for later analysis while keeping stdout clean. The temp file location is returned in JSON response, allowing users to read the file when needed. This matches screenshot command behavior.
-
-Show Subcommand for stdout:
-
-Explicit show subcommand makes intent clear. Users who want stdout output request it explicitly. This prevents accidental flooding of terminal with large HTML documents while still allowing quick inspection when desired.
-
-Save Subcommand with Path Argument:
-
-Using save <path> instead of --output flag makes the command structure more natural and consistent. The path argument is required, making it clear that users must specify where to save. Directory paths auto-generate filenames, file paths use exact names.
+When file output is needed, the save subcommand provides flexibility:
+- `html save` - saves to temp directory with auto-generated filename
+- `html save ./page.html` - saves to custom path
+- Directory paths auto-generate filenames, file paths use exact names
 
 Universal Flags for Filtering:
 
@@ -165,19 +162,14 @@ webctl html -o <path>     # Save to custom path
 Output Modes:
 
 Default (no subcommand):
-- Saves full page HTML to /tmp/webctl-html/
-- Auto-generates filename: YY-MM-DD-HHMMSS-{title}.html
-- Returns JSON with file path
-- Most common use case for large HTML documents
-
-Show subcommand:
-- Outputs HTML to stdout
+- Outputs HTML to stdout (Unix convention)
 - Useful for piping to other tools
 - Quick inspection without file management
 - Works with --select for focused output
 
 Save subcommand:
-- Requires path argument
+- Optional path argument
+- No path: saves to /tmp/webctl-html/ with auto-generated filename
 - Directory: auto-generates filename in that directory
 - File: saves to exact path
 - Creates parent directories if needed
@@ -234,49 +226,42 @@ If path is file:
 
 ## Usage Examples
 
-Default behavior (save to temp):
+Default behavior (stdout):
 
 ```bash
 webctl html
-# {"ok": true, "path": "/tmp/webctl-html/25-12-28-143052-example-domain.html"}
-
-webctl html --select "#main"
-# {"ok": true, "path": "/tmp/webctl-html/25-12-28-143115-main.html"}
-```
-
-Show to stdout:
-
-```bash
-webctl html show
 # <html>...</html>
 
-webctl html show --select ".content"
-# <div class="content">...</div>
+webctl html --select "#main"
+# <div id="main">...</div>
 
-webctl html show --find "login"
-# <html>...<form class="login">...</html>
+webctl html --find "login"
+# Lines containing "login"
 ```
 
-Save to custom path:
+Save to file:
 
 ```bash
+webctl html save
+# /tmp/webctl-html/25-12-28-143052-example-domain.html
+
 webctl html save ./page.html
-# {"ok": true, "path": "./page.html"}
+# ./page.html
 
 webctl html save ./output/
-# {"ok": true, "path": "./output/25-12-28-143052-example-domain.html"}
+# ./output/25-12-28-143052-example-domain.html
 
 webctl html save ./debug/content.html --select ".content"
-# {"ok": true, "path": "./debug/content.html"}
+# ./debug/content.html
 ```
 
 Combining flags:
 
 ```bash
-webctl html show --select "form" --find "password"
-# Forms containing "password"
+webctl html --select "form" --find "password"
+# Forms containing "password" (to stdout)
 
-webctl html --select ".card" --find "product"
+webctl html save --select ".card" --find "product"
 # All product cards saved to temp
 
 webctl html save ./results.html --select "#results" --raw
@@ -287,12 +272,11 @@ webctl html save ./results.html --select "#results" --raw
 
 From DR-012 (HTML Command Interface):
 
-1. Changed: Default behavior now saves to temp instead of requiring path
-2. Added: show subcommand for stdout output
-3. Added: save subcommand for explicit path specification
+1. Changed: Default behavior now outputs to stdout (Unix convention)
+2. Removed: show subcommand (not needed - stdout is default)
+3. Changed: save subcommand now takes optional path (temp if no path)
 4. Added: --find flag for text search (integrates find command)
-5. Changed: --output flag replaced by save <path> subcommand
-6. Added: --raw flag for unformatted output
+5. Added: --raw flag for unformatted output
 
 From DR-021 (HTML Formatting Find):
 
@@ -308,11 +292,12 @@ webctl html -o ./page.html     # Save to custom path
 webctl html "#main"            # Save element to temp
 ```
 
-New pattern (DR-025):
+New pattern (DR-025 after P-051):
 ```bash
-webctl html                    # Save to temp (same)
+webctl html                    # Output to stdout (changed)
+webctl html save               # Save to temp (changed)
 webctl html save ./page.html   # Save to custom path (changed)
-webctl html --select "#main"   # Save element to temp (changed)
+webctl html --select "#main"   # Output element to stdout (changed)
 ```
 
 Old pattern (find command):
@@ -322,10 +307,11 @@ webctl find "login"            # Search HTML for text
 
 New pattern (--find flag):
 ```bash
-webctl html --find "login"     # Search HTML for text
-webctl html show --find "login"  # Show results on stdout
+webctl html --find "login"     # Search HTML for text (to stdout)
+webctl html save --find "login"  # Save matching lines to temp
 ```
 
 ## Updates
 
+- 2025-01-09: Updated to stdout default, removed show subcommand (P-051)
 - 2025-12-28: Initial version (supersedes DR-012 and DR-021)

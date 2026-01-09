@@ -22,9 +22,8 @@ Redesign console command to follow the universal observation pattern with consol
 
 ```bash
 # Universal pattern
-webctl console              # Save all logs to temp
-webctl console show         # Output all logs to stdout
-webctl console save <path>  # Save all logs to custom path
+webctl console              # Output all logs to stdout (Unix convention)
+webctl console save [path]  # Save to file (temp if no path, custom if path given)
 
 # Universal flags
 --find, -f TEXT             # Search within log messages
@@ -38,31 +37,29 @@ webctl console save <path>  # Save all logs to custom path
 --range N-M                 # Entries N through M
 ```
 
-The console command uses the universal pattern with no console-specific subcommands. Filtering is provided through console-specific flags that apply to all output modes.
+The console command outputs to stdout by default (Unix convention), with a save subcommand for file output. Filtering is provided through console-specific flags that apply to all output modes.
 
 Complete specification: docs/design/interface/console.md
 
 ## Why
 
-Universal Pattern Adoption:
+Unix Convention (stdout by default):
 
-Applying the default/show/save pattern to console logs provides consistent behavior across all observation commands. Users get predictable output mode control and file preservation capabilities.
+Following Unix philosophy, observation commands output to stdout by default. This enables:
+- Piping to other tools (grep, less, jq)
+- Quick inspection without file management
+- Consistent with standard CLI tools
 
-Default to Temp File:
+Save Subcommand for Files:
 
-Saving console logs to temp by default preserves debugging data for later analysis. Logs are often needed after the fact for troubleshooting, and having them automatically saved prevents data loss when console output scrolls away.
-
-Show Subcommand for Interactive Debugging:
-
-Explicit show subcommand outputs logs to stdout for real-time monitoring and piping to other tools. This matches the current console command behavior while making the intent explicit.
-
-Save Subcommand for Archival:
-
-The save subcommand enables saving logs to specific locations for CI/CD pipelines, bug reports, or long-term analysis. This fills a critical gap in the current implementation.
+When file output is needed, the save subcommand provides flexibility:
+- `console save` - saves to temp directory with auto-generated filename
+- `console save ./logs.json` - saves to custom path
+- Directory paths auto-generate filenames, file paths use exact names
 
 Console-Specific Filter Flags:
 
-The --type, --head, --tail, and --range flags provide filtering specific to console log entries. These filters apply to all output modes (default/show/save), allowing users to filter before output regardless of destination.
+The --type, --head, --tail, and --range flags provide filtering specific to console log entries. These filters apply to all output modes, allowing users to filter before output regardless of destination.
 
 Type filtering is essential for debugging (show only errors/warnings). Range filters handle large log volumes. These are console-specific needs that don't apply universally.
 
@@ -174,20 +171,15 @@ webctl console-save <path>   # File output
 Output Modes:
 
 Default (no subcommand):
-- Saves all console logs to /tmp/webctl-console/
-- Auto-generates filename: YY-MM-DD-HHMMSS-console.json
-- Returns JSON with file path
-- Formatted text or JSON based on --json flag
-
-Show subcommand:
-- Outputs console logs to stdout
+- Outputs console logs to stdout (Unix convention)
 - Formatted table with timestamp, type, message
-- Color-coded by type unless --raw or --no-color
-- Current behavior users expect
+- Color-coded by type unless --raw or piped
+- Useful for piping to other tools
 
 Save subcommand:
-- Requires path argument
-- Directory: auto-generates filename
+- Optional path argument
+- No path: saves to /tmp/webctl-console/ with auto-generated filename
+- Directory: auto-generates filename in that directory
 - File: saves to exact path
 - Creates parent directories if needed
 
@@ -235,37 +227,29 @@ Console-Specific Filter Flags:
 
 ## Usage Examples
 
-Default behavior (save to temp):
+Default behavior (stdout):
 
 ```bash
 webctl console
-# {"ok": true, "path": "/tmp/webctl-console/25-12-28-143052-console.json"}
-
-webctl console --type error
-# {"ok": true, "path": "/tmp/webctl-console/25-12-28-143115-console.json"}
-# (only error logs)
-```
-
-Show to stdout:
-
-```bash
-webctl console show
 # 14:30:52 | log   | Page loaded
 # 14:30:53 | warn  | Deprecated API call
 # 14:30:54 | error | TypeError: undefined
 
-webctl console show --type error
+webctl console --type error
 # 14:30:54 | error | TypeError: undefined
 # 14:31:02 | error | Failed to fetch
 
-webctl console show --find "TypeError"
+webctl console --find "TypeError"
 # 14:30:54 | error | TypeError: undefined
 # 14:31:15 | error | TypeError: Cannot read property
 ```
 
-Save to custom path:
+Save to file:
 
 ```bash
+webctl console save
+# {"ok": true, "path": "/tmp/webctl-console/25-12-28-143052-console.json"}
+
 webctl console save ./logs/debug.json
 # {"ok": true, "path": "./logs/debug.json"}
 
@@ -280,28 +264,28 @@ Console-specific filters:
 
 ```bash
 # Type filtering
-webctl console show --type error,warn
-webctl console show --type error --type warn
-webctl console --type error  # Save errors to temp
+webctl console --type error,warn
+webctl console --type error --type warn
+webctl console save --type error  # Save errors to temp
 
 # Search within logs
-webctl console show --find "undefined"
-webctl console show --type error --find "TypeError"
+webctl console --find "undefined"
+webctl console --type error --find "TypeError"
 
 # Limit results
-webctl console show --head 10
-webctl console show --tail 20
-webctl console show --range 10-30
+webctl console --head 10
+webctl console --tail 20
+webctl console --range 10-30
 
 # Combined filtering
 webctl console save ./recent-errors.json --type error --tail 50
-webctl console show --type error --find "fetch" --tail 20
+webctl console --type error --find "fetch" --tail 20
 ```
 
 JSON output:
 
 ```bash
-webctl console show --json
+webctl console --json
 # {
 #   "ok": true,
 #   "logs": [
@@ -338,7 +322,7 @@ Identifier: Fixed to "console" (no variation needed)
 
 ## Output Format
 
-Text Mode (default for show):
+Text Mode (default):
 
 Formatted table with color-coding:
 ```
@@ -380,13 +364,12 @@ Array of console entry objects:
 
 From DR-007 (Console Command Interface):
 
-1. Changed: Default behavior now saves to temp instead of stdout
-2. Added: show subcommand for explicit stdout output (matches old default)
-3. Added: save subcommand for custom path specification
+1. Changed: Default behavior now outputs to stdout (Unix convention)
+2. Removed: show subcommand (not needed - stdout is default)
+3. Changed: save subcommand now takes optional path (temp if no path)
 4. Added: --find flag for text search within logs
-5. Added: Default output to JSON file format
-6. Retained: --type, --head, --tail, --range filters (behavior unchanged)
-7. Retained: Color-coded output for show mode
+5. Retained: --type, --head, --tail, --range filters (behavior unchanged)
+6. Retained: Color-coded output for default mode
 
 Migration Guide:
 
@@ -396,16 +379,17 @@ webctl console                    # Stdout with all logs
 webctl console --type error       # Stdout with errors only
 ```
 
-New pattern (DR-027):
+New pattern (DR-027 after P-051):
 ```bash
-webctl console show               # Stdout with all logs (changed)
-webctl console show --type error  # Stdout with errors only (changed)
-webctl console                    # Save to temp (new behavior)
+webctl console                    # Output to stdout (same as before)
+webctl console --type error       # Stdout with errors only (same)
+webctl console save               # Save to temp (new)
 webctl console save ./logs.json   # Save to custom path (new feature)
 ```
 
-For users who want the old default behavior (stdout), update scripts to use `webctl console show`.
+The default stdout behavior is preserved. Use `webctl console save` when file output is needed.
 
 ## Updates
 
+- 2026-01-09: Updated to stdout default, removed show subcommand (P-051)
 - 2025-12-28: Initial version (supersedes DR-007)
