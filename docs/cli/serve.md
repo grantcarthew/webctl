@@ -186,8 +186,8 @@ While the server is running, use all webctl debugging commands:
 webctl serve ./public
 
 # In another terminal (or REPL)
-webctl console show                  # Monitor console logs
-webctl network show --status 4xx     # Monitor network errors
+webctl console                       # Monitor console logs
+webctl network --status 4xx          # Monitor network errors
 webctl html --select "#app"          # Inspect rendered HTML
 webctl css computed ".button"        # Debug computed styles
 webctl screenshot                    # Capture page state
@@ -227,8 +227,8 @@ webctl serve ./public
 # Browser auto-reloads on save
 
 # In another terminal: Debug as needed
-webctl console show
-webctl network show
+webctl console
+webctl network
 ```
 
 ### API Integration Development
@@ -255,7 +255,7 @@ webctl serve ./public --host 0.0.0.0 --port 3000
 # Open http://<your-ip>:3000 in mobile browser
 
 # Debug mobile issues
-webctl console show
+webctl console
 webctl screenshot
 ```
 

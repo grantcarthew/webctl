@@ -5,7 +5,7 @@
 
 ## Overview
 
-Test the webctl css command which extracts CSS from the current page. This command supports four modes (default/show/save/computed/get) with filtering and search capabilities, allowing extraction of stylesheets or computed styles.
+Test the webctl css command which extracts CSS from the current page. This command outputs to stdout by default, with save/computed/get subcommands for specific operations.
 
 ## Test Script
 
@@ -23,12 +23,12 @@ Run the interactive test script:
 ## Command Signature
 
 ```
-webctl css [show|save <path>|computed <selector>|get <selector> <property>] [--select sel] [--find text] [--raw]
+webctl css [save [path]|computed <selector>|get <selector> <property>] [--select sel] [--find text] [--raw]
 ```
 
 Subcommands:
-- (default): Save to /tmp/webctl-css/ with auto-generated filename
-- show: Output CSS to stdout
+- (default): Output CSS to stdout
+- save: Save to /tmp/webctl-css/ with auto-generated filename
 - save <path>: Save to custom path
 - computed <selector>: Get computed styles to stdout
 - get <selector> <property>: Get single CSS property to stdout
@@ -46,20 +46,20 @@ Flags (computed mode):
 
 ## Test Checklist
 
-Default mode (save to temp):
-- [ ] css (all stylesheets to temp)
-- [ ] css --select "#main" (computed styles to temp)
-- [ ] css --find "background" (search and save)
+Default mode (stdout):
+- [ ] css (all stylesheets to stdout)
+- [ ] css --select "#main" (computed styles to stdout)
+- [ ] css --find "background" (search and output)
+- [ ] Verify CSS output to stdout
+- [ ] Verify no file created
+
+Save mode (file output):
+- [ ] css save (all stylesheets to temp)
+- [ ] css save --select ".content" (computed styles to temp)
+- [ ] css save --find "color" (search and save)
 - [ ] Verify file saved to /tmp/webctl-css/
 - [ ] Verify auto-generated filename format
 - [ ] Verify JSON response with file path
-
-Show mode (stdout):
-- [ ] css show (all stylesheets to stdout)
-- [ ] css show --select ".content" (computed styles to stdout)
-- [ ] css show --find "color" (search and show)
-- [ ] Verify CSS output to stdout
-- [ ] Verify no file created
 
 Save mode (custom path):
 - [ ] css save ./styles.css (save to file)
@@ -126,20 +126,20 @@ Error cases:
 
 CLI vs REPL:
 - [ ] CLI: webctl css
-- [ ] CLI: webctl css show
+- [ ] CLI: webctl css save
 - [ ] CLI: webctl css save ./styles.css
 - [ ] CLI: webctl css computed "#main"
 - [ ] CLI: webctl css get "#header" color
 - [ ] REPL: css
-- [ ] REPL: css show
+- [ ] REPL: css save
 - [ ] REPL: css save ./styles.css
 - [ ] REPL: css computed "#main"
 - [ ] REPL: css get "#header" color
 
 ## Notes
 
-- Default mode saves to temp for quick debugging
-- Show mode useful for piping to other tools
+- Default mode outputs to stdout (Unix convention)
+- Save mode saves to temp or custom path
 - Select flag extracts computed styles for specific elements
 - Find flag searches text within CSS rules
 - Raw flag skips formatting for exact browser CSS

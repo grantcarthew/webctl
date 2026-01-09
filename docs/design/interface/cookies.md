@@ -3,15 +3,12 @@
 ## Universal Pattern (Observation)
 
 ```bash
-# Default: save all cookies to temp file
+# Default: output all cookies to stdout
 webctl cookies
-# → /tmp/webctl-cookies/25-12-28-HHMMSS-cookies.json
 
-# Show: output all cookies to stdout
-webctl cookies show
-
-# Save: save all cookies to custom path
-webctl cookies save <path>
+# Save: save all cookies to file
+webctl cookies save           # Save to temp file
+webctl cookies save <path>    # Save to custom path
 # If <path> is a directory, auto-generate filename
 webctl cookies save ./output/
 # → ./output/25-12-28-HHMMSS-cookies.json
@@ -58,20 +55,20 @@ webctl cookies delete <name>
 ### Observation
 
 ```bash
-# All cookies to temp
+# All cookies to stdout
 webctl cookies
+
+# All cookies to temp file
+webctl cookies save
 # → /tmp/webctl-cookies/25-12-28-HHMMSS-cookies.json
 
-# All cookies to stdout
-webctl cookies show
-
 # Filter by domain
-webctl cookies show --domain ".github.com"
-webctl cookies show --domain "example.com"
+webctl cookies --domain ".github.com"
+webctl cookies --domain "example.com"
 
 # Search cookies
-webctl cookies show --find "session"
-webctl cookies --find "token"
+webctl cookies --find "session"
+webctl cookies save --find "token"
 # → /tmp/webctl-cookies/... (filtered cookies)
 
 # Save filtered cookies
@@ -79,7 +76,7 @@ webctl cookies save ./auth-cookies.json --find "auth"
 webctl cookies save ./github-cookies.json --domain ".github.com"
 
 # Combine filters
-webctl cookies show --domain "example.com" --find "session"
+webctl cookies --domain "example.com" --find "session"
 ```
 
 ### Mutations
@@ -121,9 +118,8 @@ webctl cookies delete session --domain api.example.com
 
 **Universal pattern for observation:**
 - Consistent with html, css, console, network
-- Default saves to temp (preserves cookies for analysis)
-- `show` for interactive debugging
-- `save <path>` for archival or transfer
+- Default outputs to stdout (Unix convention)
+- `save` for file output (temp or custom path)
 
 **Cookies-specific filters:**
 - `--domain` - Essential for multi-domain cookie filtering
@@ -133,10 +129,10 @@ webctl cookies delete session --domain api.example.com
 **Mutation subcommands:**
 - `set` and `delete` are mutations, not observations
 - Keep as separate subcommands (established pattern)
-- Don't mix with observation pattern (save/show)
+- Don't mix with observation pattern (default/save)
 - Each has specific flags for cookie attributes
 
 **Separation of concerns:**
-- Observation (default/show/save) - read-only operations
+- Observation (default/save) - read-only operations
 - Mutations (set/delete) - write operations
 - Clear distinction prevents confusion

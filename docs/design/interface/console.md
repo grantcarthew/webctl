@@ -3,15 +3,12 @@
 ## Universal Pattern
 
 ```bash
-# Default: save all logs to temp file
+# Default: output all logs to stdout
 webctl console
-# → /tmp/webctl-console/25-12-28-HHMMSS-console.json
 
-# Show: output all logs to stdout
-webctl console show
-
-# Save: save all logs to custom path
-webctl console save <path>
+# Save: save all logs to file
+webctl console save           # Save to temp file
+webctl console save <path>    # Save to custom path
 # If <path> is a directory, auto-generate filename
 webctl console save ./output/
 # → ./output/25-12-28-HHMMSS-console.json
@@ -43,31 +40,31 @@ Note: `--head`, `--tail`, and `--range` are mutually exclusive.
 ## Examples
 
 ```bash
-# All logs to temp
+# All logs to stdout
 webctl console
+
+# All logs to temp file
+webctl console save
 # → /tmp/webctl-console/25-12-28-HHMMSS-console.json
 
-# All logs to stdout
-webctl console show
-
 # Filter by type
-webctl console show --type error
-webctl console show --type error,warn
-webctl console show --type error --type warn
+webctl console --type error
+webctl console --type error,warn
+webctl console --type error --type warn
 
 # Search within logs
-webctl console show --find "TypeError"
-webctl console --find "undefined"
+webctl console --find "TypeError"
+webctl console save --find "undefined"
 # → /tmp/webctl-console/... (filtered logs)
 
 # Combine filters
-webctl console show --type error --find "TypeError"
+webctl console --type error --find "TypeError"
 webctl console save ./errors.json --type error --find "undefined"
 
 # Limit results
-webctl console show --head 10
-webctl console show --tail 20
-webctl console show --range 10-30
+webctl console --head 10
+webctl console --tail 20
+webctl console --range 10-30
 
 # Save filtered logs
 webctl console save ./recent-errors.json --type error --tail 50
@@ -91,9 +88,8 @@ None. Console uses only the universal pattern with console-specific filter flags
 
 **Universal pattern:**
 - Consistent with html, css, network, cookies
-- Default saves to temp (preserves logs for analysis)
-- `show` for interactive debugging
-- `save <path>` for CI/CD or archival
+- Default outputs to stdout (Unix convention)
+- `save` for file output (temp or custom path)
 
 **Console-specific flags:**
 - `--type` - Essential for filtering error vs log vs warn

@@ -5,7 +5,7 @@
 
 ## Overview
 
-Test the webctl console command which extracts console logs from the current page. This command supports three modes (default/show/save) with comprehensive filtering by type, text search, and range limiting.
+Test the webctl console command which extracts console logs from the current page. This command outputs to stdout by default, with a save subcommand for file output.
 
 ## Test Script
 
@@ -23,12 +23,12 @@ Run the interactive test script:
 ## Command Signature
 
 ```
-webctl console [show|save <path>] [--find text] [--type type] [--head N] [--tail N] [--range N-M] [--raw]
+webctl console [save [path]] [--find text] [--type type] [--head N] [--tail N] [--range N-M] [--raw]
 ```
 
 Subcommands:
-- (default): Save to /tmp/webctl-console/ with auto-generated filename
-- show: Output console logs to stdout
+- (default): Output console logs to stdout
+- save: Save to /tmp/webctl-console/ with auto-generated filename
 - save <path>: Save to custom path
 
 Universal flags (work with default/show/save modes):
@@ -44,23 +44,23 @@ Console-specific filter flags:
 
 ## Test Checklist
 
-Default mode (save to temp):
-- [ ] console (all logs to temp)
-- [ ] console --type error (only errors to temp)
-- [ ] console --find "undefined" (search and save)
+Default mode (stdout):
+- [ ] console (all logs to stdout)
+- [ ] console --type error (only errors to stdout)
+- [ ] console --type error,warn (multiple types CSV)
+- [ ] console --type error --type warn (multiple types repeatable)
+- [ ] console --find "TypeError" (search and output)
+- [ ] Verify formatted text output to stdout
+- [ ] Verify no file created
+
+Save mode (file output):
+- [ ] console save (all logs to temp)
+- [ ] console save --type error (only errors to temp)
+- [ ] console save --find "undefined" (search and save)
 - [ ] Verify file saved to /tmp/webctl-console/
 - [ ] Verify auto-generated filename format (YY-MM-DD-HHMMSS-console.json)
 - [ ] Verify JSON response with file path
 - [ ] Verify JSON file structure (ok, logs, count)
-
-Show mode (stdout):
-- [ ] console show (all logs to stdout)
-- [ ] console show --type error (only errors)
-- [ ] console show --type error,warn (multiple types CSV)
-- [ ] console show --type error --type warn (multiple types repeatable)
-- [ ] console show --find "TypeError" (search and show)
-- [ ] Verify formatted text output to stdout
-- [ ] Verify no file created
 
 Save mode (custom path):
 - [ ] console save ./logs/debug.json (save to file)
@@ -142,18 +142,18 @@ Error cases:
 
 CLI vs REPL:
 - [ ] CLI: webctl console
-- [ ] CLI: webctl console show
+- [ ] CLI: webctl console save
 - [ ] CLI: webctl console save ./logs.json
-- [ ] CLI: webctl console show --type error --tail 10
+- [ ] CLI: webctl console --type error --tail 10
 - [ ] REPL: console
-- [ ] REPL: console show
+- [ ] REPL: console save
 - [ ] REPL: console save ./logs.json
-- [ ] REPL: console show --type error --tail 10
+- [ ] REPL: console --type error --tail 10
 
 ## Notes
 
-- Default mode saves to temp for quick debugging
-- Show mode useful for real-time monitoring and piping
+- Default mode outputs to stdout (Unix convention)
+- Save mode saves to temp or custom path
 - Type filter supports multiple types via CSV or repeatable flags
 - Find flag searches within log message text (case insensitive)
 - Head/tail/range flags mutually exclusive

@@ -191,7 +191,7 @@ read -p "Press Enter to continue..."
 
 heading "back --wait && html"
 cmd "webctl navigate example.com"
-cmd "webctl back --wait && webctl html show"
+cmd "webctl back --wait && webctl html"
 
 echo ""
 echo "Back, wait, then show HTML"

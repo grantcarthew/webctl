@@ -70,37 +70,37 @@ webctl reload
 webctl back
 webctl forward
 
-# Observation commands (universal pattern: default/show/save)
-webctl html                         # Save to temp
-webctl html show                    # Output to stdout
+# Observation commands (default: stdout, save for files)
+webctl html                         # Output to stdout
+webctl html save                    # Save to temp
 webctl html save <path>             # Save to custom path
 webctl html --select <selector> --find <text>  # Filter and search
 
-webctl css                          # Save stylesheets to temp
-webctl css show                     # Output to stdout
+webctl css                          # Output stylesheets to stdout
+webctl css save                     # Save to temp
 webctl css save <path>              # Save to custom path
 webctl css --select <selector> --find <text>
 webctl css computed <selector>      # Computed styles (stdout)
 webctl css get <selector> <property> # Single property (stdout)
 
-webctl console                      # Save logs to temp
-webctl console show                 # Output to stdout
+webctl console                      # Output logs to stdout
+webctl console save                 # Save to temp
 webctl console save <path>          # Save to custom path
 webctl console --type <type> --find <text>
 
-webctl network                      # Save requests to temp
-webctl network show                 # Output to stdout
+webctl network                      # Output requests to stdout
+webctl network save                 # Save to temp
 webctl network save <path>          # Save to custom path
 webctl network --status <code> --method <method> --find <text>
 
-webctl cookies                      # Save cookies to temp
-webctl cookies show                 # Output to stdout
+webctl cookies                      # Output cookies to stdout
+webctl cookies save                 # Save to temp
 webctl cookies save <path>          # Save to custom path
 webctl cookies --domain <domain> --find <text>
 webctl cookies set <name> <value>
 webctl cookies delete <name>
 
-webctl screenshot                   # Save to temp
+webctl screenshot                   # Save to temp (binary output)
 webctl screenshot save <path>       # Save to custom path
 
 webctl eval <js-expression>

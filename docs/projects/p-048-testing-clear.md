@@ -41,44 +41,44 @@ Clear all buffers:
 - [ ] clear (no argument, clears both console and network)
 - [ ] Verify console events cleared
 - [ ] Verify network events cleared
-- [ ] Verify subsequent console show returns empty
-- [ ] Verify subsequent network show returns empty
+- [ ] Verify subsequent console returns empty
+- [ ] Verify subsequent network returns empty
 
 Clear console buffer only:
 - [ ] clear console
 - [ ] Verify console events cleared
 - [ ] Verify network events NOT cleared
-- [ ] console show after clear (should be empty)
-- [ ] network show after clear (should still have events if any existed)
+- [ ] console after clear (should be empty)
+- [ ] network after clear (should still have events if any existed)
 
 Clear network buffer only:
 - [ ] clear network
 - [ ] Verify network events cleared
 - [ ] Verify console events NOT cleared
-- [ ] network show after clear (should be empty)
-- [ ] console show after clear (should still have events if any existed)
+- [ ] network after clear (should be empty)
+- [ ] console after clear (should still have events if any existed)
 
 Workflow with console:
 - [ ] Navigate to page with console logs
-- [ ] console show (verify events present)
+- [ ] console (verify events present)
 - [ ] clear console
-- [ ] console show (verify empty)
+- [ ] console (verify empty)
 - [ ] Generate new console log
-- [ ] console show (verify only new event)
+- [ ] console (verify only new event)
 
 Workflow with network:
 - [ ] Navigate to page with network requests
-- [ ] network show (verify requests present)
+- [ ] network (verify requests present)
 - [ ] clear network
-- [ ] network show (verify empty)
+- [ ] network (verify empty)
 - [ ] Navigate to new page
-- [ ] network show (verify only new requests)
+- [ ] network (verify only new requests)
 
 Workflow with both buffers:
 - [ ] Generate console logs and network requests
-- [ ] console show and network show (verify both have events)
+- [ ] console and network (verify both have events)
 - [ ] clear (no argument)
-- [ ] console show and network show (verify both empty)
+- [ ] console and network (verify both empty)
 - [ ] Generate new events
 - [ ] Verify only new events present
 
@@ -119,10 +119,10 @@ Output formats:
 Verify independence of buffers:
 - [ ] Generate console events only
 - [ ] clear network (should not affect console)
-- [ ] console show (verify events still present)
+- [ ] console (verify events still present)
 - [ ] Generate network requests only
 - [ ] clear console (should not affect network)
-- [ ] network show (verify requests still present)
+- [ ] network (verify requests still present)
 
 CLI vs REPL:
 - [ ] CLI: webctl clear
@@ -133,12 +133,12 @@ CLI vs REPL:
 - [ ] REPL: clear network
 
 Integration with observation commands:
-- [ ] console show before clear (has events)
+- [ ] console before clear (has events)
 - [ ] clear console
-- [ ] console show after clear (empty)
-- [ ] network show before clear (has requests)
+- [ ] console after clear (empty)
+- [ ] network before clear (has requests)
 - [ ] clear network
-- [ ] network show after clear (empty)
+- [ ] network after clear (empty)
 
 ## Notes
 

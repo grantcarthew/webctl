@@ -3,21 +3,18 @@
 ## Universal Pattern
 
 ```bash
-# Default: save all stylesheets to temp file
+# Default: output all stylesheets to stdout
 webctl css
-# → /tmp/webctl-css/25-12-28-HHMMSS-page-title.css
 
-# Show: output all stylesheets to stdout
-webctl css show
-
-# Save: save all stylesheets to custom path
-webctl css save <path>
+# Save: save all stylesheets to file
+webctl css save           # Save to temp file
+webctl css save <path>    # Save to custom path
 # If <path> is a directory, auto-generate filename
 webctl css save ./output/
 # → ./output/25-12-28-HHMMSS-page-title.css
 ```
 
-## Universal Flags (apply to default, show, save)
+## Universal Flags (apply to default and save)
 
 ```bash
 --select, -s SELECTOR    # Filter to element's computed styles
@@ -29,25 +26,22 @@ webctl css save ./output/
 ## Examples with Flags
 
 ```bash
-# Get computed styles for element
+# Get computed styles for element to stdout
 webctl css --select ".button"
-# → /tmp/webctl-css/25-12-28-HHMMSS-button.css (computed styles)
 
-webctl css show --select ".button"
-# → stdout (computed styles)
-
+# Save computed styles to file
 webctl css save ./button.css --select ".button"
 # → ./button.css (computed styles)
 
 # Search within CSS
 webctl css --find "background"
-# → /tmp/webctl-css/... (filtered CSS with matches)
-
-webctl css show --find "background"
 # → stdout (filtered CSS with matches)
 
+webctl css save --find "background"
+# → /tmp/webctl-css/... (filtered CSS with matches)
+
 # Combine filters
-webctl css show --select ".button" --find "hover"
+webctl css --select ".button" --find "hover"
 # → stdout (computed styles for .button, filtered for "hover")
 ```
 
@@ -80,8 +74,8 @@ webctl css inject --file <path>
 
 **Universal pattern:**
 - Consistent with html, console, network, cookies
-- Default saves to temp (most common use case)
-- `show` for stdout, `save <path>` for custom location
+- Default outputs to stdout (Unix convention)
+- `save` for file output (temp or custom path)
 - Filters work across all output modes
 
 **CSS-specific subcommands:**

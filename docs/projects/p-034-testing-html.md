@@ -5,7 +5,7 @@
 
 ## Overview
 
-Test the webctl html command which extracts HTML from the current page. This command supports three modes (default/show/save) with filtering and search capabilities.
+Test the webctl html command which extracts HTML from the current page. This command outputs to stdout by default, with a save subcommand for file output.
 
 ## Test Script
 
@@ -23,12 +23,12 @@ Run the interactive test script:
 ## Command Signature
 
 ```
-webctl html [show|save <path>] [--select sel] [--find text] [--raw]
+webctl html [save [path]] [--select sel] [--find text] [--raw]
 ```
 
 Subcommands:
-- (default): Save to /tmp/webctl-html/ with auto-generated filename
-- show: Output HTML to stdout
+- (default): Output HTML to stdout
+- save: Save to /tmp/webctl-html/ with auto-generated filename
 - save <path>: Save to custom path
 
 Flags:
@@ -41,20 +41,20 @@ Flags:
 
 ## Test Checklist
 
-Default mode (save to temp):
-- [ ] html (full page to temp)
-- [ ] html --select "#main" (element to temp)
-- [ ] html --find "login" (search and save)
+Default mode (stdout):
+- [ ] html (full page to stdout)
+- [ ] html --select "#main" (element to stdout)
+- [ ] html --find "login" (search and output)
+- [ ] Verify HTML output to stdout
+- [ ] Verify no file created
+
+Save mode (file output):
+- [ ] html save (full page to temp)
+- [ ] html save --select ".content" (element to temp)
+- [ ] html save --find "error" (search and save)
 - [ ] Verify file saved to /tmp/webctl-html/
 - [ ] Verify auto-generated filename format
 - [ ] Verify JSON response with file path
-
-Show mode (stdout):
-- [ ] html show (full page to stdout)
-- [ ] html show --select ".content" (element to stdout)
-- [ ] html show --find "error" (search and show)
-- [ ] Verify HTML output to stdout
-- [ ] Verify no file created
 
 Save mode (custom path):
 - [ ] html save ./page.html (save to file)
@@ -101,16 +101,16 @@ Error cases:
 
 CLI vs REPL:
 - [ ] CLI: webctl html
-- [ ] CLI: webctl html show
+- [ ] CLI: webctl html save
 - [ ] CLI: webctl html save ./page.html
 - [ ] REPL: html
-- [ ] REPL: html show
+- [ ] REPL: html save
 - [ ] REPL: html save ./page.html
 
 ## Notes
 
-- Default mode saves to temp for quick debugging
-- Show mode useful for piping to other tools
+- Default mode outputs to stdout (Unix convention)
+- Save mode saves to temp or custom path
 - Select flag extracts specific elements (computed styles for CSS)
 - Find flag searches text content
 - Raw flag skips formatting for exact browser HTML

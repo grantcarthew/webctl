@@ -55,7 +55,7 @@ read -p "Press Enter when page loaded..."
 # First, let's check what select elements exist on this page
 heading "Check page structure"
 echo "Let's see what select elements are available"
-cmd "webctl html show --select \"select\""
+cmd "webctl html --select \"select\""
 
 echo ""
 echo "Review the select elements in output"

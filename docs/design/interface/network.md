@@ -3,15 +3,12 @@
 ## Universal Pattern
 
 ```bash
-# Default: save all requests to temp file
+# Default: output all requests to stdout
 webctl network
-# → /tmp/webctl-network/25-12-28-HHMMSS-network.json
 
-# Show: output all requests to stdout
-webctl network show
-
-# Save: save all requests to custom path
-webctl network save <path>
+# Save: save all requests to file
+webctl network save           # Save to temp file
+webctl network save <path>    # Save to custom path
 # If <path> is a directory, auto-generate filename
 webctl network save ./output/
 # → ./output/25-12-28-HHMMSS-network.json
@@ -54,46 +51,46 @@ Note: `--head`, `--tail`, and `--range` are mutually exclusive.
 ## Examples
 
 ```bash
-# All requests to temp
+# All requests to stdout
 webctl network
+
+# All requests to temp file
+webctl network save
 # → /tmp/webctl-network/25-12-28-HHMMSS-network.json
 
-# All requests to stdout
-webctl network show
-
 # Filter by status
-webctl network show --status 4xx
-webctl network show --status 4xx,5xx
-webctl network show --status 200-299
+webctl network --status 4xx
+webctl network --status 4xx,5xx
+webctl network --status 200-299
 
 # Filter by type
-webctl network show --type xhr,fetch
-webctl network show --type document
+webctl network --type xhr,fetch
+webctl network --type document
 
 # Filter by method
-webctl network show --method POST,PUT
+webctl network --method POST,PUT
 
 # Search in URLs
-webctl network show --url "api/user"
-webctl network show --find "api/"
+webctl network --url "api/user"
+webctl network --find "api/"
 
 # Failed requests only
-webctl network show --failed
+webctl network --failed
 
 # Slow requests
-webctl network show --min-duration 1s
+webctl network --min-duration 1s
 
 # Large responses
-webctl network show --min-size 1048576  # 1MB+
+webctl network --min-size 1048576  # 1MB+
 
 # Combine filters
-webctl network show --status 5xx --method POST --find "api/"
+webctl network --status 5xx --method POST --find "api/"
 webctl network save ./api-errors.json --status 4xx,5xx --url "api/"
 
 # Limit results
-webctl network show --head 20
-webctl network show --tail 50
-webctl network show --range 10-30
+webctl network --head 20
+webctl network --tail 50
+webctl network --range 10-30
 
 # Complex filtering
 webctl network save ./slow-api-errors.json \
@@ -122,9 +119,8 @@ None. Network uses only the universal pattern with network-specific filter flags
 
 **Universal pattern:**
 - Consistent with html, css, console, cookies
-- Default saves to temp (preserves requests for analysis)
-- `show` for interactive debugging
-- `save <path>` for CI/CD or archival
+- Default outputs to stdout (Unix convention)
+- `save` for file output (temp or custom path)
 
 **Network-specific flags:**
 - Extensive filtering needed for large request volumes
