@@ -985,7 +985,8 @@ func TestRunConsoleSave_DirectoryPath(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err = runConsoleSave(consoleSaveCmd, []string{tmpDir})
+	// Add trailing slash to indicate directory (new trailing slash convention)
+	err = runConsoleSave(consoleSaveCmd, []string{tmpDir + "/"})
 
 	w.Close()
 	os.Stdout = old

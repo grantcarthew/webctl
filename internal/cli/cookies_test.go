@@ -364,7 +364,8 @@ func TestRunCookiesSave_ToDirectory(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runCookiesSave(cookiesSaveCmd, []string{tmpDir})
+	// Add trailing slash to indicate directory (new trailing slash convention)
+	err := runCookiesSave(cookiesSaveCmd, []string{tmpDir + "/"})
 
 	w.Close()
 	os.Stdout = old
