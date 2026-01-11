@@ -29,7 +29,7 @@ webctl cookies [save [path]|set <name> <value>|delete <name>] [--find text] [--d
 Subcommands:
 - (default): Output cookies to stdout
 - save: Save to /tmp/webctl-cookies/ with auto-generated filename
-- save <path>: Save to custom path
+- save <path>: Save to file or directory/ (trailing slash = directory)
 - set <name> <value>: Set a cookie (mutation)
 - delete <name>: Delete a cookie (mutation)
 
@@ -74,9 +74,10 @@ Save mode (file output):
 
 Save mode (custom path):
 - [ ] cookies save ./cookies.json (save to file)
-- [ ] cookies save ./output/ (save to dir with auto-filename)
+- [ ] cookies save ./output/ (save to dir with auto-filename, creates dir)
+- [ ] cookies save ./output (save to file named "output", NOT a directory)
 - [ ] cookies save ./auth-cookies.json --find "auth"
-- [ ] Verify file saved to custom path
+- [ ] Verify trailing slash behavior
 
 Domain filter:
 - [ ] --domain exact match (example.com)
@@ -214,6 +215,7 @@ CLI vs REPL:
 
 - Default mode outputs to stdout (Unix convention)
 - Save mode saves to temp or custom path
+- Trailing slash convention: path/ = directory (auto-filename), path = file (like rsync)
 - Set subcommand mutates browser state (creates/updates cookie)
 - Delete subcommand mutates browser state (removes cookie)
 - Domain filter matches exact domain and subdomains

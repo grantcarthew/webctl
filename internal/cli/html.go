@@ -62,14 +62,15 @@ var htmlSaveCmd = &cobra.Command{
 	Short: "Save HTML to file",
 	Long: `Saves HTML to a file.
 
-If no path is provided, saves to temp directory with auto-generated filename.
-If path is a directory, auto-generates filename.
-If path is a file, uses exact path.
+Path conventions:
+  (no path)         Save to /tmp/webctl-html/ with auto-generated filename
+  ./page.html       Save to exact file path
+  ./output/         Save to directory with auto-generated filename (trailing slash required)
 
 Examples:
   html save                             # Save to temp dir
   html save ./page.html                 # Save to file
-  html save ./output/                   # Save to dir
+  html save ./output/                   # Save to dir (creates if needed)
   html save --select "#app" --find "error"`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runHTMLSave,
@@ -145,10 +146,9 @@ func runHTMLSave(cmd *cobra.Command, args []string) error {
 		// Path provided
 		path := args[0]
 
-		// Handle directory vs file path
-		fileInfo, err := os.Stat(path)
-		if err == nil && fileInfo.IsDir() {
-			// Path is a directory - auto-generate filename
+		// Check if path ends with separator (directory convention)
+		if strings.HasSuffix(path, string(os.PathSeparator)) || strings.HasSuffix(path, "/") {
+			// Path ends with separator - treat as directory, auto-generate filename
 			exec, err := execFactory.NewExecutor()
 			if err != nil {
 				return outputError(err.Error())
@@ -159,8 +159,15 @@ func runHTMLSave(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return outputError(err.Error())
 			}
+
+			// Ensure directory exists
+			if err := os.MkdirAll(path, 0755); err != nil {
+				return outputError(fmt.Sprintf("failed to create directory: %v", err))
+			}
+
 			outputPath = filepath.Join(path, filename)
 		} else {
+			// No trailing slash - treat as file path
 			outputPath = path
 		}
 	}

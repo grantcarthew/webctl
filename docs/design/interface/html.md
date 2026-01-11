@@ -9,9 +9,12 @@ webctl html
 # Save: save full page to file
 webctl html save           # Save to temp file
 webctl html save <path>    # Save to custom path
-# If <path> is a directory, auto-generate filename
-webctl html save ./output/
+
+# Path conventions (trailing slash required for directories):
+webctl html save ./page.html   # File: saves to ./page.html
+webctl html save ./output/     # Directory: auto-generates filename
 # → ./output/25-12-28-HHMMSS-page-title.html
+webctl html save ./output      # File: saves to ./output (not a directory!)
 ```
 
 ## Universal Flags

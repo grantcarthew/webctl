@@ -29,7 +29,7 @@ webctl html [save [path]] [--select sel] [--find text] [--raw]
 Subcommands:
 - (default): Output HTML to stdout
 - save: Save to /tmp/webctl-html/ with auto-generated filename
-- save <path>: Save to custom path
+- save <path>: Save to file or directory/ (trailing slash = directory)
 
 Flags:
 - --select, -s <selector>: Filter to element(s) matching CSS selector
@@ -58,9 +58,10 @@ Save mode (file output):
 
 Save mode (custom path):
 - [ ] html save ./page.html (save to file)
-- [ ] html save ./output/ (save to dir with auto-filename)
+- [ ] html save ./output/ (save to dir with auto-filename, creates dir)
+- [ ] html save ./output (save to file named "output", NOT a directory)
 - [ ] html save ./debug.html --select "form" --find "password"
-- [ ] Verify file saved to custom path
+- [ ] Verify trailing slash behavior
 
 Select flag:
 - [ ] --select with ID selector (#header)
@@ -111,6 +112,7 @@ CLI vs REPL:
 
 - Default mode outputs to stdout (Unix convention)
 - Save mode saves to temp or custom path
+- Trailing slash convention: path/ = directory (auto-filename), path = file (like rsync)
 - Select flag extracts specific elements (computed styles for CSS)
 - Find flag searches text content
 - Raw flag skips formatting for exact browser HTML

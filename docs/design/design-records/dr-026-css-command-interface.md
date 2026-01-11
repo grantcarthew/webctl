@@ -190,9 +190,10 @@ Default (no subcommand):
 Save subcommand:
 - Optional path argument
 - No path: saves to /tmp/webctl-css/ with auto-generated filename
-- Directory: auto-generates filename in that directory
-- File: saves to exact path
+- Path with trailing slash (path/): auto-generates filename in that directory
+- Path without trailing slash (path): saves to exact file path
 - Creates parent directories if needed
+- Trailing slash convention follows Unix tools like rsync
 
 Universal Flags (Apply to Universal Pattern):
 

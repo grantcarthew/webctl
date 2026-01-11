@@ -281,13 +281,19 @@ func runCookiesSave(cmd *cobra.Command, args []string) error {
 		// Path provided
 		path := args[0]
 
-		// Handle directory vs file path
-		fileInfo, err := os.Stat(path)
-		if err == nil && fileInfo.IsDir() {
-			// Path is a directory - auto-generate filename
+		// Check if path ends with separator (directory convention)
+		if strings.HasSuffix(path, string(os.PathSeparator)) || strings.HasSuffix(path, "/") {
+			// Path ends with separator - treat as directory, auto-generate filename
 			filename := generateCookiesFilename()
+
+			// Ensure directory exists
+			if err := os.MkdirAll(path, 0755); err != nil {
+				return outputError(fmt.Sprintf("failed to create directory: %v", err))
+			}
+
 			outputPath = filepath.Join(path, filename)
 		} else {
+			// No trailing slash - treat as file path
 			outputPath = path
 		}
 	}

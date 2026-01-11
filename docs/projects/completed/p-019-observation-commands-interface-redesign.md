@@ -57,8 +57,9 @@ webctl <cmd> save <path>  # Explicit: save to custom path (required arg, not -o 
 ```
 
 Path Handling:
-- If path is a file → save to that file
-- If path is a directory → save with auto-generated filename in that directory
+- If path ends with `/` → treat as directory, save with auto-generated filename
+- If path does NOT end with `/` → treat as file, save to exact path
+- Trailing slash convention (like rsync): behavior is predictable, not filesystem-dependent
 - Auto-generated pattern: /tmp/webctl-<cmd>/YY-MM-DD-HHMMSS-{identifier}.{ext}
 
 Universal Flags (all commands):

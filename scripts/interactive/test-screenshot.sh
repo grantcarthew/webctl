@@ -113,12 +113,14 @@ read -p "Press Enter to continue..."
 # Custom output path tests (directory)
 title "Save Mode (Directory)"
 
-heading "Save to directory with auto-filename"
+heading "Save to directory with auto-filename (trailing slash = directory)"
 cmd "webctl screenshot save ./screenshots/"
 
 echo ""
 echo "Verify: Auto-generated filename in ./screenshots/"
 echo "Verify: Directory exists or was created"
+echo "Note: Trailing slash (/) is REQUIRED for directory behavior"
+echo "      Without slash, it would create a file named 'screenshots'"
 read -p "Press Enter to continue..."
 
 heading "Full-page to directory"

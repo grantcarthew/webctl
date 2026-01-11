@@ -62,9 +62,10 @@ webctl console view [--filter]
 webctl network view [--filter]
 
 # Save commands (file)
-webctl html save [selector] [-o path]
-webctl console save [-o path]
-webctl network save [-o path]
+# Note: Use trailing slash for directories (path/) vs files (path)
+webctl html save [selector] [path]      # path or path/
+webctl console save [path]               # path or path/
+webctl network save [path]               # path or path/
 
 # Find commands (stdout, filtered)
 webctl html find <text>

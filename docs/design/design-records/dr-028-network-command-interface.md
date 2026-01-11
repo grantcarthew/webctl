@@ -59,8 +59,9 @@ Save Subcommand for Files:
 
 When file output is needed, the save subcommand provides flexibility:
 - `network save` - saves to temp directory with auto-generated filename
-- `network save ./requests.json` - saves to custom path
-- Directory paths auto-generate filenames, file paths use exact names
+- `network save ./requests.json` - saves to custom path (file)
+- `network save ./output/` - saves to directory with auto-generated filename (trailing slash required)
+- Trailing slash convention (like rsync): path with `/` suffix is directory, without is file
 
 Extensive Network-Specific Filters:
 
@@ -205,9 +206,10 @@ Default (no subcommand):
 Save subcommand:
 - Optional path argument
 - No path: saves to /tmp/webctl-network/ with auto-generated filename
-- Directory: auto-generates filename in that directory
-- File: saves to exact path
+- Path with trailing slash (path/): auto-generates filename in that directory
+- Path without trailing slash (path): saves to exact file path
 - Creates parent directories if needed
+- Trailing slash convention follows Unix tools like rsync
 
 Universal Flags:
 

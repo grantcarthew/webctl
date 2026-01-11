@@ -9,9 +9,12 @@ webctl css
 # Save: save all stylesheets to file
 webctl css save           # Save to temp file
 webctl css save <path>    # Save to custom path
-# If <path> is a directory, auto-generate filename
-webctl css save ./output/
+
+# Path conventions (trailing slash required for directories):
+webctl css save ./styles.css   # File: saves to ./styles.css
+webctl css save ./output/      # Directory: auto-generates filename
 # → ./output/25-12-28-HHMMSS-page-title.css
+webctl css save ./output       # File: saves to ./output (not a directory!)
 ```
 
 ## Universal Flags (apply to default and save)
