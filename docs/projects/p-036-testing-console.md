@@ -29,7 +29,7 @@ webctl console [save [path]] [--find text] [--type type] [--head N] [--tail N] [
 Subcommands:
 - (default): Output console logs to stdout
 - save: Save to /tmp/webctl-console/ with auto-generated filename
-- save <path>: Save to custom path
+- save <path>: Save to file or directory/ (trailing slash = directory)
 
 Universal flags (work with default/show/save modes):
 - --find, -f <text>: Search for text within log messages
@@ -64,9 +64,10 @@ Save mode (file output):
 
 Save mode (custom path):
 - [ ] console save ./logs/debug.json (save to file)
-- [ ] console save ./output/ (save to dir with auto-filename)
+- [ ] console save ./output/ (save to dir with auto-filename, creates dir)
+- [ ] console save ./output (save to file named "output", NOT a directory)
 - [ ] console save ./errors.json --type error --tail 50
-- [ ] Verify file saved to custom path
+- [ ] Verify trailing slash behavior
 
 Type filter:
 - [ ] --type log (log entries)
@@ -154,6 +155,7 @@ CLI vs REPL:
 
 - Default mode outputs to stdout (Unix convention)
 - Save mode saves to temp or custom path
+- Trailing slash convention: path/ = directory (auto-filename), path = file (like rsync)
 - Type filter supports multiple types via CSV or repeatable flags
 - Find flag searches within log message text (case insensitive)
 - Head/tail/range flags mutually exclusive

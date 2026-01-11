@@ -96,14 +96,15 @@ var screenshotSaveCmd = &cobra.Command{
 	Short: "Save screenshot to file",
 	Long: `Saves screenshot to a file.
 
-If no path is provided, saves to temp directory with auto-generated filename.
-If path is a directory, auto-generates filename.
-If path is a file, uses exact path.
+Path conventions:
+  (no path)         Save to /tmp/webctl-screenshots/ with auto-generated filename
+  ./page.png        Save to exact file path
+  ./output/         Save to directory with auto-generated filename (trailing slash required)
 
 Examples:
   screenshot save                       # Save to temp dir
   screenshot save ./page.png            # Save to file
-  screenshot save ./output/             # Save to dir
+  screenshot save ./output/             # Save to dir (creates if needed)
   screenshot save ./full.png --full-page`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runScreenshotSave,
@@ -189,16 +190,22 @@ func captureAndSaveScreenshot(cmd *cobra.Command, path string) error {
 			return outputError(err.Error())
 		}
 	} else {
-		// Path provided - check if directory
-		fileInfo, err := os.Stat(path)
-		if err == nil && fileInfo.IsDir() {
-			// Path is a directory - auto-generate filename
+		// Path provided - check if ends with separator (directory convention)
+		if strings.HasSuffix(path, string(os.PathSeparator)) || strings.HasSuffix(path, "/") {
+			// Path ends with separator - treat as directory, auto-generate filename
 			filename, err := generateScreenshotFilename(exec)
 			if err != nil {
 				return outputError(err.Error())
 			}
+
+			// Ensure directory exists
+			if err := os.MkdirAll(path, 0755); err != nil {
+				return outputError(fmt.Sprintf("failed to create directory: %v", err))
+			}
+
 			outputPath = filepath.Join(path, filename)
 		} else {
+			// No trailing slash - treat as file path
 			outputPath = path
 		}
 	}

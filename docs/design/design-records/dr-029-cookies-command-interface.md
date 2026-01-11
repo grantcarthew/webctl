@@ -66,8 +66,9 @@ Save Subcommand for Files:
 
 When file output is needed, the save subcommand provides flexibility:
 - `cookies save` - saves to temp directory with auto-generated filename
-- `cookies save ./cookies.json` - saves to custom path
-- Directory paths auto-generate filenames, file paths use exact names
+- `cookies save ./cookies.json` - saves to custom path (file)
+- `cookies save ./output/` - saves to directory with auto-generated filename (trailing slash required)
+- Trailing slash convention (like rsync): path with `/` suffix is directory, without is file
 
 Cookies-Specific Filter Flags:
 
@@ -197,9 +198,10 @@ Default (no subcommand):
 Save subcommand:
 - Optional path argument
 - No path: saves to /tmp/webctl-cookies/ with auto-generated filename
-- Directory: auto-generates filename in that directory
-- File: saves to exact path
+- Path with trailing slash (path/): auto-generates filename in that directory
+- Path without trailing slash (path): saves to exact file path
 - Creates parent directories if needed
+- Trailing slash convention follows Unix tools like rsync
 
 Universal Flags (Observation):
 

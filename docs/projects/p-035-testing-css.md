@@ -29,7 +29,7 @@ webctl css [save [path]|computed <selector>|get <selector> <property>] [--select
 Subcommands:
 - (default): Output CSS to stdout
 - save: Save to /tmp/webctl-css/ with auto-generated filename
-- save <path>: Save to custom path
+- save <path>: Save to file or directory/ (trailing slash = directory)
 - computed <selector>: Get computed styles to stdout
 - get <selector> <property>: Get single CSS property to stdout
 
@@ -63,9 +63,10 @@ Save mode (file output):
 
 Save mode (custom path):
 - [ ] css save ./styles.css (save to file)
-- [ ] css save ./output/ (save to dir with auto-filename)
+- [ ] css save ./output/ (save to dir with auto-filename, creates dir)
+- [ ] css save ./output (save to file named "output", NOT a directory)
 - [ ] css save ./debug.css --select "form" --find "border"
-- [ ] Verify file saved to custom path
+- [ ] Verify trailing slash behavior
 
 Computed mode (stdout):
 - [ ] css computed "#header" (all computed styles)
@@ -140,6 +141,7 @@ CLI vs REPL:
 
 - Default mode outputs to stdout (Unix convention)
 - Save mode saves to temp or custom path
+- Trailing slash convention: path/ = directory (auto-filename), path = file (like rsync)
 - Select flag extracts computed styles for specific elements
 - Find flag searches text within CSS rules
 - Raw flag skips formatting for exact browser CSS

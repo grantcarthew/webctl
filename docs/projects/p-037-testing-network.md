@@ -29,7 +29,7 @@ webctl network [save [path]] [--find text] [--type type] [--method method] [--st
 Subcommands:
 - (default): Output network requests to stdout
 - save: Save to /tmp/webctl-network/ with auto-generated filename
-- save <path>: Save to custom path
+- save <path>: Save to file or directory/ (trailing slash = directory)
 
 Universal flags (work with default/show/save modes):
 - --find, -f <text>: Search for text within URLs and bodies
@@ -71,9 +71,10 @@ Save mode (file output):
 
 Save mode (custom path):
 - [ ] network save ./logs/requests.json (save to file)
-- [ ] network save ./output/ (save to dir with auto-filename)
+- [ ] network save ./output/ (save to dir with auto-filename, creates dir)
+- [ ] network save ./output (save to file named "output", NOT a directory)
 - [ ] network save ./errors.json --status 5xx --tail 50
-- [ ] Verify file saved to custom path
+- [ ] Verify trailing slash behavior
 
 Type filter:
 - [ ] --type xhr (XMLHttpRequest)
@@ -237,6 +238,7 @@ CLI vs REPL:
 
 - Default mode outputs to stdout (Unix convention)
 - Save mode saves to temp or custom path
+- Trailing slash convention: path/ = directory (auto-filename), path = file (like rsync)
 - All filters are AND-combined (must match all specified filters)
 - StringSlice flags support both CSV and repeatable syntax
 - Status filter supports exact match (200), wildcard (4xx), and range (200-299)

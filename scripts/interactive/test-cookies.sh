@@ -94,11 +94,13 @@ echo ""
 echo "Verify: File saved to ./cookies.json"
 read -p "Press Enter to continue..."
 
-heading "Save to directory with auto-filename"
+heading "Save to directory with auto-filename (trailing slash = directory)"
 cmd "webctl cookies save ./output/"
 
 echo ""
 echo "Verify: File saved to ./output/ with auto-generated name"
+echo "Note: Trailing slash (/) is REQUIRED for directory behavior"
+echo "      Without slash, it would create a file named 'output'"
 read -p "Press Enter to continue..."
 
 heading "Save filtered cookies"

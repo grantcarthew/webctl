@@ -54,8 +54,9 @@ Save Subcommand for Files:
 
 When file output is needed, the save subcommand provides flexibility:
 - `console save` - saves to temp directory with auto-generated filename
-- `console save ./logs.json` - saves to custom path
-- Directory paths auto-generate filenames, file paths use exact names
+- `console save ./logs.json` - saves to custom path (file)
+- `console save ./output/` - saves to directory with auto-generated filename (trailing slash required)
+- Trailing slash convention (like rsync): path with `/` suffix is directory, without is file
 
 Console-Specific Filter Flags:
 
@@ -179,9 +180,10 @@ Default (no subcommand):
 Save subcommand:
 - Optional path argument
 - No path: saves to /tmp/webctl-console/ with auto-generated filename
-- Directory: auto-generates filename in that directory
-- File: saves to exact path
+- Path with trailing slash (path/): auto-generates filename in that directory
+- Path without trailing slash (path): saves to exact file path
 - Creates parent directories if needed
+- Trailing slash convention follows Unix tools like rsync
 
 Universal Flags:
 

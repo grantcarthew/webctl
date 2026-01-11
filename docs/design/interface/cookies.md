@@ -9,9 +9,12 @@ webctl cookies
 # Save: save all cookies to file
 webctl cookies save           # Save to temp file
 webctl cookies save <path>    # Save to custom path
-# If <path> is a directory, auto-generate filename
-webctl cookies save ./output/
+
+# Path conventions (trailing slash required for directories):
+webctl cookies save ./cookies.json   # File: saves to ./cookies.json
+webctl cookies save ./output/        # Directory: auto-generates filename
 # → ./output/25-12-28-HHMMSS-cookies.json
+webctl cookies save ./output         # File: saves to ./output (not a directory!)
 ```
 
 ## Universal Flags

@@ -9,9 +9,12 @@ webctl console
 # Save: save all logs to file
 webctl console save           # Save to temp file
 webctl console save <path>    # Save to custom path
-# If <path> is a directory, auto-generate filename
-webctl console save ./output/
+
+# Path conventions (trailing slash required for directories):
+webctl console save ./logs.json   # File: saves to ./logs.json
+webctl console save ./output/     # Directory: auto-generates filename
 # → ./output/25-12-28-HHMMSS-console.json
+webctl console save ./output      # File: saves to ./output (not a directory!)
 ```
 
 ## Universal Flags

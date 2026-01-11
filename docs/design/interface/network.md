@@ -9,9 +9,12 @@ webctl network
 # Save: save all requests to file
 webctl network save           # Save to temp file
 webctl network save <path>    # Save to custom path
-# If <path> is a directory, auto-generate filename
-webctl network save ./output/
+
+# Path conventions (trailing slash required for directories):
+webctl network save ./requests.json   # File: saves to ./requests.json
+webctl network save ./output/         # Directory: auto-generates filename
 # → ./output/25-12-28-HHMMSS-network.json
+webctl network save ./output          # File: saves to ./output (not a directory!)
 ```
 
 ## Universal Flags

@@ -72,9 +72,10 @@ webctl back
 webctl forward
 
 # Observation commands (default: stdout, save for files)
+# Note: Use trailing slash for directories (./dir/) vs files (./file.ext)
 webctl html                         # Output to stdout
 webctl html save                    # Save to temp
-webctl html save <path>             # Save to custom path
+webctl html save <path>             # Save to file or dir/ (trailing slash)
 webctl html --select <selector> --find <text>  # Filter and search
 
 webctl css                          # Output stylesheets to stdout

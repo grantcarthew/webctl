@@ -65,14 +65,15 @@ var consoleSaveCmd = &cobra.Command{
 	Short: "Save console logs to file",
 	Long: `Saves console logs to a file.
 
-If no path is provided, saves to temp directory with auto-generated filename.
-If path is a directory, auto-generates filename.
-If path is a file, uses exact path.
+Path conventions:
+  (no path)         Save to /tmp/webctl-console/ with auto-generated filename
+  ./logs.json       Save to exact file path
+  ./output/         Save to directory with auto-generated filename (trailing slash required)
 
 Examples:
   console save                             # Save to temp dir
   console save ./logs/debug.json           # Save to file
-  console save ./output/                   # Save to dir
+  console save ./output/                   # Save to dir (creates if needed)
   console save --type error --find "fetch"`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runConsoleSave,
@@ -167,13 +168,19 @@ func runConsoleSave(cmd *cobra.Command, args []string) error {
 		// Path provided
 		path := args[0]
 
-		// Handle directory vs file path
-		fileInfo, err := os.Stat(path)
-		if err == nil && fileInfo.IsDir() {
-			// Path is a directory - auto-generate filename
+		// Check if path ends with separator (directory convention)
+		if strings.HasSuffix(path, string(os.PathSeparator)) || strings.HasSuffix(path, "/") {
+			// Path ends with separator - treat as directory, auto-generate filename
 			filename := generateConsoleFilename()
+
+			// Ensure directory exists
+			if err := os.MkdirAll(path, 0755); err != nil {
+				return outputError(fmt.Sprintf("failed to create directory: %v", err))
+			}
+
 			outputPath = filepath.Join(path, filename)
 		} else {
+			// No trailing slash - treat as file path
 			outputPath = path
 		}
 	}

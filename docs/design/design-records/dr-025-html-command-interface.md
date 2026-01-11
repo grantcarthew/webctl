@@ -170,9 +170,10 @@ Default (no subcommand):
 Save subcommand:
 - Optional path argument
 - No path: saves to /tmp/webctl-html/ with auto-generated filename
-- Directory: auto-generates filename in that directory
-- File: saves to exact path
+- Path with trailing slash (path/): auto-generates filename in that directory
+- Path without trailing slash (path): saves to exact file path
 - Creates parent directories if needed
+- Trailing slash convention follows Unix tools like rsync
 
 Universal Flags:
 
@@ -213,16 +214,23 @@ Example filenames:
 - 25-12-28-143115-main.html
 - 25-12-28-143120-navigation.html
 
-Directory vs File Paths:
+Directory vs File Paths (Trailing Slash Convention):
 
-If path is directory:
-- Auto-generate filename using pattern above
-- Save in specified directory
+Trailing slash convention follows Unix tools like rsync:
+
+If path ends with `/`:
+- Treated as directory
+- Auto-generates filename using pattern above
+- Creates directory if it doesn't exist
 - Example: webctl html save ./output/ → ./output/25-12-28-143052-example-domain.html
 
-If path is file:
-- Use exact path as-is
+If path does NOT end with `/`:
+- Treated as file path
+- Uses exact path as-is
 - Example: webctl html save ./page.html → ./page.html
+- Example: webctl html save ./output → ./output (creates file named "output")
+
+This makes behavior predictable and independent of filesystem state.
 
 ## Usage Examples
 
