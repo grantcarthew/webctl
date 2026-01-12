@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -67,7 +68,7 @@ Response formats:
   Save:     /tmp/webctl-network/25-12-28-143052-network.json
 
 Error cases:
-  - "no matches found for 'text'" - find text not in requests
+  - "No matches found" - find text not in requests
   - "daemon not running" - start daemon first with: webctl start`,
 	RunE: runNetworkDefault,
 }
@@ -130,6 +131,9 @@ func runNetworkDefault(cmd *cobra.Command, args []string) error {
 	// Get network entries from daemon
 	entries, err := getNetworkFromDaemon(cmd)
 	if err != nil {
+		if errors.Is(err, ErrNoMatches) {
+			return outputNotice("No matches found")
+		}
 		return outputError(err.Error())
 	}
 
@@ -176,6 +180,9 @@ func runNetworkSave(cmd *cobra.Command, args []string) error {
 	// Get network entries from daemon
 	entries, err := getNetworkFromDaemon(cmd)
 	if err != nil {
+		if errors.Is(err, ErrNoMatches) {
+			return outputNotice("No matches found")
+		}
 		return outputError(err.Error())
 	}
 
@@ -353,7 +360,7 @@ func getNetworkFromDaemon(cmd *cobra.Command) ([]ipc.NetworkEntry, error) {
 	if find != "" {
 		entries = filterNetworkByText(entries, find)
 		if len(entries) == 0 {
-			return nil, fmt.Errorf("no matches found for '%s'", find)
+			return nil, ErrNoMatches
 		}
 	}
 

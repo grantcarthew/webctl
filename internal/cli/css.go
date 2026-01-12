@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -271,7 +272,22 @@ func runCSSDefault(cmd *cobra.Command, args []string) error {
 	// Get CSS from daemon
 	css, err := getCSSFromDaemon(cmd)
 	if err != nil {
+		if errors.Is(err, ErrNoMatches) {
+			return outputNotice("No matches found")
+		}
+		if errors.Is(err, ErrNoElements) {
+			return outputNotice("No elements found")
+		}
 		return outputError(err.Error())
+	}
+
+	// JSON mode: output JSON
+	if JSONOutput {
+		result := map[string]any{
+			"ok":  true,
+			"css": css,
+		}
+		return outputJSON(os.Stdout, result)
 	}
 
 	// Output to stdout
@@ -288,6 +304,12 @@ func runCSSSave(cmd *cobra.Command, args []string) error {
 	// Get CSS from daemon
 	css, err := getCSSFromDaemon(cmd)
 	if err != nil {
+		if errors.Is(err, ErrNoMatches) {
+			return outputNotice("No matches found")
+		}
+		if errors.Is(err, ErrNoElements) {
+			return outputNotice("No elements found")
+		}
 		return outputError(err.Error())
 	}
 
@@ -385,6 +407,9 @@ func runCSSComputed(cmd *cobra.Command, args []string) error {
 	}
 
 	if !resp.OK {
+		if isNoElementsError(resp.Error) {
+			return outputNotice("No elements found")
+		}
 		return outputError(resp.Error)
 	}
 
@@ -436,6 +461,9 @@ func runCSSGet(cmd *cobra.Command, args []string) error {
 	}
 
 	if !resp.OK {
+		if isNoElementsError(resp.Error) {
+			return outputNotice("No elements found")
+		}
 		return outputError(resp.Error)
 	}
 
@@ -486,6 +514,9 @@ func runCSSInline(cmd *cobra.Command, args []string) error {
 	}
 
 	if !resp.OK {
+		if isNoElementsError(resp.Error) {
+			return outputNotice("No elements found")
+		}
 		return outputError(resp.Error)
 	}
 
@@ -536,6 +567,9 @@ func runCSSMatched(cmd *cobra.Command, args []string) error {
 	}
 
 	if !resp.OK {
+		if isNoElementsError(resp.Error) {
+			return outputNotice("No elements found")
+		}
 		return outputError(resp.Error)
 	}
 
@@ -622,6 +656,9 @@ func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
 	}
 
 	if !resp.OK {
+		if isNoElementsError(resp.Error) {
+			return "", ErrNoElements
+		}
 		return "", fmt.Errorf("%s", resp.Error)
 	}
 
@@ -679,7 +716,7 @@ func filterCSSByText(css, searchText string, before, after int) (string, error) 
 	}
 
 	if len(matchIndices) == 0 {
-		return "", fmt.Errorf("no matches found for '%s'", searchText)
+		return "", ErrNoMatches
 	}
 
 	// If no context requested, return matching lines with separators between non-adjacent matches

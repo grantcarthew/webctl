@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,7 +53,7 @@ Response formats:
 
 Error cases:
   - "selector '.missing' matched no elements" - nothing matches
-  - "no matches found for 'text'" - find text not in HTML
+  - "No matches found" - find text not in HTML
   - "daemon not running" - start daemon first with: webctl start`,
 	RunE: runHTMLDefault,
 }
@@ -105,7 +106,22 @@ func runHTMLDefault(cmd *cobra.Command, args []string) error {
 	// Get HTML from daemon
 	html, err := getHTMLFromDaemon(cmd)
 	if err != nil {
+		if errors.Is(err, ErrNoMatches) {
+			return outputNotice("No matches found")
+		}
+		if errors.Is(err, ErrNoElements) {
+			return outputNotice("No elements found")
+		}
 		return outputError(err.Error())
+	}
+
+	// JSON mode: output JSON
+	if JSONOutput {
+		result := map[string]any{
+			"ok":   true,
+			"html": html,
+		}
+		return outputJSON(os.Stdout, result)
 	}
 
 	// Output to stdout
@@ -122,6 +138,12 @@ func runHTMLSave(cmd *cobra.Command, args []string) error {
 	// Get HTML from daemon
 	html, err := getHTMLFromDaemon(cmd)
 	if err != nil {
+		if errors.Is(err, ErrNoMatches) {
+			return outputNotice("No matches found")
+		}
+		if errors.Is(err, ErrNoElements) {
+			return outputNotice("No elements found")
+		}
 		return outputError(err.Error())
 	}
 
@@ -254,6 +276,9 @@ func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
 	}
 
 	if !resp.OK {
+		if isNoElementsError(resp.Error) {
+			return "", ErrNoElements
+		}
 		return "", fmt.Errorf("%s", resp.Error)
 	}
 
@@ -302,7 +327,7 @@ func filterHTMLByText(html, searchText string, before, after int) (string, error
 	}
 
 	if len(matchIndices) == 0 {
-		return "", fmt.Errorf("no matches found for '%s'", searchText)
+		return "", ErrNoMatches
 	}
 
 	// If no context requested, return matching lines with separators between non-adjacent matches

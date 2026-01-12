@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -55,7 +56,7 @@ Response formats:
   Save:     /tmp/webctl-console/25-12-28-143052-console.json
 
 Error cases:
-  - "no matches found for 'text'" - find text not in logs
+  - "No matches found" - find text not in logs
   - "daemon not running" - start daemon first with: webctl start`,
 	RunE: runConsoleDefault,
 }
@@ -111,6 +112,9 @@ func runConsoleDefault(cmd *cobra.Command, args []string) error {
 	// Get console logs from daemon
 	entries, err := getConsoleFromDaemon(cmd)
 	if err != nil {
+		if errors.Is(err, ErrNoMatches) {
+			return outputNotice("No matches found")
+		}
 		return outputError(err.Error())
 	}
 
@@ -153,6 +157,9 @@ func runConsoleSave(cmd *cobra.Command, args []string) error {
 	// Get console logs from daemon
 	entries, err := getConsoleFromDaemon(cmd)
 	if err != nil {
+		if errors.Is(err, ErrNoMatches) {
+			return outputNotice("No matches found")
+		}
 		return outputError(err.Error())
 	}
 
@@ -262,7 +269,7 @@ func getConsoleFromDaemon(cmd *cobra.Command) ([]ipc.ConsoleEntry, error) {
 	if find != "" {
 		entries = filterConsoleByText(entries, find)
 		if len(entries) == 0 {
-			return nil, fmt.Errorf("no matches found for '%s'", find)
+			return nil, ErrNoMatches
 		}
 	}
 

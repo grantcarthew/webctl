@@ -43,7 +43,8 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-031 | Testing reload Command | Completed | 2025-12-31 | 2026-01-07 |
 | P-032 | Testing back Command | Completed | 2025-12-31 | 2026-01-07 |
 | P-033 | Testing forward Command | Completed | 2025-12-31 | 2026-01-07 |
-| P-034 | Testing html Command | In Progress | 2025-12-31 | |
+| P-034 | Testing html Command | Completed | 2025-12-31 | 2026-01-12 |
+| P-035 | Debug Output | Proposed | | |
 | P-051 | Observation Commands Output Refactor | Completed | 2026-01-08 | 2026-01-09 |
 | P-052 | CSS Command Redesign | Completed | 2026-01-12 | 2026-01-12 |
 
