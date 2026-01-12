@@ -357,3 +357,186 @@ func TestFormat_EdgeCases(t *testing.T) {
 		}
 	})
 }
+
+func TestFormatComputedStylesMulti(t *testing.T) {
+	tests := []struct {
+		name       string
+		stylesList []map[string]string
+		want       string
+	}{
+		{
+			name:       "empty list",
+			stylesList: []map[string]string{},
+			want:       "",
+		},
+		{
+			name: "single element",
+			stylesList: []map[string]string{
+				{"display": "flex", "color": "red"},
+			},
+			want: "", // Will check contains instead
+		},
+		{
+			name: "multiple elements",
+			stylesList: []map[string]string{
+				{"display": "block"},
+				{"display": "inline"},
+			},
+			want: "", // Will check contains instead
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatComputedStylesMulti(tt.stylesList)
+			if tt.want != "" && got != tt.want {
+				t.Errorf("FormatComputedStylesMulti() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	// Test specific behavior
+	t.Run("separator between elements", func(t *testing.T) {
+		styles := []map[string]string{
+			{"display": "block"},
+			{"display": "inline"},
+		}
+		result := FormatComputedStylesMulti(styles)
+		if !strings.Contains(result, "--") {
+			t.Error("expected -- separator between elements")
+		}
+	})
+
+	t.Run("no separator for single element", func(t *testing.T) {
+		styles := []map[string]string{
+			{"display": "block", "color": "red"},
+		}
+		result := FormatComputedStylesMulti(styles)
+		if strings.Contains(result, "--") {
+			t.Error("should not have separator for single element")
+		}
+	})
+}
+
+func TestParseRules(t *testing.T) {
+	tests := []struct {
+		name      string
+		css       string
+		wantCount int
+		wantFirst string
+	}{
+		{
+			name:      "empty CSS",
+			css:       "",
+			wantCount: 0,
+		},
+		{
+			name:      "single rule",
+			css:       "body { margin: 0; }",
+			wantCount: 1,
+			wantFirst: "body",
+		},
+		{
+			name:      "multiple rules",
+			css:       "body { margin: 0; } h1 { color: red; } p { font-size: 16px; }",
+			wantCount: 3,
+			wantFirst: "body",
+		},
+		{
+			name:      "nested rule (media query)",
+			css:       "@media (max-width: 768px) { .container { width: 100%; } }",
+			wantCount: 1,
+			wantFirst: "@media (max-width: 768px)",
+		},
+		{
+			name:      "complex selectors",
+			css:       ".header nav ul li a:hover { color: blue; }",
+			wantCount: 1,
+			wantFirst: ".header nav ul li a:hover",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rules := ParseRules(tt.css)
+			if len(rules) != tt.wantCount {
+				t.Errorf("ParseRules() returned %d rules, want %d", len(rules), tt.wantCount)
+			}
+			if tt.wantFirst != "" && len(rules) > 0 {
+				if rules[0].Selector != tt.wantFirst {
+					t.Errorf("first rule selector = %q, want %q", rules[0].Selector, tt.wantFirst)
+				}
+			}
+		})
+	}
+}
+
+func TestFilterRulesBySelector(t *testing.T) {
+	css := `body { margin: 0; }
+h1 { font-size: 2em; }
+.header h1 { color: blue; }
+div h1 span { font-weight: bold; }
+p { line-height: 1.5; }
+.h1-style { text-transform: uppercase; }`
+
+	tests := []struct {
+		name            string
+		pattern         string
+		wantContains    []string
+		wantNotContains []string
+		wantEmpty       bool
+	}{
+		{
+			name:         "match element selector",
+			pattern:      "h1",
+			wantContains: []string{"h1 {", ".header h1", "div h1 span"},
+			// .h1-style should also match because it contains "h1"
+		},
+		{
+			name:            "match class selector",
+			pattern:         ".header",
+			wantContains:    []string{".header h1"},
+			wantNotContains: []string{"body", "p {"},
+		},
+		{
+			name:         "match body",
+			pattern:      "body",
+			wantContains: []string{"body {", "margin"},
+		},
+		{
+			name:      "no match",
+			pattern:   ".nonexistent",
+			wantEmpty: true,
+		},
+		{
+			name:         "case insensitive",
+			pattern:      "H1",
+			wantContains: []string{"h1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FilterRulesBySelector(css, tt.pattern)
+
+			if tt.wantEmpty {
+				if result != "" {
+					t.Errorf("expected empty result, got: %s", result)
+				}
+				return
+			}
+
+			for _, want := range tt.wantContains {
+				if !strings.Contains(result, want) {
+					t.Errorf("result should contain %q, got: %s", want, result)
+				}
+			}
+
+			for _, notWant := range tt.wantNotContains {
+				if strings.Contains(result, notWant) {
+					t.Errorf("result should not contain %q, got: %s", notWant, result)
+				}
+			}
+		})
+	}
+}

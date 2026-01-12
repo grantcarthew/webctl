@@ -22,15 +22,17 @@ var cssCmd = &cobra.Command{
 	Long: `Extracts CSS from the current page with flexible output modes.
 
 Default behavior (no subcommand):
-  Outputs CSS to stdout for piping or inspection
+  Outputs CSS stylesheets to stdout for piping or inspection
 
 Subcommands:
   save [path]       Save CSS to file (temp dir if no path given)
-  computed <sel>    Get computed styles to stdout
-  get <sel> <prop>  Get single CSS property to stdout
+  computed <sel>    Get computed styles for element(s)
+  get <sel> <prop>  Get single CSS property value
+  inline <sel>      Get inline style attributes
+  matched <sel>     Get matched CSS rules from stylesheets
 
 Universal flags (work with default/save modes):
-  --select, -s      Filter to element's computed styles
+  --select, -s      Filter CSS rules by selector pattern
   --find, -f        Search for text within CSS
   --raw             Skip CSS formatting (return as-is from browser)
   --json            Output in JSON format (global flag)
@@ -39,28 +41,32 @@ Examples:
 
 Default mode (stdout):
   css                                  # All stylesheets to stdout
-  css --select "#header"               # Computed styles to stdout
+  css --select "h1"                    # CSS rules with h1 selector
   css --find "background"              # Search and show matches
 
 Save mode (file):
   css save                             # Save to temp with auto-filename
   css save ./styles.css                # Save to custom file
   css save ./output/                   # Save to dir (auto-filename)
-  css save --select "form" --find "border"
+  css save --select "button" --find "color"
 
-CSS-specific operations:
-  css computed "#main"                 # All computed styles
-  css get "#header" background-color   # Single property
+Element-specific operations:
+  css computed "h1"                    # Computed styles (all h1 elements)
+  css get "#header" background-color   # Single property value
+  css inline "[style]"                 # Inline style attributes
+  css matched "#main"                  # Matched CSS rules for element
 
 Response formats:
   Default:  body { margin: 0; ... } (to stdout)
   Save:     /tmp/webctl-css/25-12-28-143052-example.css
-  Computed: display: flex\ncolor: rgb(0,0,0) (to stdout)
+  Computed: property: value (multiple elements with -- separators)
   Get:      rgb(0,0,0) (to stdout)
+  Inline:   style attribute content (multiple with -- separators)
+  Matched:  /* selector */ property: value; (with -- separators)
 
 Error cases:
   - "selector matched no elements" - nothing matches selector
-  - "property does not exist" - invalid CSS property
+  - "no CSS rules match selector" - no rules match --select pattern
   - "daemon not running" - start daemon first with: webctl start`,
 	RunE: runCSSDefault,
 }
@@ -85,46 +91,52 @@ Examples:
 
 var cssComputedCmd = &cobra.Command{
 	Use:   "computed <selector>",
-	Short: "Get computed styles to stdout",
-	Long: `Gets all computed CSS styles for a selector and outputs to stdout.
+	Short: "Get computed styles for element(s)",
+	Long: `Gets all computed CSS styles for matching elements and outputs to stdout.
 
-Returns all CSS properties computed by the browser for the matched element.
+Returns all CSS properties computed by the browser for each matched element.
+Multiple elements are separated by -- markers.
 
 Flags:
   --json            Output in JSON format
 
-Text format output:
+Text format output (single element):
   display: flex
   background-color: rgb(255, 255, 255)
   width: 1200px
   margin: 0px
 
+Text format output (multiple elements):
+  display: block
+  color: rgb(0, 0, 0)
+  --
+  display: inline
+  color: rgb(255, 0, 0)
+
 JSON format output:
   {
     "ok": true,
-    "styles": {
-      "display": "flex",
-      "background-color": "rgb(255, 255, 255)",
-      "width": "1200px",
-      "margin": "0px"
-    }
+    "styles": [
+      {"display": "flex", "background-color": "rgb(255, 255, 255)"},
+      {"display": "block", "background-color": "rgb(0, 0, 0)"}
+    ]
   }
 
 Examples:
   css computed "#header"
   css computed ".button"
+  css computed "h1"              # All h1 elements
   css computed "nav > ul" --json
 
 Common patterns:
   # Debug element styles
   css computed "#main"
 
-  # Verify responsive styles
-  navigate example.com --wait
-  css computed ".hero" | grep width
+  # Get styles for all matching elements
+  css computed "p"
 
   # Check computed values
-  css computed ".button" --json | jq '.styles.display'`,
+  css computed ".button" --json | jq '.styles[0].display'`,
 	Args: cobra.ExactArgs(1),
 	RunE: runCSSComputed,
 }
@@ -162,9 +174,77 @@ Common patterns:
 	RunE: runCSSGet,
 }
 
+var cssInlineCmd = &cobra.Command{
+	Use:   "inline <selector>",
+	Short: "Get inline style attributes to stdout",
+	Long: `Gets inline style attributes from matching elements and outputs to stdout.
+
+Returns the raw style attribute content from each matching element.
+Multiple elements are separated by -- markers.
+
+Examples:
+  css inline "div"
+  css inline "[style]"
+  css inline "#header"
+
+Output (single element):
+  color: red; font-size: 16px;
+
+Output (multiple elements):
+  color: red;
+  --
+  background: blue;
+  --
+  margin: 10px;
+
+Common patterns:
+  # Find all inline styles on page
+  css inline "[style]"
+
+  # Check specific element's inline styles
+  css inline "#main"`,
+	Args: cobra.ExactArgs(1),
+	RunE: runCSSInline,
+}
+
+var cssMatchedCmd = &cobra.Command{
+	Use:   "matched <selector>",
+	Short: "Get matched CSS rules for element",
+	Long: `Gets CSS rules from stylesheets that apply to the matched element.
+
+Shows rules in specificity order, including the selector and properties.
+Uses CDP CSS.getMatchedStylesForNode to get actual applied rules.
+
+Examples:
+  css matched "#header"
+  css matched ".button"
+  css matched "nav > ul"
+
+Output:
+  /* (inline) */
+  color: red;
+  font-weight: bold;
+  --
+  /* .header */
+  background-color: white;
+  padding: 10px;
+  --
+  /* body .header */
+  margin: 0;
+
+Common patterns:
+  # Debug why styles are applied
+  css matched "#main"
+
+  # See all rules affecting an element
+  css matched ".button" | grep background`,
+	Args: cobra.ExactArgs(1),
+	RunE: runCSSMatched,
+}
+
 func init() {
 	// Universal flags on root command (inherited by default/save subcommands)
-	cssCmd.PersistentFlags().StringP("select", "s", "", "Filter to element's computed styles")
+	cssCmd.PersistentFlags().StringP("select", "s", "", "Filter CSS rules by selector pattern")
 	cssCmd.PersistentFlags().StringP("find", "f", "", "Search for text within CSS")
 	cssCmd.PersistentFlags().IntP("before", "B", 0, "Show N lines before each match (requires --find)")
 	cssCmd.PersistentFlags().IntP("after", "A", 0, "Show N lines after each match (requires --find)")
@@ -172,7 +252,7 @@ func init() {
 	cssCmd.PersistentFlags().Bool("raw", false, "Skip CSS formatting")
 
 	// Add all subcommands
-	cssCmd.AddCommand(cssSaveCmd, cssComputedCmd, cssGetCmd)
+	cssCmd.AddCommand(cssSaveCmd, cssComputedCmd, cssGetCmd, cssInlineCmd, cssMatchedCmd)
 
 	rootCmd.AddCommand(cssCmd)
 }
@@ -318,13 +398,13 @@ func runCSSComputed(cmd *cobra.Command, args []string) error {
 	if JSONOutput {
 		result := map[string]any{
 			"ok":     true,
-			"styles": data.Styles,
+			"styles": data.ComputedMulti,
 		}
 		return outputJSON(os.Stdout, result)
 	}
 
-	// Text mode: use text formatter
-	return format.ComputedStyles(os.Stdout, data.Styles)
+	// Text mode: use multi-element formatter with -- separators
+	return format.ComputedStylesMulti(os.Stdout, data.ComputedMulti)
 }
 
 func runCSSGet(cmd *cobra.Command, args []string) error {
@@ -376,6 +456,106 @@ func runCSSGet(cmd *cobra.Command, args []string) error {
 
 	// Text mode: just output the value
 	return format.PropertyValue(os.Stdout, data.Value)
+}
+
+func runCSSInline(cmd *cobra.Command, args []string) error {
+	if !execFactory.IsDaemonRunning() {
+		return outputError("daemon not running. Start with: webctl start")
+	}
+
+	exec, err := execFactory.NewExecutor()
+	if err != nil {
+		return outputError(err.Error())
+	}
+	defer exec.Close()
+
+	params, err := json.Marshal(ipc.CSSParams{
+		Action:   "inline",
+		Selector: args[0],
+	})
+	if err != nil {
+		return outputError(err.Error())
+	}
+
+	resp, err := exec.Execute(ipc.Request{
+		Cmd:    "css",
+		Params: params,
+	})
+	if err != nil {
+		return outputError(err.Error())
+	}
+
+	if !resp.OK {
+		return outputError(resp.Error)
+	}
+
+	// Parse CSS data
+	var data ipc.CSSData
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return outputError(err.Error())
+	}
+
+	// JSON mode: output JSON
+	if JSONOutput {
+		result := map[string]any{
+			"ok":     true,
+			"inline": data.Inline,
+		}
+		return outputJSON(os.Stdout, result)
+	}
+
+	// Text mode: output inline styles with -- separators
+	return format.InlineStyles(os.Stdout, data.Inline)
+}
+
+func runCSSMatched(cmd *cobra.Command, args []string) error {
+	if !execFactory.IsDaemonRunning() {
+		return outputError("daemon not running. Start with: webctl start")
+	}
+
+	exec, err := execFactory.NewExecutor()
+	if err != nil {
+		return outputError(err.Error())
+	}
+	defer exec.Close()
+
+	params, err := json.Marshal(ipc.CSSParams{
+		Action:   "matched",
+		Selector: args[0],
+	})
+	if err != nil {
+		return outputError(err.Error())
+	}
+
+	resp, err := exec.Execute(ipc.Request{
+		Cmd:    "css",
+		Params: params,
+	})
+	if err != nil {
+		return outputError(err.Error())
+	}
+
+	if !resp.OK {
+		return outputError(resp.Error)
+	}
+
+	// Parse CSS data
+	var data ipc.CSSData
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return outputError(err.Error())
+	}
+
+	// JSON mode: output JSON
+	if JSONOutput {
+		result := map[string]any{
+			"ok":      true,
+			"matched": data.Matched,
+		}
+		return outputJSON(os.Stdout, result)
+	}
+
+	// Text mode: output matched rules
+	return format.MatchedRules(os.Stdout, data.Matched)
 }
 
 // getCSSFromDaemon fetches CSS from daemon, applying filters and formatting
@@ -451,18 +631,19 @@ func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
 		return "", err
 	}
 
-	var css string
-	if selector == "" {
-		// All stylesheets - data.CSS contains the CSS
-		css = data.CSS
-	} else {
-		// Computed styles - data.Styles contains the map
-		css = cssformat.FormatComputedStyles(data.Styles)
+	css := data.CSS
+
+	// Apply --select filter to CSS rules by selector
+	if selector != "" {
+		css = cssformat.FilterRulesBySelector(css, selector)
+		if css == "" {
+			return "", fmt.Errorf("no CSS rules match selector '%s'", selector)
+		}
 	}
 
 	// Format CSS unless --raw flag is set
 	if !raw && selector == "" {
-		// Only format full stylesheets, not computed styles
+		// Only format full stylesheets when no selector filtering applied
 		formatted, err := cssformat.Format(css)
 		if err != nil {
 			// If formatting fails, fall back to raw CSS

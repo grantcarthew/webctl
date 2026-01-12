@@ -1,7 +1,8 @@
 # P-052: CSS Command Redesign
 
-- Status: Proposed
-- Started:
+- Status: Completed
+- Started: 2026-01-12
+- Completed: 2026-01-12
 
 ## Overview
 
@@ -31,13 +32,13 @@ Out of Scope:
 
 ## Success Criteria
 
-- [ ] `css --select "h1"` returns CSS rules where selector matches/contains "h1"
-- [ ] `css computed "h1"` returns computed styles for all matching elements with `--` separators
-- [ ] `css matched "#main"` returns applied stylesheet rules for element
-- [ ] `css inline "#main"` returns inline style attribute content
-- [ ] All subcommands work with `save` mode
-- [ ] `--find` continues to work as text filter on all modes
-- [ ] Help text accurately describes each operation
+- [x] `css --select "h1"` returns CSS rules where selector matches/contains "h1"
+- [x] `css computed "h1"` returns computed styles for all matching elements with `--` separators
+- [x] `css matched "#main"` returns applied stylesheet rules for element
+- [x] `css inline "#main"` returns inline style attribute content
+- [x] All subcommands work with `save` mode
+- [x] `--find` continues to work as text filter on all modes
+- [x] Help text accurately describes each operation
 
 ## Deliverables
 
