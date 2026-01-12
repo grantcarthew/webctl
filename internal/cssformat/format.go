@@ -1,6 +1,7 @@
 package cssformat
 
 import (
+	"regexp"
 	"strings"
 )
 
@@ -115,6 +116,139 @@ func FormatComputedStyles(styles map[string]string) string {
 		result.WriteString(": ")
 		result.WriteString(value)
 		result.WriteString(";\n")
+	}
+
+	return result.String()
+}
+
+// FormatComputedStylesMulti formats multiple computed styles with -- separators.
+// Input: slice of maps (one per element)
+// Output: formatted CSS properties with -- separators between elements
+func FormatComputedStylesMulti(stylesList []map[string]string) string {
+	if len(stylesList) == 0 {
+		return ""
+	}
+
+	var result strings.Builder
+
+	for i, styles := range stylesList {
+		if i > 0 {
+			result.WriteString("--\n")
+		}
+		for prop, value := range styles {
+			result.WriteString(prop)
+			result.WriteString(": ")
+			result.WriteString(value)
+			result.WriteString(";\n")
+		}
+	}
+
+	return result.String()
+}
+
+// CSSRule represents a parsed CSS rule with selector and body.
+type CSSRule struct {
+	Selector string
+	Body     string
+}
+
+// ParseRules extracts CSS rules from CSS text.
+// Returns a slice of CSSRule with selector and body.
+func ParseRules(css string) []CSSRule {
+	var rules []CSSRule
+
+	// Simple state machine to extract rules
+	// This handles nested braces (e.g., @media queries)
+	var (
+		currentSelector strings.Builder
+		currentBody     strings.Builder
+		depth           int
+		inRule          bool
+	)
+
+	for i := 0; i < len(css); i++ {
+		ch := css[i]
+
+		switch ch {
+		case '{':
+			if depth == 0 {
+				inRule = true
+			}
+			depth++
+			if depth > 1 {
+				currentBody.WriteByte(ch)
+			}
+		case '}':
+			depth--
+			if depth == 0 && inRule {
+				// End of rule
+				rules = append(rules, CSSRule{
+					Selector: strings.TrimSpace(currentSelector.String()),
+					Body:     strings.TrimSpace(currentBody.String()),
+				})
+				currentSelector.Reset()
+				currentBody.Reset()
+				inRule = false
+			} else if depth > 0 {
+				currentBody.WriteByte(ch)
+			}
+		default:
+			if inRule {
+				currentBody.WriteByte(ch)
+			} else {
+				currentSelector.WriteByte(ch)
+			}
+		}
+	}
+
+	return rules
+}
+
+// FilterRulesBySelector filters CSS rules to those whose selector matches the pattern.
+// The pattern is matched case-insensitively against the selector text.
+// Supports simple substring matching and basic patterns.
+func FilterRulesBySelector(css, selectorPattern string) string {
+	rules := ParseRules(css)
+	if len(rules) == 0 {
+		return ""
+	}
+
+	patternLower := strings.ToLower(selectorPattern)
+
+	// Build regex for more flexible matching
+	// This allows matching "h1" to find selectors like "h1", "div h1", ".class h1", etc.
+	// Escape special regex chars in the pattern
+	escaped := regexp.QuoteMeta(patternLower)
+	// Match the pattern as a word boundary (allow for class/id prefixes)
+	pattern := regexp.MustCompile(`(?i)(^|[\s,>+~])` + escaped + `($|[\s,>+~:\[.#])`)
+
+	var result strings.Builder
+	matchCount := 0
+
+	for _, rule := range rules {
+		selectorLower := strings.ToLower(rule.Selector)
+
+		// Check if selector matches pattern
+		// Either contains the pattern or matches the regex
+		if strings.Contains(selectorLower, patternLower) || pattern.MatchString(rule.Selector) {
+			if matchCount > 0 {
+				result.WriteString("\n")
+			}
+			result.WriteString(rule.Selector)
+			result.WriteString(" {\n")
+			// Indent body
+			bodyLines := strings.Split(rule.Body, ";")
+			for _, line := range bodyLines {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					result.WriteString("  ")
+					result.WriteString(line)
+					result.WriteString(";\n")
+				}
+			}
+			result.WriteString("}\n")
+			matchCount++
+		}
 	}
 
 	return result.String()

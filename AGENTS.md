@@ -12,7 +12,7 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-- Active Project: docs/projects/p-052-css-command-redesign.md
+- Active Project: docs/projects/p-034-testing-html.md
 - Design Record: N/A
 
 When projects are completed, move them to docs/projects/completed/, update docs/projects/README.md, and update the active project above to the next project.
@@ -20,6 +20,7 @@ When projects are completed, move them to docs/projects/completed/, update docs/
 ## Completed Projects
 
 Completed projects are in docs/projects/completed/
+- P-052: CSS Command Redesign (2026-01-12)
 - P-051: Observation Commands Output Refactor (2026-01-09)
 - P-033: Testing forward Command (2026-01-07)
 - P-032: Testing back Command (2026-01-07)
@@ -81,9 +82,12 @@ webctl html --select <selector> --find <text>  # Filter and search
 webctl css                          # Output stylesheets to stdout
 webctl css save                     # Save to temp
 webctl css save <path>              # Save to custom path
-webctl css --select <selector> --find <text>
-webctl css computed <selector>      # Computed styles (stdout)
-webctl css get <selector> <property> # Single property (stdout)
+webctl css --select <selector>      # Filter rules by selector pattern
+webctl css --find <text>            # Search for text within CSS
+webctl css computed <selector>      # Computed styles for element(s)
+webctl css get <selector> <property> # Single property value
+webctl css inline <selector>        # Inline style attributes
+webctl css matched <selector>       # Matched CSS rules for element
 
 webctl console                      # Output logs to stdout
 webctl console save                 # Save to temp

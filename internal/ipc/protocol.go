@@ -279,16 +279,26 @@ type FindData struct {
 
 // CSSParams represents parameters for the "css" command.
 type CSSParams struct {
-	Action   string `json:"action"`            // "save", "computed", or "get"
-	Selector string `json:"selector,omitempty"` // CSS selector for computed/get
+	Action   string `json:"action"`             // "save", "computed", "get", "inline", or "matched"
+	Selector string `json:"selector,omitempty"` // CSS selector for computed/get/inline/matched
 	Property string `json:"property,omitempty"` // CSS property for get action
 }
 
 // CSSData is the response data for the "css" command.
 type CSSData struct {
-	CSS    string            `json:"css,omitempty"`    // For save/computed actions
-	Styles map[string]string `json:"styles,omitempty"` // For computed action (JSON format)
-	Value  string            `json:"value,omitempty"`  // For get action
+	CSS           string              `json:"css,omitempty"`           // For save/matched actions
+	Styles        map[string]string   `json:"styles,omitempty"`        // For computed action (single element, JSON format)
+	ComputedMulti []map[string]string `json:"computedMulti,omitempty"` // For computed action (multiple elements)
+	Value         string              `json:"value,omitempty"`         // For get action
+	Inline        []string            `json:"inline,omitempty"`        // For inline action (style attributes)
+	Matched       []CSSMatchedRule    `json:"matched,omitempty"`       // For matched action
+}
+
+// CSSMatchedRule represents a CSS rule matched to an element.
+type CSSMatchedRule struct {
+	Selector   string            `json:"selector"`
+	Properties map[string]string `json:"properties"`
+	Source     string            `json:"source,omitempty"` // stylesheet URL or "inline"
 }
 
 // ServeParams represents parameters for the "serve" command.

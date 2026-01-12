@@ -406,3 +406,177 @@ func TestPropertyValue(t *testing.T) {
 		t.Errorf("got %q, want %q", got, expected)
 	}
 }
+
+func TestInlineStyles(t *testing.T) {
+	tests := []struct {
+		name     string
+		styles   []string
+		expected string
+	}{
+		{
+			name:     "single style",
+			styles:   []string{"color: red; font-size: 16px;"},
+			expected: "color: red; font-size: 16px;\n",
+		},
+		{
+			name:     "multiple styles",
+			styles:   []string{"color: red;", "background: blue;", "margin: 10px;"},
+			expected: "color: red;\n--\nbackground: blue;\n--\nmargin: 10px;\n",
+		},
+		{
+			name:     "empty style",
+			styles:   []string{""},
+			expected: "(empty)\n",
+		},
+		{
+			name:     "mixed empty and non-empty",
+			styles:   []string{"color: red;", "", "margin: 10px;"},
+			expected: "color: red;\n--\n(empty)\n--\nmargin: 10px;\n",
+		},
+		{
+			name:     "no styles",
+			styles:   []string{},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := InlineStyles(&buf, tt.styles)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := buf.String()
+			if got != tt.expected {
+				t.Errorf("got:\n%q\nwant:\n%q", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestComputedStylesMulti(t *testing.T) {
+	tests := []struct {
+		name       string
+		stylesList []map[string]string
+		wantSep    bool
+	}{
+		{
+			name:       "empty list",
+			stylesList: []map[string]string{},
+			wantSep:    false,
+		},
+		{
+			name: "single element",
+			stylesList: []map[string]string{
+				{"color": "red"},
+			},
+			wantSep: false,
+		},
+		{
+			name: "multiple elements",
+			stylesList: []map[string]string{
+				{"color": "red"},
+				{"color": "blue"},
+			},
+			wantSep: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := ComputedStylesMulti(&buf, tt.stylesList)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := buf.String()
+			hasSep := strings.Contains(got, "--")
+			if hasSep != tt.wantSep {
+				t.Errorf("separator present = %v, want %v, output: %q", hasSep, tt.wantSep, got)
+			}
+		})
+	}
+}
+
+func TestMatchedRules(t *testing.T) {
+	tests := []struct {
+		name     string
+		rules    []ipc.CSSMatchedRule
+		expected string
+	}{
+		{
+			name:     "empty rules",
+			rules:    []ipc.CSSMatchedRule{},
+			expected: "",
+		},
+		{
+			name: "single rule",
+			rules: []ipc.CSSMatchedRule{
+				{
+					Selector:   ".header",
+					Properties: map[string]string{"color": "red"},
+				},
+			},
+			expected: "", // Check contains instead
+		},
+		{
+			name: "multiple rules",
+			rules: []ipc.CSSMatchedRule{
+				{
+					Selector:   "(inline)",
+					Properties: map[string]string{"color": "red"},
+					Source:     "inline",
+				},
+				{
+					Selector:   ".header",
+					Properties: map[string]string{"background": "blue"},
+				},
+			},
+			expected: "", // Check contains instead
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := MatchedRules(&buf, tt.rules)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := buf.String()
+			if tt.expected != "" && got != tt.expected {
+				t.Errorf("got %q, want %q", got, tt.expected)
+			}
+		})
+	}
+
+	// Test specific behavior
+	t.Run("contains selector comment", func(t *testing.T) {
+		rules := []ipc.CSSMatchedRule{
+			{Selector: ".header", Properties: map[string]string{"color": "red"}},
+		}
+		var buf bytes.Buffer
+		MatchedRules(&buf, rules)
+		output := buf.String()
+		if !strings.Contains(output, "/* .header */") {
+			t.Errorf("output should contain selector as comment, got: %s", output)
+		}
+	})
+
+	t.Run("contains separator between rules", func(t *testing.T) {
+		rules := []ipc.CSSMatchedRule{
+			{Selector: ".a", Properties: map[string]string{"color": "red"}},
+			{Selector: ".b", Properties: map[string]string{"color": "blue"}},
+		}
+		var buf bytes.Buffer
+		MatchedRules(&buf, rules)
+		output := buf.String()
+		if !strings.Contains(output, "--") {
+			t.Errorf("output should contain separator, got: %s", output)
+		}
+	})
+}

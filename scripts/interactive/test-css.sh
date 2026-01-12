@@ -15,8 +15,9 @@ cmd() {
 
 clear
 title "webctl css Command Test Suite"
-echo "Project: P-035"
-echo "Tests CSS extraction with stdout default, save/computed/get modes"
+echo "Project: P-052"
+echo "Tests CSS extraction with all subcommands: save/computed/get/inline/matched"
+echo "and flags: --select (rule filtering), --find, context flags"
 echo ""
 echo "Prerequisites:"
 echo "  - webctl must be built"
@@ -52,11 +53,12 @@ echo "Verify: CSS output to stdout"
 echo "Verify: No file created"
 read -p "Press Enter to continue..."
 
-heading "Extract computed styles for element to stdout"
+heading "Filter CSS rules by selector to stdout"
 cmd "webctl css --select \"body\""
 
 echo ""
-echo "Verify: Computed styles shown (not stylesheets)"
+echo "Verify: CSS rules with 'body' in selector shown"
+echo "Note: --select now filters stylesheet rules, not computed styles"
 read -p "Press Enter to continue..."
 
 heading "Search for CSS text"
@@ -98,10 +100,10 @@ heading "Save with selector and find"
 cmd "webctl css save ./debug.css --select \"div\" --find \"background\""
 
 echo ""
-echo "Verify: File saved with computed styles containing 'background'"
+echo "Verify: File saved with CSS rules matching 'div' containing 'background'"
 read -p "Press Enter to continue..."
 
-# Computed mode tests
+# Computed mode tests (supports multiple elements with -- separators)
 title "Computed Mode (Get All Computed Styles)"
 
 heading "Get all computed styles for body"
@@ -112,11 +114,20 @@ echo "Verify: All computed CSS properties shown"
 echo "Verify: Format is 'property: value' per line"
 read -p "Press Enter to continue..."
 
-heading "Get computed styles for h1"
+heading "Get computed styles for h1 (may match multiple elements)"
 cmd "webctl css computed \"h1\""
 
 echo ""
 echo "Verify: h1 computed styles shown"
+echo "If multiple h1 elements exist, separated by '--'"
+read -p "Press Enter to continue..."
+
+heading "Get computed styles for multiple elements"
+cmd "webctl css computed \"p\""
+
+echo ""
+echo "Verify: Computed styles for ALL p elements"
+echo "Multiple elements separated by '--'"
 read -p "Press Enter to continue..."
 
 heading "Get computed styles with complex selector"
@@ -124,13 +135,15 @@ cmd "webctl css computed \"body > div\""
 
 echo ""
 echo "Verify: Computed styles for matching elements"
+echo "Multiple matches separated by '--'"
 read -p "Press Enter to continue..."
 
-heading "Get computed styles as JSON"
+heading "Get computed styles as JSON (array format)"
 cmd "webctl css computed \"body\" --json"
 
 echo ""
-echo "Verify: JSON formatted output with styles object"
+echo "Verify: JSON formatted output with styles ARRAY"
+echo "Format: {\"ok\": true, \"styles\": [{...}, {...}]}"
 read -p "Press Enter to continue..."
 
 # Get mode tests
@@ -164,28 +177,36 @@ echo ""
 echo "Verify: Error or empty value"
 read -p "Press Enter to continue..."
 
-# Select flag tests
+# Select flag tests (NEW: filters CSS rules by selector pattern)
 title "Select Flag Tests"
 
-heading "Select by ID for computed styles"
+heading "Select by element type"
+cmd "webctl css --select \"body\""
+
+echo ""
+echo "Verify: CSS rules with 'body' in selector"
+echo "Note: --select now filters stylesheet rules, not computed styles"
+read -p "Press Enter to continue..."
+
+heading "Select by class pattern"
+cmd "webctl css --select \".container\""
+
+echo ""
+echo "Verify: CSS rules with '.container' in selector"
+read -p "Press Enter to continue..."
+
+heading "Select by ID pattern"
 cmd "webctl css --select \"#main\""
 
 echo ""
-echo "Check if element with id 'main' exists, adjust selector if needed"
+echo "Verify: CSS rules with '#main' in selector"
 read -p "Press Enter to continue..."
 
-heading "Select by class for computed styles"
-cmd "webctl css --select \"div\""
+heading "Select by complex pattern"
+cmd "webctl css --select \"h1\""
 
 echo ""
-echo "Verify: Computed styles for div elements"
-read -p "Press Enter to continue..."
-
-heading "Complex selector"
-cmd "webctl css --select \"body > div\""
-
-echo ""
-echo "Verify: Computed styles for direct div children of body"
+echo "Verify: CSS rules matching h1, .class h1, div h1, etc."
 read -p "Press Enter to continue..."
 
 # Find flag tests
@@ -209,7 +230,7 @@ heading "Find combined with select"
 cmd "webctl css --select \"body\" --find \"color\""
 
 echo ""
-echo "Verify: Computed styles for body containing 'color'"
+echo "Verify: CSS rules with 'body' selector containing 'color'"
 read -p "Press Enter to continue..."
 
 # Context flag tests
@@ -260,6 +281,71 @@ echo "Verify: Shows selector line plus following properties"
 echo "Useful for seeing complete rules containing search term"
 read -p "Press Enter to continue..."
 
+# Inline mode tests (NEW)
+title "Inline Mode Tests"
+
+heading "Get inline styles for all elements with style attribute"
+cmd "webctl css inline \"[style]\""
+
+echo ""
+echo "Verify: Inline style attribute content for each matching element"
+echo "Multiple elements separated by '--'"
+read -p "Press Enter to continue..."
+
+heading "Get inline styles for specific element"
+cmd "webctl css inline \"body\""
+
+echo ""
+echo "Verify: Shows body inline style (may be empty)"
+read -p "Press Enter to continue..."
+
+heading "Get inline styles for multiple elements"
+cmd "webctl css inline \"div\""
+
+echo ""
+echo "Verify: Inline styles for all div elements, separated by '--'"
+read -p "Press Enter to continue..."
+
+heading "Inline styles as JSON"
+cmd "webctl css inline \"[style]\" --json"
+
+echo ""
+echo "Verify: JSON array of inline style strings"
+read -p "Press Enter to continue..."
+
+# Matched mode tests (NEW)
+title "Matched Mode Tests"
+
+heading "Get matched CSS rules for element"
+cmd "webctl css matched \"body\""
+
+echo ""
+echo "Verify: CSS rules from stylesheets that apply to body element"
+echo "Each rule shows selector and properties, separated by '--'"
+read -p "Press Enter to continue..."
+
+heading "Get matched CSS rules for specific element"
+cmd "webctl css matched \"h1\""
+
+echo ""
+echo "Verify: CSS rules that apply to h1 element"
+read -p "Press Enter to continue..."
+
+heading "Get matched CSS rules with ID selector"
+cmd "webctl css matched \"#main\""
+
+echo ""
+echo "Verify: CSS rules matching #main (if exists)"
+echo "Note: Adjust selector if #main doesn't exist on test page"
+read -p "Press Enter to continue..."
+
+heading "Matched rules as JSON"
+cmd "webctl css matched \"body\" --json"
+
+echo ""
+echo "Verify: JSON array of matched rules with selector and properties"
+read -p "Press Enter to continue..."
+
 # Raw flag tests
 title "Raw Flag Tests"
 
@@ -274,7 +360,7 @@ heading "Raw with select"
 cmd "webctl css --raw --select \"h1\""
 
 echo ""
-echo "Verify: Raw computed styles for h1"
+echo "Verify: Raw CSS rules matching h1 selector"
 read -p "Press Enter to continue..."
 
 # Output format tests

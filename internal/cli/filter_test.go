@@ -220,7 +220,9 @@ func TestFilterCSSByText(t *testing.T) {
 			after:      0,
 			wantLines: []string{
 				`  color: white;`,
+				`--`,
 				`  background: white;`,
+				`--`,
 				`  color: white;`,
 			},
 		},
@@ -243,7 +245,9 @@ func TestFilterCSSByText(t *testing.T) {
 			after:      0,
 			wantLines: []string{
 				`  background: blue;`,
+				`--`,
 				`  background: white;`,
+				`--`,
 				`  background: gray;`,
 			},
 		},
