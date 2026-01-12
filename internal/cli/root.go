@@ -2,15 +2,28 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 )
+
+// ErrNoMatches indicates a search found no matches (informational, not an error).
+var ErrNoMatches = errors.New("no matches found")
+
+// ErrNoElements indicates a selector matched no elements (informational, not an error).
+var ErrNoElements = errors.New("no elements found")
+
+// isNoElementsError checks if an error message indicates no elements were found.
+func isNoElementsError(msg string) bool {
+	return strings.Contains(msg, "matched no elements")
+}
 
 // Version is set at build time.
 var Version = "dev"
@@ -207,6 +220,21 @@ func outputError(msg string) error {
 		}
 	}
 	return fmt.Errorf("%s", msg)
+}
+
+// outputNotice writes a notice message to stderr without "Error:" prefix.
+// Used for informational messages that still result in non-zero exit code.
+func outputNotice(msg string) error {
+	if JSONOutput {
+		resp := map[string]any{
+			"ok":      false,
+			"message": msg,
+		}
+		outputJSON(os.Stderr, resp)
+	} else {
+		fmt.Fprintln(os.Stderr, msg)
+	}
+	return errors.New(msg)
 }
 
 // shouldUseColor determines if color output should be used based on flags and environment.

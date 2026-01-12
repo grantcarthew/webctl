@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -58,7 +59,7 @@ Response formats:
   Save:     /tmp/webctl-cookies/25-12-28-143052-cookies.json
 
 Error cases:
-  - "no matches found for 'text'" - find text not in cookies
+  - "No matches found" - find text not in cookies
   - "daemon not running" - start daemon first with: webctl start`,
 	RunE: runCookiesDefault,
 }
@@ -224,6 +225,9 @@ func runCookiesDefault(cmd *cobra.Command, args []string) error {
 	// Get cookies from daemon
 	cookies, err := getCookiesFromDaemon(cmd)
 	if err != nil {
+		if errors.Is(err, ErrNoMatches) {
+			return outputNotice("No matches found")
+		}
 		return outputError(err.Error())
 	}
 
@@ -266,6 +270,9 @@ func runCookiesSave(cmd *cobra.Command, args []string) error {
 	// Get cookies from daemon
 	cookies, err := getCookiesFromDaemon(cmd)
 	if err != nil {
+		if errors.Is(err, ErrNoMatches) {
+			return outputNotice("No matches found")
+		}
 		return outputError(err.Error())
 	}
 
@@ -380,7 +387,7 @@ func getCookiesFromDaemon(cmd *cobra.Command) ([]ipc.Cookie, error) {
 	if find != "" {
 		cookies = filterCookiesByText(cookies, find)
 		if len(cookies) == 0 {
-			return nil, fmt.Errorf("no matches found for '%s'", find)
+			return nil, ErrNoMatches
 		}
 	}
 

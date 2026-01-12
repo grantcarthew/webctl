@@ -277,7 +277,7 @@ func (r *REPL) handleSpecialCommand(line string) (bool, error) {
 
 // executeCommand parses and executes a webctl command.
 func (r *REPL) executeCommand(line string) {
-	args := strings.Fields(line)
+	args := parseArgs(line)
 	if len(args) == 0 {
 		return
 	}
@@ -527,4 +527,47 @@ func formatCommandSummary(req ipc.Request) string {
 
 	// Default: just the command name
 	return req.Cmd
+}
+
+// parseArgs splits a command line into arguments, handling quoted strings.
+// Supports both single and double quotes. Quotes are stripped from the result.
+func parseArgs(line string) []string {
+	var args []string
+	var current strings.Builder
+	var inQuote rune
+	var escaped bool
+
+	for _, r := range line {
+		switch {
+		case escaped:
+			current.WriteRune(r)
+			escaped = false
+		case r == '\\' && inQuote == '"':
+			escaped = true
+		case r == inQuote:
+			// End of quoted section
+			inQuote = 0
+		case inQuote != 0:
+			// Inside quotes, keep the character
+			current.WriteRune(r)
+		case r == '"' || r == '\'':
+			// Start of quoted section
+			inQuote = r
+		case r == ' ' || r == '\t':
+			// Whitespace outside quotes - end of argument
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+		default:
+			current.WriteRune(r)
+		}
+	}
+
+	// Don't forget the last argument
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	return args
 }

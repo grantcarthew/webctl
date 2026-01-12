@@ -1209,8 +1209,8 @@ func TestRunConsoleShow_FindNoMatches(t *testing.T) {
 		t.Fatal("expected error when no matches found")
 	}
 
-	if !strings.Contains(err.Error(), "no matches found") {
-		t.Errorf("expected 'no matches found' error, got: %v", err)
+	if !strings.Contains(err.Error(), "No matches found") {
+		t.Errorf("expected 'No matches found' error, got: %v", err)
 	}
 
 	if !exec.closed {

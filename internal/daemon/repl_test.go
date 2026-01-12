@@ -418,3 +418,40 @@ func TestREPL_executeCommand_abbreviations(t *testing.T) {
 		})
 	}
 }
+
+func TestParseArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want []string
+	}{
+		{"simple", "html", []string{"html"}},
+		{"two args", "html save", []string{"html", "save"}},
+		{"flag with value", "html --select h1", []string{"html", "--select", "h1"}},
+		{"double quoted value", `html --select "h1"`, []string{"html", "--select", "h1"}},
+		{"single quoted value", `html --select 'h1'`, []string{"html", "--select", "h1"}},
+		{"quoted with spaces", `type "#input" "hello world"`, []string{"type", "#input", "hello world"}},
+		{"multiple flags", `html --select "div" --find "text"`, []string{"html", "--select", "div", "--find", "text"}},
+		{"mixed quotes", `html --select "div.class" --find 'text'`, []string{"html", "--select", "div.class", "--find", "text"}},
+		{"escaped quote in double", `echo "hello \"world\""`, []string{"echo", `hello "world"`}},
+		{"empty string", "", []string{}},
+		{"only whitespace", "   ", []string{}},
+		{"extra whitespace", "  html   save  ", []string{"html", "save"}},
+		{"complex selector", `html --select "div > p.intro"`, []string{"html", "--select", "div > p.intro"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseArgs(tt.line)
+			if len(got) != len(tt.want) {
+				t.Errorf("parseArgs(%q) = %v, want %v", tt.line, got, tt.want)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("parseArgs(%q)[%d] = %q, want %q", tt.line, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
