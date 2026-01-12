@@ -22,6 +22,9 @@ webctl html save ./output      # File: saves to ./output (not a directory!)
 ```bash
 --select, -s SELECTOR    # Filter to element(s)
 --find, -f TEXT          # Search within HTML
+--before, -B N           # Show N lines before each match (requires --find)
+--after, -A N            # Show N lines after each match (requires --find)
+--context, -C N          # Show N lines before and after (requires --find)
 --raw                    # Skip formatting/pretty-printing
 --json                   # JSON output (global flag)
 ```
@@ -38,7 +41,13 @@ webctl html save ./main.html --select "#main"
 
 # Search within HTML
 webctl html --find "login"
-# → stdout (HTML with matches)
+# → stdout (matching lines only)
+
+webctl html --find "login" -C 3
+# → stdout (matching lines with 3 lines of context)
+
+webctl html --find "error" -B 5 -A 2
+# → stdout (matching lines with 5 before, 2 after)
 
 webctl html save --find "login"
 # → /tmp/webctl-html/... (HTML with matches)

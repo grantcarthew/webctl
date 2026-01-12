@@ -22,6 +22,9 @@ webctl css save ./output       # File: saves to ./output (not a directory!)
 ```bash
 --select, -s SELECTOR    # Filter to element's computed styles
 --find, -f TEXT          # Search within CSS
+--before, -B N           # Show N lines before each match (requires --find)
+--after, -A N            # Show N lines after each match (requires --find)
+--context, -C N          # Show N lines before and after (requires --find)
 --raw                    # Skip formatting/pretty-printing
 --json                   # JSON output (global flag)
 ```
@@ -38,7 +41,13 @@ webctl css save ./button.css --select ".button"
 
 # Search within CSS
 webctl css --find "background"
-# → stdout (filtered CSS with matches)
+# → stdout (matching lines only)
+
+webctl css --find "background" -C 3
+# → stdout (matching lines with 3 lines of context)
+
+webctl css --find "color" -B 2 -A 1
+# → stdout (matching lines with 2 before, 1 after)
 
 webctl css save --find "background"
 # → /tmp/webctl-css/... (filtered CSS with matches)

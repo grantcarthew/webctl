@@ -166,6 +166,9 @@ func init() {
 	// Universal flags on root command (inherited by default/save subcommands)
 	cssCmd.PersistentFlags().StringP("select", "s", "", "Filter to element's computed styles")
 	cssCmd.PersistentFlags().StringP("find", "f", "", "Search for text within CSS")
+	cssCmd.PersistentFlags().IntP("before", "B", 0, "Show N lines before each match (requires --find)")
+	cssCmd.PersistentFlags().IntP("after", "A", 0, "Show N lines after each match (requires --find)")
+	cssCmd.PersistentFlags().IntP("context", "C", 0, "Show N lines before and after each match (requires --find)")
 	cssCmd.PersistentFlags().Bool("raw", false, "Skip CSS formatting")
 
 	// Add all subcommands
@@ -393,6 +396,27 @@ func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
 		raw, _ = cmd.Parent().PersistentFlags().GetBool("raw")
 	}
 
+	before, _ := cmd.Flags().GetInt("before")
+	if before == 0 && cmd.Parent() != nil {
+		before, _ = cmd.Parent().PersistentFlags().GetInt("before")
+	}
+
+	after, _ := cmd.Flags().GetInt("after")
+	if after == 0 && cmd.Parent() != nil {
+		after, _ = cmd.Parent().PersistentFlags().GetInt("after")
+	}
+
+	context, _ := cmd.Flags().GetInt("context")
+	if context == 0 && cmd.Parent() != nil {
+		context, _ = cmd.Parent().PersistentFlags().GetInt("context")
+	}
+
+	// -C is shorthand for -B N -A N
+	if context > 0 {
+		before = context
+		after = context
+	}
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return "", err
@@ -436,14 +460,6 @@ func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
 		css = cssformat.FormatComputedStyles(data.Styles)
 	}
 
-	// Apply --find filter if specified
-	if find != "" {
-		css, err = filterCSSByText(css, find)
-		if err != nil {
-			return "", err
-		}
-	}
-
 	// Format CSS unless --raw flag is set
 	if !raw && selector == "" {
 		// Only format full stylesheets, not computed styles
@@ -456,27 +472,80 @@ func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
 		}
 	}
 
+	// Apply --find filter if specified (after formatting so line-based search works)
+	if find != "" {
+		css, err = filterCSSByText(css, find, before, after)
+		if err != nil {
+			return "", err
+		}
+	}
+
 	return css, nil
 }
 
 // filterCSSByText filters CSS to only include lines containing the search text
-func filterCSSByText(css, searchText string) (string, error) {
+// with optional context lines before and after each match
+func filterCSSByText(css, searchText string, before, after int) (string, error) {
 	lines := strings.Split(css, "\n")
-	var matchedLines []string
-
 	searchLower := strings.ToLower(searchText)
 
-	for _, line := range lines {
+	// Find all matching line indices
+	var matchIndices []int
+	for i, line := range lines {
 		if strings.Contains(strings.ToLower(line), searchLower) {
-			matchedLines = append(matchedLines, line)
+			matchIndices = append(matchIndices, i)
 		}
 	}
 
-	if len(matchedLines) == 0 {
+	if len(matchIndices) == 0 {
 		return "", fmt.Errorf("no matches found for '%s'", searchText)
 	}
 
-	return strings.Join(matchedLines, "\n"), nil
+	// If no context requested, just return matching lines
+	if before == 0 && after == 0 {
+		var matchedLines []string
+		for _, idx := range matchIndices {
+			matchedLines = append(matchedLines, lines[idx])
+		}
+		return strings.Join(matchedLines, "\n"), nil
+	}
+
+	// Build ranges with context, merging overlapping regions
+	type lineRange struct {
+		start, end int
+	}
+	var ranges []lineRange
+
+	for _, idx := range matchIndices {
+		start := idx - before
+		if start < 0 {
+			start = 0
+		}
+		end := idx + after
+		if end >= len(lines) {
+			end = len(lines) - 1
+		}
+
+		// Merge with previous range if overlapping or adjacent
+		if len(ranges) > 0 && start <= ranges[len(ranges)-1].end+1 {
+			ranges[len(ranges)-1].end = end
+		} else {
+			ranges = append(ranges, lineRange{start, end})
+		}
+	}
+
+	// Build output with separators between non-contiguous ranges
+	var result []string
+	for i, r := range ranges {
+		if i > 0 {
+			result = append(result, "--")
+		}
+		for j := r.start; j <= r.end; j++ {
+			result = append(result, lines[j])
+		}
+	}
+
+	return strings.Join(result, "\n"), nil
 }
 
 // writeCSSToFile writes CSS content to a file, creating directories if needed

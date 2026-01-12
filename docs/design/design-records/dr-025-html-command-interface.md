@@ -28,6 +28,9 @@ webctl html save [path]    # Save to file (temp if no path, custom if path given
 # Universal flags
 --select, -s SELECTOR      # Filter to element(s)
 --find, -f TEXT            # Search within HTML
+--before, -B N             # Show N lines before each match (requires --find)
+--after, -A N              # Show N lines after each match (requires --find)
+--context, -C N            # Show N lines before and after each match (requires --find)
 --raw                      # Skip formatting
 --json                     # JSON output
 ```
@@ -188,6 +191,24 @@ Universal Flags:
 - Filters/highlights matches
 - Replaces standalone find command
 - Works across all output modes
+- Case-insensitive matching
+
+--before, -B N:
+- Show N lines before each matching line
+- Requires --find flag
+- Similar to ripgrep's -B flag
+
+--after, -A N:
+- Show N lines after each matching line
+- Requires --find flag
+- Similar to ripgrep's -A flag
+
+--context, -C N:
+- Show N lines before and after each matching line
+- Requires --find flag
+- Equivalent to -B N -A N
+- Similar to ripgrep's -C flag
+- Overlapping context regions are merged
 
 --raw:
 - Skips HTML formatting/pretty-printing
@@ -245,6 +266,12 @@ webctl html --select "#main"
 
 webctl html --find "login"
 # Lines containing "login"
+
+webctl html --find "login" -C 3
+# Lines containing "login" with 3 lines of context
+
+webctl html --find "error" -B 5 -A 2
+# Lines containing "error" with 5 lines before and 2 after
 ```
 
 Save to file:
@@ -321,5 +348,6 @@ webctl html save --find "login"  # Save matching lines to temp
 
 ## Updates
 
+- 2026-01-12: Added context flags (-A, -B, -C) for --find (P-034)
 - 2025-01-09: Updated to stdout default, removed show subcommand (P-051)
 - 2025-12-28: Initial version (supersedes DR-012 and DR-021)
