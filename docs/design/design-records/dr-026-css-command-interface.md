@@ -28,6 +28,9 @@ webctl css save [path]      # Save to file (temp if no path, custom if path give
 # Universal flags (apply to universal pattern)
 --select, -s SELECTOR       # Filter to element's computed styles
 --find, -f TEXT             # Search within CSS
+--before, -B N              # Show N lines before each match (requires --find)
+--after, -A N               # Show N lines after each match (requires --find)
+--context, -C N             # Show N lines before and after each match (requires --find)
 --raw                       # Skip formatting
 --json                      # JSON output
 
@@ -207,6 +210,24 @@ Universal Flags (Apply to Universal Pattern):
 - Search for text within CSS content
 - Filters rules/properties containing search text
 - Works across all output modes
+- Case-insensitive matching
+
+--before, -B N:
+- Show N lines before each matching line
+- Requires --find flag
+- Similar to ripgrep's -B flag
+
+--after, -A N:
+- Show N lines after each matching line
+- Requires --find flag
+- Similar to ripgrep's -A flag
+
+--context, -C N:
+- Show N lines before and after each matching line
+- Requires --find flag
+- Equivalent to -B N -A N
+- Similar to ripgrep's -C flag
+- Overlapping context regions are merged
 
 --raw:
 - Skips CSS formatting/pretty-printing
@@ -250,6 +271,12 @@ webctl css
 webctl css --find "background"
 # .header { background: #fff; ... }
 # (filtered CSS with background rules)
+
+webctl css --find "background" -C 3
+# (matching lines with 3 lines of context)
+
+webctl css --find "color" -B 2 -A 1
+# (matching lines with 2 lines before and 1 after)
 
 webctl css --raw
 # body{margin:0;padding:0}...
@@ -361,5 +388,6 @@ webctl css inject "..."              # Inject CSS (same)
 
 ## Updates
 
+- 2026-01-12: Added context flags (-A, -B, -C) for --find (P-034)
 - 2026-01-09: Updated to stdout default, removed show subcommand (P-051)
 - 2025-12-28: Initial version (supersedes DR-023)

@@ -149,6 +149,53 @@ echo ""
 echo "Verify: h1 elements containing 'Example'"
 read -p "Press Enter to continue..."
 
+# Context flag tests
+title "Context Flag Tests (-A, -B, -C)"
+
+heading "Find with after context (-A)"
+cmd "webctl html --find \"Example\" -A 3"
+
+echo ""
+echo "Verify: Matching lines plus 3 lines after each match"
+read -p "Press Enter to continue..."
+
+heading "Find with before context (-B)"
+cmd "webctl html --find \"Example\" -B 3"
+
+echo ""
+echo "Verify: Matching lines plus 3 lines before each match"
+read -p "Press Enter to continue..."
+
+heading "Find with symmetric context (-C)"
+cmd "webctl html --find \"Example\" -C 2"
+
+echo ""
+echo "Verify: Matching lines plus 2 lines before AND after"
+echo "Note: -C 2 is shorthand for -B 2 -A 2"
+read -p "Press Enter to continue..."
+
+heading "Find with asymmetric context (-B and -A)"
+cmd "webctl html --find \"Example\" -B 1 -A 5"
+
+echo ""
+echo "Verify: 1 line before, 5 lines after each match"
+read -p "Press Enter to continue..."
+
+heading "Context with multiple matches (should merge overlapping)"
+cmd "webctl html --find \"div\" -C 1"
+
+echo ""
+echo "Verify: Adjacent/overlapping contexts are merged"
+echo "Verify: Non-adjacent regions separated by '--'"
+read -p "Press Enter to continue..."
+
+heading "Context with select"
+cmd "webctl html --select \"body\" --find \"div\" -C 2"
+
+echo ""
+echo "Verify: Context works with --select filter"
+read -p "Press Enter to continue..."
+
 # Raw flag tests
 title "Raw Flag Tests"
 
