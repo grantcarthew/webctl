@@ -305,13 +305,17 @@ func filterHTMLByText(html, searchText string, before, after int) (string, error
 		return "", fmt.Errorf("no matches found for '%s'", searchText)
 	}
 
-	// If no context requested, just return matching lines
+	// If no context requested, return matching lines with separators between non-adjacent matches
 	if before == 0 && after == 0 {
-		var matchedLines []string
-		for _, idx := range matchIndices {
-			matchedLines = append(matchedLines, lines[idx])
+		var result []string
+		for i, idx := range matchIndices {
+			// Add separator if this match is not adjacent to the previous one
+			if i > 0 && idx > matchIndices[i-1]+1 {
+				result = append(result, "--")
+			}
+			result = append(result, lines[idx])
 		}
-		return strings.Join(matchedLines, "\n"), nil
+		return strings.Join(result, "\n"), nil
 	}
 
 	// Build ranges with context, merging overlapping regions

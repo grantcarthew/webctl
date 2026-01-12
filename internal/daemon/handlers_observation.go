@@ -320,12 +320,12 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 				}
 				const results = [];
 				elements.forEach((el, i) => {
-					if (elements.length > 1) {
-						results.push('<!-- Element ' + (i+1) + ' of ' + elements.length + ': %s -->');
+					if (i > 0) {
+						results.push('--');
 					}
 					results.push(el.outerHTML);
 				});
-				resolve(results.join('\n\n'));
+				resolve(results.join('\n'));
 			};
 
 			if (document.readyState === 'complete') {
@@ -350,7 +350,7 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 				}
 			}
 		});
-	})()`, params.Selector, params.Selector)
+	})()`, params.Selector)
 
 	result, err := d.sendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
 		"expression":    js,
