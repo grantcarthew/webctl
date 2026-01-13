@@ -24,6 +24,9 @@ var ErrNoElements = errors.New("no elements found")
 // ErrNoRules indicates no CSS rules matched the selector pattern (informational, not an error).
 var ErrNoRules = errors.New("no rules found")
 
+// ErrNoEntriesInRange indicates the specified range has no entries (informational, not an error).
+var ErrNoEntriesInRange = errors.New("no entries in range")
+
 // isNoElementsError checks if an error message indicates no elements were found.
 func isNoElementsError(msg string) bool {
 	return strings.Contains(msg, "matched no elements") || strings.Contains(msg, "element not found")

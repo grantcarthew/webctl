@@ -705,9 +705,13 @@ func TestApplyConsoleLimiting(t *testing.T) {
 		{"head exceeds length", 10, 0, "", 5, "0", "4", false},
 		{"tail 2", 0, 2, "", 2, "3", "4", false},
 		{"tail exceeds length", 0, 10, "", 5, "0", "4", false},
-		{"range 1-3", 0, 0, "1-3", 2, "1", "2", false},
-		{"range 0-5", 0, 0, "0-5", 5, "0", "4", false},
-		{"range start >= end", 0, 0, "3-2", 0, "", "", false},
+		// Range is 1-indexed and inclusive: --range 1-3 returns entries 1, 2, 3
+		{"range 1-3", 0, 0, "1-3", 3, "0", "2", false},
+		{"range 2-4", 0, 0, "2-4", 3, "1", "3", false},
+		{"range 1-5", 0, 0, "1-5", 5, "0", "4", false},
+		{"range exceeds length", 0, 0, "1-100", 5, "0", "4", false},
+		{"range 0 start clamps to 1", 0, 0, "0-3", 3, "0", "2", false},
+		{"range start > end", 0, 0, "3-2", 0, "", "", false},
 		{"invalid range format", 0, 0, "abc", 0, "", "", true},
 		{"invalid range no dash", 0, 0, "12", 0, "", "", true},
 	}

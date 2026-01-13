@@ -3,6 +3,7 @@ package ipc
 import (
 	"encoding/json"
 	"log"
+	"strings"
 )
 
 // CommandExecutor executes CLI commands with arguments.
@@ -47,6 +48,29 @@ type ConsoleEntry struct {
 	URL       string   `json:"url,omitempty"`
 	Line      int      `json:"line,omitempty"`
 	Column    int      `json:"column,omitempty"`
+}
+
+// Console type constants matching CDP Runtime.consoleAPICalled types.
+const (
+	ConsoleTypeLog     = "log"
+	ConsoleTypeDebug   = "debug"
+	ConsoleTypeInfo    = "info"
+	ConsoleTypeError   = "error"
+	ConsoleTypeWarning = "warning"
+)
+
+// consoleTypeAliases maps user-friendly aliases to CDP canonical types.
+var consoleTypeAliases = map[string]string{
+	"warn": ConsoleTypeWarning,
+}
+
+// NormalizeConsoleType converts a console type string to its canonical CDP form.
+func NormalizeConsoleType(t string) string {
+	lower := strings.ToLower(t)
+	if canonical, ok := consoleTypeAliases[lower]; ok {
+		return canonical
+	}
+	return lower
 }
 
 // NetworkEntry represents a network request/response entry.

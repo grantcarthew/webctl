@@ -35,7 +35,7 @@ Console-specific filter flags:
   --type TYPE       Filter by log type (log, warn, error, debug, info)
   --head N          Return first N entries
   --tail N          Return last N entries
-  --range N-M       Return entries N through M
+  --range N-M       Return entries N through M (1-indexed, inclusive)
 
 Examples:
 
@@ -89,8 +89,9 @@ func init() {
 	consoleCmd.PersistentFlags().StringSlice("type", nil, "Filter by entry type (repeatable, CSV-supported)")
 	consoleCmd.PersistentFlags().Int("head", 0, "Return first N entries")
 	consoleCmd.PersistentFlags().Int("tail", 0, "Return last N entries")
-	consoleCmd.PersistentFlags().String("range", "", "Return entries in range (format: START-END)")
-	consoleCmd.MarkFlagsMutuallyExclusive("head", "tail", "range")
+	consoleCmd.PersistentFlags().String("range", "", "Return entries N through M (1-indexed, inclusive)")
+	// Note: MarkFlagsMutuallyExclusive doesn't work with PersistentFlags,
+	// so we validate manually in getConsoleFromDaemon
 
 	// Add all subcommands
 	consoleCmd.AddCommand(consoleSaveCmd)
@@ -117,6 +118,9 @@ func runConsoleDefault(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		if errors.Is(err, ErrNoMatches) {
 			return outputNotice("No matches found")
+		}
+		if errors.Is(err, ErrNoEntriesInRange) {
+			return outputNotice("No entries in range")
 		}
 		return outputError(err.Error())
 	}
@@ -165,6 +169,9 @@ func runConsoleSave(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		if errors.Is(err, ErrNoMatches) {
 			return outputNotice("No matches found")
+		}
+		if errors.Is(err, ErrNoEntriesInRange) {
+			return outputNotice("No entries in range")
 		}
 		return outputError(err.Error())
 	}
@@ -216,30 +223,61 @@ func runConsoleSave(cmd *cobra.Command, args []string) error {
 
 // getConsoleFromDaemon fetches console logs from daemon, applying filters
 func getConsoleFromDaemon(cmd *cobra.Command) ([]ipc.ConsoleEntry, error) {
-	// Try to get flags from command, falling back to parent for persistent flags
+	// Try to get flags from command's merged flags, then persistent flags,
+	// then parent's persistent flags (for subcommands)
 	find, _ := cmd.Flags().GetString("find")
+	if find == "" {
+		find, _ = cmd.PersistentFlags().GetString("find")
+	}
 	if find == "" && cmd.Parent() != nil {
 		find, _ = cmd.Parent().PersistentFlags().GetString("find")
 	}
 
 	types, _ := cmd.Flags().GetStringSlice("type")
+	if len(types) == 0 {
+		types, _ = cmd.PersistentFlags().GetStringSlice("type")
+	}
 	if len(types) == 0 && cmd.Parent() != nil {
 		types, _ = cmd.Parent().PersistentFlags().GetStringSlice("type")
 	}
 
 	head, _ := cmd.Flags().GetInt("head")
+	if head == 0 {
+		head, _ = cmd.PersistentFlags().GetInt("head")
+	}
 	if head == 0 && cmd.Parent() != nil {
 		head, _ = cmd.Parent().PersistentFlags().GetInt("head")
 	}
 
 	tail, _ := cmd.Flags().GetInt("tail")
+	if tail == 0 {
+		tail, _ = cmd.PersistentFlags().GetInt("tail")
+	}
 	if tail == 0 && cmd.Parent() != nil {
 		tail, _ = cmd.Parent().PersistentFlags().GetInt("tail")
 	}
 
 	rangeStr, _ := cmd.Flags().GetString("range")
+	if rangeStr == "" {
+		rangeStr, _ = cmd.PersistentFlags().GetString("range")
+	}
 	if rangeStr == "" && cmd.Parent() != nil {
 		rangeStr, _ = cmd.Parent().PersistentFlags().GetString("range")
+	}
+
+	// Validate mutual exclusivity of head, tail, and range
+	limitFlags := 0
+	if head > 0 {
+		limitFlags++
+	}
+	if tail > 0 {
+		limitFlags++
+	}
+	if rangeStr != "" {
+		limitFlags++
+	}
+	if limitFlags > 1 {
+		return nil, fmt.Errorf("--head, --tail, and --range are mutually exclusive")
 	}
 
 	debugParam("find=%q types=%v head=%d tail=%d range=%q", find, types, head, tail, rangeStr)
@@ -297,6 +335,11 @@ func getConsoleFromDaemon(cmd *cobra.Command) ([]ipc.ConsoleEntry, error) {
 		return nil, err
 	}
 
+	// Check for empty range results
+	if rangeStr != "" && len(entries) == 0 {
+		return nil, ErrNoEntriesInRange
+	}
+
 	return entries, nil
 }
 
@@ -304,12 +347,12 @@ func getConsoleFromDaemon(cmd *cobra.Command) ([]ipc.ConsoleEntry, error) {
 func filterConsoleByType(entries []ipc.ConsoleEntry, types []string) []ipc.ConsoleEntry {
 	typeSet := make(map[string]bool)
 	for _, t := range types {
-		typeSet[strings.ToLower(t)] = true
+		typeSet[ipc.NormalizeConsoleType(t)] = true
 	}
 
 	var filtered []ipc.ConsoleEntry
 	for _, e := range entries {
-		if typeSet[strings.ToLower(e.Type)] {
+		if typeSet[ipc.NormalizeConsoleType(e.Type)] {
 			filtered = append(filtered, e)
 		}
 	}
@@ -349,26 +392,33 @@ func applyConsoleLimiting(entries []ipc.ConsoleEntry, head, tail int, rangeStr s
 	if rangeStr != "" {
 		parts := strings.Split(rangeStr, "-")
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid range format: use START-END (e.g., 100-200)")
+			return nil, fmt.Errorf("invalid range format: use START-END (e.g., 1-10)")
 		}
 		start, err := strconv.Atoi(parts[0])
 		if err != nil {
-			return nil, fmt.Errorf("invalid range format: use START-END (e.g., 100-200)")
+			return nil, fmt.Errorf("invalid range format: use START-END (e.g., 1-10)")
 		}
 		end, err := strconv.Atoi(parts[1])
 		if err != nil {
-			return nil, fmt.Errorf("invalid range format: use START-END (e.g., 100-200)")
+			return nil, fmt.Errorf("invalid range format: use START-END (e.g., 1-10)")
 		}
-		if start < 0 {
-			start = 0
+
+		// Convert from 1-indexed user input to 0-indexed slice indices.
+		// User range is inclusive on both ends: --range 2-4 means entries 2, 3, 4.
+		startIdx := start - 1
+		endIdx := end
+
+		// Clamp to valid bounds to avoid out-of-range errors
+		if startIdx < 0 {
+			startIdx = 0
 		}
-		if end > len(entries) {
-			end = len(entries)
+		if endIdx > len(entries) {
+			endIdx = len(entries)
 		}
-		if start >= end {
+		if startIdx >= endIdx || startIdx >= len(entries) {
 			return []ipc.ConsoleEntry{}, nil
 		}
-		return entries[start:end], nil
+		return entries[startIdx:endIdx], nil
 	}
 
 	return entries, nil
