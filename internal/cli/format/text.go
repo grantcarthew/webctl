@@ -191,12 +191,12 @@ func Console(w io.Writer, entries []ipc.ConsoleEntry, opts OutputOptions) error 
 			fmt.Fprint(w, "] ")
 
 			// Color the level based on type
-			switch strings.ToLower(e.Type) {
-			case "error":
+			switch ipc.NormalizeConsoleType(e.Type) {
+			case ipc.ConsoleTypeError:
 				colorFprint(w, color.FgRed, level)
-			case "warning", "warn":
+			case ipc.ConsoleTypeWarning:
 				colorFprint(w, color.FgYellow, level)
-			case "info":
+			case ipc.ConsoleTypeInfo:
 				colorFprint(w, color.FgCyan, level)
 			default:
 				fmt.Fprint(w, level)
