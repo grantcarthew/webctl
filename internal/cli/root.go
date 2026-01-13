@@ -21,9 +21,22 @@ var ErrNoMatches = errors.New("no matches found")
 // ErrNoElements indicates a selector matched no elements (informational, not an error).
 var ErrNoElements = errors.New("no elements found")
 
+// ErrNoRules indicates no CSS rules matched the selector pattern (informational, not an error).
+var ErrNoRules = errors.New("no rules found")
+
 // isNoElementsError checks if an error message indicates no elements were found.
 func isNoElementsError(msg string) bool {
-	return strings.Contains(msg, "matched no elements")
+	return strings.Contains(msg, "matched no elements") || strings.Contains(msg, "element not found")
+}
+
+// isNoHistoryError checks if an error message indicates no history navigation available.
+func isNoHistoryError(msg string) bool {
+	return msg == "no previous page in history" || msg == "no next page in history"
+}
+
+// isNoCookieError checks if an error message indicates no cookie was found.
+func isNoCookieError(msg string) bool {
+	return strings.Contains(msg, "no cookie named")
 }
 
 // Version is set at build time.

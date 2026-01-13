@@ -67,6 +67,9 @@ func runBack(cmd *cobra.Command, args []string) error {
 	}
 
 	if !resp.OK {
+		if isNoHistoryError(resp.Error) {
+			return outputNotice("No previous page")
+		}
 		return outputError(resp.Error)
 	}
 

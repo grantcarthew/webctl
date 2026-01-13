@@ -67,6 +67,9 @@ func runForward(cmd *cobra.Command, args []string) error {
 	}
 
 	if !resp.OK {
+		if isNoHistoryError(resp.Error) {
+			return outputNotice("No next page")
+		}
 		return outputError(resp.Error)
 	}
 

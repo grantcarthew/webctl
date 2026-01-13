@@ -282,6 +282,14 @@ func (r *REPL) executeCommand(line string) {
 		return
 	}
 
+	// Strip "webctl" prefix if user typed it (common when copy-pasting commands)
+	if strings.ToLower(args[0]) == "webctl" {
+		args = args[1:]
+		if len(args) == 0 {
+			return
+		}
+	}
+
 	// Try to expand command abbreviation
 	if expanded, ok := expandAbbreviation(args[0], webctlCommands); ok {
 		args[0] = expanded

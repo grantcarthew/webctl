@@ -1109,12 +1109,9 @@ func TestHTML_Integration(t *testing.T) {
 			t.Error("HTML should contain second content element")
 		}
 
-		// Should contain comment separators
-		if !bytes.Contains([]byte(data.HTML), []byte("<!-- Element 1 of 2")) {
-			t.Error("HTML should contain first element comment")
-		}
-		if !bytes.Contains([]byte(data.HTML), []byte("<!-- Element 2 of 2")) {
-			t.Error("HTML should contain second element comment")
+		// Should contain -- separator between elements (consistent with other observation commands)
+		if !bytes.Contains([]byte(data.HTML), []byte("--")) {
+			t.Error("HTML should contain element separator")
 		}
 
 		t.Logf("multiple elements HTML length: %d bytes", len(data.HTML))

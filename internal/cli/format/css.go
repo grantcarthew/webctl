@@ -71,9 +71,15 @@ func MatchedRules(w io.Writer, rules []ipc.CSSMatchedRule) error {
 				return err
 			}
 		}
-		// Output selector as comment
-		if _, err := fmt.Fprintf(w, "/* %s */\n", rule.Selector); err != nil {
-			return err
+		// Output selector as comment, with source if inherited
+		if rule.Source == "inherited" {
+			if _, err := fmt.Fprintf(w, "/* %s (inherited) */\n", rule.Selector); err != nil {
+				return err
+			}
+		} else {
+			if _, err := fmt.Fprintf(w, "/* %s */\n", rule.Selector); err != nil {
+				return err
+			}
 		}
 		// Output properties
 		for prop, value := range rule.Properties {

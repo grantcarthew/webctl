@@ -3610,8 +3610,8 @@ func TestRunBack_NoHistory(t *testing.T) {
 	if resp["ok"] != false {
 		t.Error("expected ok=false")
 	}
-	if resp["error"] != "no previous page in history" {
-		t.Errorf("unexpected error: %v", resp["error"])
+	if resp["message"] != "No previous page" {
+		t.Errorf("unexpected message: %v", resp["message"])
 	}
 }
 
@@ -3776,8 +3776,8 @@ func TestRunForward_NoHistory(t *testing.T) {
 	if resp["ok"] != false {
 		t.Error("expected ok=false")
 	}
-	if resp["error"] != "no next page in history" {
-		t.Errorf("unexpected error: %v", resp["error"])
+	if resp["message"] != "No next page" {
+		t.Errorf("unexpected message: %v", resp["message"])
 	}
 }
 
@@ -3990,8 +3990,8 @@ func TestRunClick_ElementNotFound(t *testing.T) {
 	if resp["ok"] != false {
 		t.Error("expected ok=false")
 	}
-	if resp["error"] != "element not found: #missing" {
-		t.Errorf("unexpected error: %v", resp["error"])
+	if resp["message"] != "No elements found" {
+		t.Errorf("unexpected message: %v", resp["message"])
 	}
 }
 
@@ -4677,8 +4677,8 @@ func TestRunSelect_ElementNotFound(t *testing.T) {
 	if resp["ok"] != false {
 		t.Error("expected ok=false")
 	}
-	if resp["error"] != "element not found: #missing" {
-		t.Errorf("unexpected error: %v", resp["error"])
+	if resp["message"] != "No elements found" {
+		t.Errorf("unexpected message: %v", resp["message"])
 	}
 }
 
@@ -5053,8 +5053,8 @@ func TestRunScroll_ElementNotFound(t *testing.T) {
 	if resp["ok"] != false {
 		t.Error("expected ok=false")
 	}
-	if resp["error"] != "element not found: #missing" {
-		t.Errorf("unexpected error: %v", resp["error"])
+	if resp["message"] != "No elements found" {
+		t.Errorf("unexpected message: %v", resp["message"])
 	}
 }
 

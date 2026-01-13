@@ -122,6 +122,9 @@ func runClick(cmd *cobra.Command, args []string) error {
 	}
 
 	if !resp.OK {
+		if isNoElementsError(resp.Error) {
+			return outputNotice("No elements found")
+		}
 		return outputError(resp.Error)
 	}
 
