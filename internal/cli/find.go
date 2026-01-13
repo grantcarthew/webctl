@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"time"
 
 	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/ipc"
@@ -49,6 +50,9 @@ func init() {
 }
 
 func runFind(cmd *cobra.Command, args []string) error {
+	t := startTimer("find")
+	defer t.log()
+
 	// Get query from args
 	query := args[0]
 
@@ -78,6 +82,8 @@ func runFind(cmd *cobra.Command, args []string) error {
 		return outputError("daemon not running. Start with: webctl start")
 	}
 
+	debugParam("query=%q regex=%v caseSensitive=%v limit=%d", query, isRegex, caseSensitive, limit)
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return outputError(err.Error())
@@ -95,10 +101,16 @@ func runFind(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	debugRequest("find", fmt.Sprintf("query=%q regex=%v limit=%d", query, isRegex, limit))
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "find",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

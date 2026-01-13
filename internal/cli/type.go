@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
@@ -84,6 +86,9 @@ func init() {
 }
 
 func runType(cmd *cobra.Command, args []string) error {
+	t := startTimer("type")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -92,12 +97,6 @@ func runType(cmd *cobra.Command, args []string) error {
 	key, _ := cmd.Flags().GetString("key")
 	clear, _ := cmd.Flags().GetBool("clear")
 
-	exec, err := execFactory.NewExecutor()
-	if err != nil {
-		return outputError(err.Error())
-	}
-	defer exec.Close()
-
 	var selector, text string
 	if len(args) == 1 {
 		text = args[0]
@@ -105,6 +104,15 @@ func runType(cmd *cobra.Command, args []string) error {
 		selector = args[0]
 		text = args[1]
 	}
+
+	// Note: don't log text content for security reasons
+	debugParam("selector=%q key=%q clear=%v textLen=%d", selector, key, clear, len(text))
+
+	exec, err := execFactory.NewExecutor()
+	if err != nil {
+		return outputError(err.Error())
+	}
+	defer exec.Close()
 
 	params, err := json.Marshal(ipc.TypeParams{
 		Selector: selector,
@@ -116,10 +124,16 @@ func runType(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	debugRequest("type", fmt.Sprintf("selector=%q key=%q clear=%v", selector, key, clear))
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "type",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
@@ -79,6 +81,9 @@ func init() {
 }
 
 func runKey(cmd *cobra.Command, args []string) error {
+	t := startTimer("key")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -88,6 +93,9 @@ func runKey(cmd *cobra.Command, args []string) error {
 	alt, _ := cmd.Flags().GetBool("alt")
 	shift, _ := cmd.Flags().GetBool("shift")
 	meta, _ := cmd.Flags().GetBool("meta")
+	key := args[0]
+
+	debugParam("key=%q ctrl=%v alt=%v shift=%v meta=%v", key, ctrl, alt, shift, meta)
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -96,7 +104,7 @@ func runKey(cmd *cobra.Command, args []string) error {
 	defer exec.Close()
 
 	params, err := json.Marshal(ipc.KeyParams{
-		Key:   args[0],
+		Key:   key,
 		Ctrl:  ctrl,
 		Alt:   alt,
 		Shift: shift,
@@ -106,10 +114,16 @@ func runKey(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	debugRequest("key", fmt.Sprintf("key=%q ctrl=%v alt=%v shift=%v meta=%v", key, ctrl, alt, shift, meta))
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "key",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

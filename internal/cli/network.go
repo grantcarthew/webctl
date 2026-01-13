@@ -119,6 +119,9 @@ func init() {
 
 // runNetworkDefault handles default behavior: output to stdout
 func runNetworkDefault(cmd *cobra.Command, args []string) error {
+	t := startTimer("network")
+	defer t.log()
+
 	// Validate that no arguments were provided (catches unknown subcommands)
 	if len(args) > 0 {
 		return outputError(fmt.Sprintf("unknown command %q for \"webctl network\"", args[0]))
@@ -173,6 +176,9 @@ func runNetworkDefault(cmd *cobra.Command, args []string) error {
 
 // runNetworkSave handles save subcommand: save to file
 func runNetworkSave(cmd *cobra.Command, args []string) error {
+	t := startTimer("network save")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -319,14 +325,22 @@ func getNetworkFromDaemon(cmd *cobra.Command) ([]ipc.NetworkEntry, error) {
 		return nil, err
 	}
 
+	debugParam("find=%q types=%v methods=%v statuses=%v urlPattern=%q failed=%v", find, types, methods, statuses, urlPattern, failed)
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return nil, err
 	}
 	defer exec.Close()
 
+	debugRequest("network", "")
+	ipcStart := time.Now()
+
 	// Execute network request
 	resp, err := exec.Execute(ipc.Request{Cmd: "network"})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return nil, err
 	}
@@ -354,11 +368,17 @@ func getNetworkFromDaemon(cmd *cobra.Command) ([]ipc.NetworkEntry, error) {
 	}
 
 	// Apply filters
+	beforeCount := len(entries)
 	entries = filterNetworkEntries(entries, urlRegex, statusMatchers, filterOpts)
+	if len(entries) != beforeCount {
+		debugFilter("network filters", beforeCount, len(entries))
+	}
 
 	// Apply --find filter if specified
 	if find != "" {
+		beforeCount := len(entries)
 		entries = filterNetworkByText(entries, find)
+		debugFilter(fmt.Sprintf("--find %q", find), beforeCount, len(entries))
 		if len(entries) == 0 {
 			return nil, ErrNoMatches
 		}
@@ -657,6 +677,7 @@ func writeNetworkToFile(path string, entries []ipc.NetworkEntry, maxBodySize int
 		return fmt.Errorf("failed to write network entries: %v", err)
 	}
 
+	debugFile("wrote", path, len(jsonBytes))
 	return nil
 }
 

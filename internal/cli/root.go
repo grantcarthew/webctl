@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -57,10 +58,76 @@ Report issues: https://github.com/grantcarthew/webctl/issues/new
 }
 
 // debugf logs a debug message if debug mode is enabled.
-func debugf(format string, args ...any) {
+// Format: [DEBUG] [HH:MM:SS.mmm] [CATEGORY] message
+func debugf(category, format string, args ...any) {
 	if Debug {
-		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
+		timestamp := time.Now().Format("15:04:05.000")
+		fmt.Fprintf(os.Stderr, "[DEBUG] [%s] [%s] "+format+"\n",
+			append([]any{timestamp, category}, args...)...)
 	}
+}
+
+// debugRequest logs an IPC request being sent.
+func debugRequest(cmd string, params string) {
+	if Debug {
+		debugf("REQUEST", "cmd=%s %s", cmd, params)
+	}
+}
+
+// debugResponse logs an IPC response received.
+func debugResponse(ok bool, dataSize int, duration time.Duration) {
+	if Debug {
+		debugf("RESPONSE", "ok=%v size=%d bytes (%dms)", ok, dataSize, duration.Milliseconds())
+	}
+}
+
+// debugFilter logs a filter operation with before/after counts.
+func debugFilter(name string, before, after int) {
+	if Debug {
+		debugf("FILTER", "%s: %d -> %d", name, before, after)
+	}
+}
+
+// debugFile logs a file I/O operation.
+func debugFile(operation, path string, size int) {
+	if Debug {
+		debugf("FILE", "%s %d bytes to %s", operation, size, path)
+	}
+}
+
+// debugTiming logs an operation duration.
+func debugTiming(operation string, duration time.Duration) {
+	if Debug {
+		debugf("TIMING", "%s: %dms", operation, duration.Milliseconds())
+	}
+}
+
+// debugParam logs resolved parameter values.
+func debugParam(format string, args ...any) {
+	if Debug {
+		debugf("PARAM", format, args...)
+	}
+}
+
+// timer tracks operation duration for debug logging.
+type timer struct {
+	start time.Time
+	name  string
+}
+
+// startTimer creates a new timer for tracking operation duration.
+func startTimer(name string) *timer {
+	return &timer{start: time.Now(), name: name}
+}
+
+// stop returns the elapsed duration.
+func (t *timer) stop() time.Duration {
+	return time.Since(t.start)
+}
+
+// log outputs the timing if debug mode is enabled.
+func (t *timer) log() {
+	debugTiming(t.name, t.stop())
 }
 
 // Execute runs the root command.

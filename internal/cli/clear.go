@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"time"
+
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
@@ -20,6 +22,9 @@ func init() {
 }
 
 func runClear(cmd *cobra.Command, args []string) error {
+	t := startTimer("clear")
+	defer t.log()
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return outputError(err.Error())
@@ -35,10 +40,17 @@ func runClear(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	debugParam("target=%q", target)
+	debugRequest("clear", target)
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "clear",
 		Target: target,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

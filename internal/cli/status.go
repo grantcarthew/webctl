@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"os"
+	"time"
 
 	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/ipc"
@@ -23,8 +24,12 @@ func init() {
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
+	t := startTimer("status")
+	defer t.log()
+
 	// Check if daemon is running
 	if !execFactory.IsDaemonRunning() {
+		debugf("PARAM", "daemon not running, returning offline status")
 		status := ipc.StatusData{Running: false}
 
 		if JSONOutput {
@@ -41,7 +46,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 	defer exec.Close()
 
+	debugRequest("status", "")
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{Cmd: "status"})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

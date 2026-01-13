@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
@@ -23,6 +25,9 @@ func init() {
 }
 
 func runReload(cmd *cobra.Command, args []string) error {
+	t := startTimer("reload")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -30,6 +35,8 @@ func runReload(cmd *cobra.Command, args []string) error {
 	// Read flags
 	wait, _ := cmd.Flags().GetBool("wait")
 	timeout, _ := cmd.Flags().GetInt("timeout")
+
+	debugParam("wait=%v timeout=%d ignoreCache=true", wait, timeout)
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -47,10 +54,16 @@ func runReload(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	debugRequest("reload", fmt.Sprintf("wait=%v timeout=%d ignoreCache=true", wait, timeout))
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "reload",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

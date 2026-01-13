@@ -195,6 +195,9 @@ func runServeWithDaemon(mode, directory, proxyURL string) error {
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
+	t := startTimer("serve")
+	defer t.log()
+
 	// Determine mode and validate arguments
 	var mode string
 	var directory string
@@ -230,6 +233,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	debugParam("mode=%s directory=%q proxy=%q port=%d host=%q", mode, directory, proxyURL, servePort, serveHost)
+
 	// If daemon is not running, start it with the server
 	if !execFactory.IsDaemonRunning() {
 		return runServeWithDaemon(mode, directory, proxyURL)
@@ -257,11 +262,17 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	debugRequest("serve", fmt.Sprintf("mode=%s port=%d", mode, servePort))
+	ipcStart := time.Now()
+
 	// Execute serve command
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "serve",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

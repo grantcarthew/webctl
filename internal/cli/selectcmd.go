@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
@@ -98,9 +100,16 @@ func init() {
 }
 
 func runSelect(cmd *cobra.Command, args []string) error {
+	t := startTimer("select")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
+
+	selector := args[0]
+	value := args[1]
+	debugParam("selector=%q value=%q", selector, value)
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -109,17 +118,23 @@ func runSelect(cmd *cobra.Command, args []string) error {
 	defer exec.Close()
 
 	params, err := json.Marshal(ipc.SelectParams{
-		Selector: args[0],
-		Value:    args[1],
+		Selector: selector,
+		Value:    value,
 	})
 	if err != nil {
 		return outputError(err.Error())
 	}
 
+	debugRequest("select", fmt.Sprintf("selector=%q value=%q", selector, value))
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "select",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

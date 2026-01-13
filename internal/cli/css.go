@@ -260,6 +260,9 @@ func init() {
 
 // runCSSDefault handles default behavior: output to stdout
 func runCSSDefault(cmd *cobra.Command, args []string) error {
+	t := startTimer("css")
+	defer t.log()
+
 	// Validate that no arguments were provided (catches unknown subcommands)
 	if len(args) > 0 {
 		return outputError(fmt.Sprintf("unknown command %q for \"webctl css\"", args[0]))
@@ -297,6 +300,9 @@ func runCSSDefault(cmd *cobra.Command, args []string) error {
 
 // runCSSSave handles save subcommand: save to file
 func runCSSSave(cmd *cobra.Command, args []string) error {
+	t := startTimer("css save")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -380,6 +386,9 @@ func runCSSSave(cmd *cobra.Command, args []string) error {
 }
 
 func runCSSComputed(cmd *cobra.Command, args []string) error {
+	t := startTimer("css computed")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -631,6 +640,8 @@ func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
 		after = context
 	}
 
+	debugParam("selector=%q find=%q raw=%v before=%d after=%d", selector, find, raw, before, after)
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return "", err
@@ -646,11 +657,17 @@ func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
 		return "", err
 	}
 
+	debugRequest("css", fmt.Sprintf("action=save selector=%q", selector))
+	ipcStart := time.Now()
+
 	// Execute CSS request
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "css",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return "", err
 	}
@@ -684,7 +701,7 @@ func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
 		formatted, err := cssformat.Format(css)
 		if err != nil {
 			// If formatting fails, fall back to raw CSS
-			debugf("CSS formatting failed: %v", err)
+			debugf("FORMAT", "CSS formatting failed: %v", err)
 		} else {
 			css = formatted
 		}
@@ -692,10 +709,13 @@ func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
 
 	// Apply --find filter if specified (after formatting so line-based search works)
 	if find != "" {
+		beforeCount := strings.Count(css, "\n") + 1
 		css, err = filterCSSByText(css, find, before, after)
 		if err != nil {
 			return "", err
 		}
+		afterCount := strings.Count(css, "\n") + 1
+		debugFilter(fmt.Sprintf("--find %q", find), beforeCount, afterCount)
 	}
 
 	return css, nil
