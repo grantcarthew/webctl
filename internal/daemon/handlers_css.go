@@ -181,13 +181,28 @@ func (d *Daemon) handleCSSGet(sessionID string, params ipc.CSSParams) ipc.Respon
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Get single property value
+	// Get single property value with existence check
 	js := fmt.Sprintf(`(function() {
 		const element = document.querySelector(%q);
 		if (!element) {
 			return null;
 		}
-		return window.getComputedStyle(element).getPropertyValue(%q);
+		const styles = window.getComputedStyle(element);
+		const property = %q;
+
+		// Check if property exists in computed styles
+		let exists = false;
+		for (let i = 0; i < styles.length; i++) {
+			if (styles[i] === property) {
+				exists = true;
+				break;
+			}
+		}
+
+		return {
+			exists: exists,
+			value: styles.getPropertyValue(property)
+		};
 	})()`, params.Selector, params.Property)
 
 	result, err := d.sendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
@@ -201,7 +216,10 @@ func (d *Daemon) handleCSSGet(sessionID string, params ipc.CSSParams) ipc.Respon
 	var evalResp struct {
 		Result struct {
 			Type  string `json:"type"`
-			Value string `json:"value"`
+			Value *struct {
+				Exists bool   `json:"exists"`
+				Value  string `json:"value"`
+			} `json:"value"`
 		} `json:"result"`
 		ExceptionDetails *struct {
 			Text string `json:"text"`
@@ -215,12 +233,22 @@ func (d *Daemon) handleCSSGet(sessionID string, params ipc.CSSParams) ipc.Respon
 	}
 
 	// null result means no element matched
-	if evalResp.Result.Type == "object" {
+	if evalResp.Result.Value == nil {
 		return ipc.ErrorResponse(fmt.Sprintf("selector '%s' matched no elements", params.Selector))
 	}
 
+	// Check if property exists
+	if !evalResp.Result.Value.Exists {
+		return ipc.ErrorResponse("property not found")
+	}
+
+	// Check if value is empty (property exists but no value)
+	if evalResp.Result.Value.Value == "" {
+		return ipc.ErrorResponse("no value")
+	}
+
 	return ipc.SuccessResponse(ipc.CSSData{
-		Value: evalResp.Result.Value,
+		Value: evalResp.Result.Value.Value,
 	})
 }
 
@@ -342,29 +370,36 @@ func (d *Daemon) handleCSSMatched(sessionID string, params ipc.CSSParams) ipc.Re
 		return ipc.ErrorResponse(fmt.Sprintf("failed to get matched styles: %v", err))
 	}
 
+	// Define reusable types for CDP CSS response
+	type cssProperty struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}
+	type cssRule struct {
+		SelectorList struct {
+			Text string `json:"text"`
+		} `json:"selectorList"`
+		Style struct {
+			CSSProperties []cssProperty `json:"cssProperties"`
+		} `json:"style"`
+		Origin       string `json:"origin"`
+		StyleSheetId string `json:"styleSheetId"`
+	}
+	type matchedRule struct {
+		Rule cssRule `json:"rule"`
+	}
+	type inlineStyle struct {
+		CSSProperties []cssProperty `json:"cssProperties"`
+	}
+
 	// Parse the matched styles response
 	var matchedResp struct {
-		MatchedCSSRules []struct {
-			Rule struct {
-				SelectorList struct {
-					Text string `json:"text"`
-				} `json:"selectorList"`
-				Style struct {
-					CSSProperties []struct {
-						Name  string `json:"name"`
-						Value string `json:"value"`
-					} `json:"cssProperties"`
-				} `json:"style"`
-				Origin     string `json:"origin"`
-				StyleSheetId string `json:"styleSheetId"`
-			} `json:"rule"`
-		} `json:"matchedCSSRules"`
-		InlineStyle *struct {
-			CSSProperties []struct {
-				Name  string `json:"name"`
-				Value string `json:"value"`
-			} `json:"cssProperties"`
-		} `json:"inlineStyle"`
+		MatchedCSSRules []matchedRule `json:"matchedCSSRules"`
+		InlineStyle     *inlineStyle  `json:"inlineStyle"`
+		Inherited       []struct {
+			MatchedCSSRules []matchedRule `json:"matchedCSSRules"`
+			InlineStyle     *inlineStyle  `json:"inlineStyle"`
+		} `json:"inherited"`
 	}
 	if err := json.Unmarshal(matchedResult, &matchedResp); err != nil {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to parse matched styles response: %v", err))
@@ -390,7 +425,7 @@ func (d *Daemon) handleCSSMatched(sessionID string, params ipc.CSSParams) ipc.Re
 		}
 	}
 
-	// Add matched CSS rules
+	// Add matched CSS rules for the element itself
 	for _, match := range matchedResp.MatchedCSSRules {
 		// Skip user-agent stylesheets
 		if match.Rule.Origin == "user-agent" {
@@ -407,6 +442,47 @@ func (d *Daemon) handleCSSMatched(sessionID string, params ipc.CSSParams) ipc.Re
 				Selector:   match.Rule.SelectorList.Text,
 				Properties: props,
 			})
+		}
+	}
+
+	// Add inherited rules from ancestors
+	for _, inherited := range matchedResp.Inherited {
+		// Add inherited inline styles if present
+		if inherited.InlineStyle != nil && len(inherited.InlineStyle.CSSProperties) > 0 {
+			props := make(map[string]string)
+			for _, p := range inherited.InlineStyle.CSSProperties {
+				if p.Name != "" && p.Value != "" {
+					props[p.Name] = p.Value
+				}
+			}
+			if len(props) > 0 {
+				rules = append(rules, ipc.CSSMatchedRule{
+					Selector:   "(inline)",
+					Properties: props,
+					Source:     "inherited",
+				})
+			}
+		}
+
+		// Add inherited matched CSS rules
+		for _, match := range inherited.MatchedCSSRules {
+			// Skip user-agent stylesheets
+			if match.Rule.Origin == "user-agent" {
+				continue
+			}
+			props := make(map[string]string)
+			for _, p := range match.Rule.Style.CSSProperties {
+				if p.Name != "" && p.Value != "" {
+					props[p.Name] = p.Value
+				}
+			}
+			if len(props) > 0 {
+				rules = append(rules, ipc.CSSMatchedRule{
+					Selector:   match.Rule.SelectorList.Text,
+					Properties: props,
+					Source:     "inherited",
+				})
+			}
 		}
 	}
 

@@ -636,6 +636,9 @@ func runCookiesDelete(cmd *cobra.Command, args []string) error {
 				return outputError(resp.Error)
 			}
 		}
+		if isNoCookieError(resp.Error) {
+			return outputNotice("No cookie found")
+		}
 		return outputError(resp.Error)
 	}
 

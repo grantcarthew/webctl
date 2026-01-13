@@ -1,7 +1,8 @@
 # P-035: Testing css Command
 
-- Status: In Progress
+- Status: Completed
 - Started: 2025-12-31
+- Completed: 2026-01-13
 
 ## Overview
 
@@ -152,4 +153,25 @@ CLI vs REPL:
 
 ## Issues Discovered
 
-(Issues will be documented here during testing)
+Issues found and fixed during testing:
+
+1. css matched: Missing inherited rules from ancestors - Added parsing of CDP `inherited` array to show inherited rules with `(inherited)` marker
+
+2. css get: Invalid property returned empty output - Added property existence check, now shows "Property not found" or "No value"
+
+3. css inline: Empty inline styles showed "(empty)" - Now shows "No inline styles" when all elements have no inline styles
+
+4. css --select: Error message included selector - Standardized to "No rules found"
+
+5. css matched: Empty output when no rules found - Added check for empty matched rules, now shows "No rules found"
+
+6. Standardized notice messages across all commands:
+   - back/forward: "No previous page" / "No next page"
+   - click/focus/select/scroll/type: "No elements found"
+   - cookies delete: "No cookie found"
+   - css get: "Property not found"
+   - css inline: "No inline styles"
+   - css --select/matched: "No rules found"
+   - css --find: "No matches found"
+
+7. Multi-element CSS output lacks element identification - Created P-053 for future enhancement

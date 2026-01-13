@@ -44,9 +44,10 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | P-032 | Testing back Command | Completed | 2025-12-31 | 2026-01-07 |
 | P-033 | Testing forward Command | Completed | 2025-12-31 | 2026-01-07 |
 | P-034 | Testing html Command | Completed | 2025-12-31 | 2026-01-12 |
-| P-035 | Debug Output | Completed | 2026-01-13 | 2026-01-13 |
+| P-035 | Testing css Command | Completed | 2025-12-31 | 2026-01-13 |
 | P-051 | Observation Commands Output Refactor | Completed | 2026-01-08 | 2026-01-09 |
 | P-052 | CSS Command Redesign | Completed | 2026-01-12 | 2026-01-12 |
+| P-053 | CSS Element Identification | Proposed | | |
 
 Note: Completed projects are in `completed/`
 

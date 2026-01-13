@@ -281,6 +281,9 @@ func runCSSDefault(cmd *cobra.Command, args []string) error {
 		if errors.Is(err, ErrNoElements) {
 			return outputNotice("No elements found")
 		}
+		if errors.Is(err, ErrNoRules) {
+			return outputNotice("No rules found")
+		}
 		return outputError(err.Error())
 	}
 
@@ -315,6 +318,9 @@ func runCSSSave(cmd *cobra.Command, args []string) error {
 		}
 		if errors.Is(err, ErrNoElements) {
 			return outputNotice("No elements found")
+		}
+		if errors.Is(err, ErrNoRules) {
+			return outputNotice("No rules found")
 		}
 		return outputError(err.Error())
 	}
@@ -473,6 +479,12 @@ func runCSSGet(cmd *cobra.Command, args []string) error {
 		if isNoElementsError(resp.Error) {
 			return outputNotice("No elements found")
 		}
+		if resp.Error == "property not found" {
+			return outputNotice("Property not found")
+		}
+		if resp.Error == "no value" {
+			return outputNotice("No value")
+		}
 		return outputError(resp.Error)
 	}
 
@@ -535,6 +547,15 @@ func runCSSInline(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	// Check if all inline styles are empty
+	allEmpty := true
+	for _, style := range data.Inline {
+		if style != "" {
+			allEmpty = false
+			break
+		}
+	}
+
 	// JSON mode: output JSON
 	if JSONOutput {
 		result := map[string]any{
@@ -542,6 +563,11 @@ func runCSSInline(cmd *cobra.Command, args []string) error {
 			"inline": data.Inline,
 		}
 		return outputJSON(os.Stdout, result)
+	}
+
+	// If all inline styles are empty, show notice
+	if allEmpty {
+		return outputNotice("No inline styles")
 	}
 
 	// Text mode: output inline styles with -- separators
@@ -595,6 +621,11 @@ func runCSSMatched(cmd *cobra.Command, args []string) error {
 			"matched": data.Matched,
 		}
 		return outputJSON(os.Stdout, result)
+	}
+
+	// Check if no rules matched (element exists but only has user-agent styles)
+	if len(data.Matched) == 0 {
+		return outputNotice("No rules found")
 	}
 
 	// Text mode: output matched rules
@@ -691,7 +722,7 @@ func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
 	if selector != "" {
 		css = cssformat.FilterRulesBySelector(css, selector)
 		if css == "" {
-			return "", fmt.Errorf("no CSS rules match selector '%s'", selector)
+			return "", ErrNoRules
 		}
 	}
 
