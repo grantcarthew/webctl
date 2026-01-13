@@ -2,8 +2,10 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
@@ -88,6 +90,9 @@ func normalizeURL(url string) string {
 }
 
 func runNavigate(cmd *cobra.Command, args []string) error {
+	t := startTimer("navigate")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -96,14 +101,16 @@ func runNavigate(cmd *cobra.Command, args []string) error {
 	wait, _ := cmd.Flags().GetBool("wait")
 	timeout, _ := cmd.Flags().GetInt("timeout")
 
+	// Normalize URL (add protocol if missing)
+	url := normalizeURL(args[0])
+
+	debugParam("url=%q wait=%v timeout=%d", url, wait, timeout)
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return outputError(err.Error())
 	}
 	defer exec.Close()
-
-	// Normalize URL (add protocol if missing)
-	url := normalizeURL(args[0])
 
 	// Send navigate request
 	params, err := json.Marshal(ipc.NavigateParams{
@@ -115,10 +122,16 @@ func runNavigate(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	debugRequest("navigate", fmt.Sprintf("url=%q wait=%v timeout=%d", url, wait, timeout))
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "navigate",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"time"
 
@@ -124,6 +125,9 @@ func init() {
 }
 
 func runReady(cmd *cobra.Command, args []string) error {
+	t := startTimer("ready")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -138,6 +142,8 @@ func runReady(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		selector = args[0]
 	}
+
+	debugParam("timeout=%v selector=%q networkIdle=%v eval=%q", timeout, selector, networkIdle, evalExpr)
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -155,10 +161,16 @@ func runReady(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	debugRequest("ready", fmt.Sprintf("timeout=%v selector=%q networkIdle=%v", timeout, selector, networkIdle))
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "ready",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

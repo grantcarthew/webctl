@@ -26,10 +26,15 @@ func init() {
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
+	t := startTimer("start")
+	defer t.log()
+
 	// Check if daemon is already running
 	if execFactory.IsDaemonRunning() {
 		return outputError("daemon is already running")
 	}
+
+	debugParam("headless=%v port=%d", startHeadless, startPort)
 
 	cfg := daemon.DefaultConfig()
 	cfg.Headless = startHeadless

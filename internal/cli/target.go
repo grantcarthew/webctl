@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/ipc"
@@ -35,6 +36,9 @@ func init() {
 }
 
 func runTarget(cmd *cobra.Command, args []string) error {
+	t := startTimer("target")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -50,7 +54,14 @@ func runTarget(cmd *cobra.Command, args []string) error {
 		query = args[0]
 	}
 
+	debugParam("query=%q", query)
+	debugRequest("target", query)
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{Cmd: "target", Target: query})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

@@ -139,6 +139,9 @@ func runScreenshotSave(cmd *cobra.Command, args []string) error {
 // captureAndSaveScreenshot captures a screenshot and saves it to the specified path
 // If path is empty, saves to temp directory with auto-generated filename
 func captureAndSaveScreenshot(cmd *cobra.Command, path string) error {
+	t := startTimer("screenshot")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -148,6 +151,8 @@ func captureAndSaveScreenshot(cmd *cobra.Command, path string) error {
 	if !fullPage && cmd.Parent() != nil {
 		fullPage, _ = cmd.Parent().PersistentFlags().GetBool("full-page")
 	}
+
+	debugParam("fullPage=%v path=%q", fullPage, path)
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -163,10 +168,16 @@ func captureAndSaveScreenshot(cmd *cobra.Command, path string) error {
 		return outputError(err.Error())
 	}
 
+	debugRequest("screenshot", fmt.Sprintf("fullPage=%v", fullPage))
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "screenshot",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}
@@ -220,6 +231,8 @@ func captureAndSaveScreenshot(cmd *cobra.Command, path string) error {
 	if err := os.WriteFile(outputPath, data.Data, 0644); err != nil {
 		return outputError(fmt.Sprintf("failed to write screenshot: %v", err))
 	}
+
+	debugFile("wrote", outputPath, len(data.Data))
 
 	// JSON mode: return JSON with file path
 	if JSONOutput {

@@ -213,6 +213,9 @@ func init() {
 
 // runCookiesDefault handles default behavior: output to stdout
 func runCookiesDefault(cmd *cobra.Command, args []string) error {
+	t := startTimer("cookies")
+	defer t.log()
+
 	// Validate that no arguments were provided (catches unknown subcommands)
 	if len(args) > 0 {
 		return outputError(fmt.Sprintf("unknown command %q for \"webctl cookies\"", args[0]))
@@ -263,6 +266,9 @@ func runCookiesDefault(cmd *cobra.Command, args []string) error {
 
 // runCookiesSave handles save subcommand: save to file
 func runCookiesSave(cmd *cobra.Command, args []string) error {
+	t := startTimer("cookies save")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -339,6 +345,8 @@ func getCookiesFromDaemon(cmd *cobra.Command) ([]ipc.Cookie, error) {
 		name, _ = cmd.Parent().PersistentFlags().GetString("name")
 	}
 
+	debugParam("find=%q domain=%q name=%q", find, domain, name)
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return nil, err
@@ -352,11 +360,17 @@ func getCookiesFromDaemon(cmd *cobra.Command) ([]ipc.Cookie, error) {
 		return nil, err
 	}
 
+	debugRequest("cookies", "action=list")
+	ipcStart := time.Now()
+
 	// Execute cookies request
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "cookies",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return nil, err
 	}
@@ -375,17 +389,23 @@ func getCookiesFromDaemon(cmd *cobra.Command) ([]ipc.Cookie, error) {
 
 	// Apply domain filter
 	if domain != "" {
+		beforeCount := len(cookies)
 		cookies = filterCookiesByDomain(cookies, domain)
+		debugFilter(fmt.Sprintf("--domain %q", domain), beforeCount, len(cookies))
 	}
 
 	// Apply name filter
 	if name != "" {
+		beforeCount := len(cookies)
 		cookies = filterCookiesByName(cookies, name)
+		debugFilter(fmt.Sprintf("--name %q", name), beforeCount, len(cookies))
 	}
 
 	// Apply --find filter if specified
 	if find != "" {
+		beforeCount := len(cookies)
 		cookies = filterCookiesByText(cookies, find)
+		debugFilter(fmt.Sprintf("--find %q", find), beforeCount, len(cookies))
 		if len(cookies) == 0 {
 			return nil, ErrNoMatches
 		}
@@ -486,6 +506,7 @@ func writeCookiesToFile(path string, cookies []ipc.Cookie) error {
 		return fmt.Errorf("failed to write cookies: %v", err)
 	}
 
+	debugFile("wrote", path, len(jsonBytes))
 	return nil
 }
 
@@ -508,6 +529,9 @@ func generateCookiesFilename() string {
 }
 
 func runCookiesSet(cmd *cobra.Command, args []string) error {
+	t := startTimer("cookies set")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -563,6 +587,9 @@ func runCookiesSet(cmd *cobra.Command, args []string) error {
 }
 
 func runCookiesDelete(cmd *cobra.Command, args []string) error {
+	t := startTimer("cookies delete")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}

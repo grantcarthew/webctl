@@ -88,6 +88,9 @@ func init() {
 }
 
 func runEval(cmd *cobra.Command, args []string) error {
+	t := startTimer("eval")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -95,14 +98,16 @@ func runEval(cmd *cobra.Command, args []string) error {
 	// Read flags from command
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 
+	// Join all args to form the expression (allows shell-friendly use without quotes)
+	expression := strings.Join(args, " ")
+
+	debugParam("timeout=%v expressionLen=%d", timeout, len(expression))
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return outputError(err.Error())
 	}
 	defer exec.Close()
-
-	// Join all args to form the expression (allows shell-friendly use without quotes)
-	expression := strings.Join(args, " ")
 
 	params, err := json.Marshal(ipc.EvalParams{
 		Expression: expression,
@@ -112,10 +117,16 @@ func runEval(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	debugRequest("eval", "")
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "eval",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

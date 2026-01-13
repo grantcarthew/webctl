@@ -94,6 +94,9 @@ func init() {
 
 // runHTMLDefault handles default behavior: output to stdout
 func runHTMLDefault(cmd *cobra.Command, args []string) error {
+	t := startTimer("html")
+	defer t.log()
+
 	// Validate that no arguments were provided (catches unknown subcommands)
 	if len(args) > 0 {
 		return outputError(fmt.Sprintf("unknown command %q for \"webctl html\"", args[0]))
@@ -131,6 +134,9 @@ func runHTMLDefault(cmd *cobra.Command, args []string) error {
 
 // runHTMLSave handles save subcommand: save to file
 func runHTMLSave(cmd *cobra.Command, args []string) error {
+	t := startTimer("html save")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -252,6 +258,8 @@ func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
 		after = context
 	}
 
+	debugParam("selector=%q find=%q raw=%v before=%d after=%d", selector, find, raw, before, after)
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return "", err
@@ -266,11 +274,17 @@ func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
 		return "", err
 	}
 
+	debugRequest("html", fmt.Sprintf("selector=%q", selector))
+	ipcStart := time.Now()
+
 	// Execute HTML request
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "html",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return "", err
 	}
@@ -295,7 +309,7 @@ func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
 		formatted, err := htmlformat.Format(html)
 		if err != nil {
 			// If formatting fails, fall back to raw HTML
-			debugf("HTML formatting failed: %v", err)
+			debugf("FORMAT", "HTML formatting failed: %v", err)
 		} else {
 			html = formatted
 		}
@@ -303,10 +317,13 @@ func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
 
 	// Apply --find filter if specified (after formatting so line-based search works)
 	if find != "" {
+		beforeCount := strings.Count(html, "\n") + 1
 		html, err = filterHTMLByText(html, find, before, after)
 		if err != nil {
 			return "", err
 		}
+		afterCount := strings.Count(html, "\n") + 1
+		debugFilter(fmt.Sprintf("--find %q", find), beforeCount, afterCount)
 	}
 
 	return html, nil
@@ -394,6 +411,7 @@ func writeHTMLToFile(path, html string) error {
 		return fmt.Errorf("failed to write HTML: %v", err)
 	}
 
+	debugFile("wrote", path, len(html))
 	return nil
 }
 

@@ -100,6 +100,9 @@ func init() {
 
 // runConsoleDefault handles default behavior: output to stdout
 func runConsoleDefault(cmd *cobra.Command, args []string) error {
+	t := startTimer("console")
+	defer t.log()
+
 	// Validate that no arguments were provided (catches unknown subcommands)
 	if len(args) > 0 {
 		return outputError(fmt.Sprintf("unknown command %q for \"webctl console\"", args[0]))
@@ -150,6 +153,9 @@ func runConsoleDefault(cmd *cobra.Command, args []string) error {
 
 // runConsoleSave handles save subcommand: save to file
 func runConsoleSave(cmd *cobra.Command, args []string) error {
+	t := startTimer("console save")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -236,14 +242,22 @@ func getConsoleFromDaemon(cmd *cobra.Command) ([]ipc.ConsoleEntry, error) {
 		rangeStr, _ = cmd.Parent().PersistentFlags().GetString("range")
 	}
 
+	debugParam("find=%q types=%v head=%d tail=%d range=%q", find, types, head, tail, rangeStr)
+
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
 		return nil, err
 	}
 	defer exec.Close()
 
+	debugRequest("console", "")
+	ipcStart := time.Now()
+
 	// Execute console request
 	resp, err := exec.Execute(ipc.Request{Cmd: "console"})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return nil, err
 	}
@@ -262,12 +276,16 @@ func getConsoleFromDaemon(cmd *cobra.Command) ([]ipc.ConsoleEntry, error) {
 
 	// Apply type filter
 	if len(types) > 0 {
+		beforeCount := len(entries)
 		entries = filterConsoleByType(entries, types)
+		debugFilter(fmt.Sprintf("--type %v", types), beforeCount, len(entries))
 	}
 
 	// Apply --find filter if specified
 	if find != "" {
+		beforeCount := len(entries)
 		entries = filterConsoleByText(entries, find)
+		debugFilter(fmt.Sprintf("--find %q", find), beforeCount, len(entries))
 		if len(entries) == 0 {
 			return nil, ErrNoMatches
 		}
@@ -381,6 +399,7 @@ func writeConsoleToFile(path string, entries []ipc.ConsoleEntry) error {
 		return fmt.Errorf("failed to write console logs: %v", err)
 	}
 
+	debugFile("wrote", path, len(jsonBytes))
 	return nil
 }
 

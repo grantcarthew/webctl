@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
@@ -75,6 +76,9 @@ func init() {
 }
 
 func runScroll(cmd *cobra.Command, args []string) error {
+	t := startTimer("scroll")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -90,6 +94,7 @@ func runScroll(cmd *cobra.Command, args []string) error {
 	defer exec.Close()
 
 	var params ipc.ScrollParams
+	var paramStr string
 
 	// Determine scroll mode
 	if toCoords != "" {
@@ -100,6 +105,7 @@ func runScroll(cmd *cobra.Command, args []string) error {
 		params.Mode = "to"
 		params.ToX = x
 		params.ToY = y
+		paramStr = fmt.Sprintf("mode=to x=%d y=%d", x, y)
 	} else if byCoords != "" {
 		x, y, err := parseCoords(byCoords)
 		if err != nil {
@@ -108,22 +114,32 @@ func runScroll(cmd *cobra.Command, args []string) error {
 		params.Mode = "by"
 		params.ByX = x
 		params.ByY = y
+		paramStr = fmt.Sprintf("mode=by x=%d y=%d", x, y)
 	} else if len(args) == 1 {
 		params.Mode = "element"
 		params.Selector = args[0]
+		paramStr = fmt.Sprintf("mode=element selector=%q", args[0])
 	} else {
 		return outputError("provide a selector, --to x,y, or --by x,y")
 	}
+
+	debugParam("%s", paramStr)
 
 	paramsJSON, err := json.Marshal(params)
 	if err != nil {
 		return outputError(err.Error())
 	}
 
+	debugRequest("scroll", paramStr)
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "scroll",
 		Params: paramsJSON,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}

@@ -2,7 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"time"
 
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
@@ -23,6 +25,9 @@ func init() {
 }
 
 func runForward(cmd *cobra.Command, args []string) error {
+	t := startTimer("forward")
+	defer t.log()
+
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
@@ -30,6 +35,8 @@ func runForward(cmd *cobra.Command, args []string) error {
 	// Read flags
 	wait, _ := cmd.Flags().GetBool("wait")
 	timeout, _ := cmd.Flags().GetInt("timeout")
+
+	debugParam("wait=%v timeout=%d", wait, timeout)
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
@@ -45,10 +52,16 @@ func runForward(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
+	debugRequest("forward", fmt.Sprintf("wait=%v timeout=%d", wait, timeout))
+	ipcStart := time.Now()
+
 	resp, err := exec.Execute(ipc.Request{
 		Cmd:    "forward",
 		Params: params,
 	})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
 	if err != nil {
 		return outputError(err.Error())
 	}
