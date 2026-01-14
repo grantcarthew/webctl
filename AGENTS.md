@@ -10,54 +10,54 @@ Under active development.
 
 ## Active Project
 
-Projects are stored in the docs/projects/ directory. Update this when starting a new project.
+Projects are stored in `.ai/projects/`. Update this section when starting a new project.
 
-- Active Project: docs/projects/p-037-testing-network.md
+- Active Project: .ai/projects/p-037-testing-network.md
 - Design Record: N/A
 
-When projects are completed, move them to docs/projects/completed/, update docs/projects/README.md, and update the active project above to the next project.
+When projects are completed, move them to `.ai/projects/completed/`, update `.ai/projects/README.md`, and update the active project above to the next project.
 
 ## Completed Projects
 
-Completed projects are in docs/projects/completed/
-- P-036: Testing console Command (2026-01-14)
-- P-035: Testing css Command (2026-01-13)
-- P-034: Testing html Command (2026-01-12)
-- P-052: CSS Command Redesign (2026-01-12)
-- P-051: Observation Commands Output Refactor (2026-01-09)
-- P-033: Testing forward Command (2026-01-07)
-- P-032: Testing back Command (2026-01-07)
-- P-031: Testing reload Command (2026-01-07)
-- P-030: Testing status Command (2026-01-07)
-- P-029: Testing serve Command (2026-01-06)
-- P-028: Testing navigate Command (2026-01-06)
-- P-027: Testing stop Command (2026-01-06)
-- P-026: Testing start Command (2026-01-04)
-- P-025: Interactive Test Suite (2026-01-03)
-- P-016: CLI Serve Command (2025-12-30)
-- P-024: Cookies Command Implementation (2025-12-30)
-- P-023: Network Command Implementation (2025-12-30)
-- P-022: Console Command Implementation (2025-12-29)
-- P-021: CSS Command Implementation (2025-12-28)
-- P-020: HTML Command Implementation (2025-12-28)
-- P-019: Observation Commands Interface Redesign (2025-12-28)
-- P-017: CSS Commands (2025-12-28)
-- P-018: Browser Connection Failure Handling (2025-12-27)
-- P-015: HTML Formatting for Find and HTML Commands (2025-12-26)
-- P-013: Find Command (2025-12-25)
-- P-010: Ready Command Extensions (2025-12-25)
-- P-014: Terminal Colors (2025-12-24)
-- P-012: Text Output Format (2025-12-24)
-- P-011: CDP Navigation Debugging (2025-12-23)
-- P-009: Design Review & Validation of P-008 Commands (2025-12-24)
-- P-008: Navigation & Interaction Commands (2025-12-23)
-- P-007: Observation Commands (2025-12-23)
-- P-006: CLI Framework (2025-12-15)
-- P-005: Daemon & IPC (2025-12-15)
-- P-004: Browser Launch (2025-12-15)
-- P-003: CDP Core Library (2025-12-15)
-- P-002: Project Definition (2025-12-11)
-- P-001: Project Initialization (2025-12-11)
+Completed projects are in `.ai/projects/completed/`
+- p-036: Testing console Command (2026-01-14)
+- p-035: Testing css Command (2026-01-13)
+- p-034: Testing html Command (2026-01-12)
+- p-052: CSS Command Redesign (2026-01-12)
+- p-051: Observation Commands Output Refactor (2026-01-09)
+- p-033: Testing forward Command (2026-01-07)
+- p-032: Testing back Command (2026-01-07)
+- p-031: Testing reload Command (2026-01-07)
+- p-030: Testing status Command (2026-01-07)
+- p-029: Testing serve Command (2026-01-06)
+- p-028: Testing navigate Command (2026-01-06)
+- p-027: Testing stop Command (2026-01-06)
+- p-026: Testing start Command (2026-01-04)
+- p-025: Interactive Test Suite (2026-01-03)
+- p-016: CLI Serve Command (2025-12-30)
+- p-024: Cookies Command Implementation (2025-12-30)
+- p-023: Network Command Implementation (2025-12-30)
+- p-022: Console Command Implementation (2025-12-29)
+- p-021: CSS Command Implementation (2025-12-28)
+- p-020: HTML Command Implementation (2025-12-28)
+- p-019: Observation Commands Interface Redesign (2025-12-28)
+- p-017: CSS Commands (2025-12-28)
+- p-018: Browser Connection Failure Handling (2025-12-27)
+- p-015: HTML Formatting for Find and HTML Commands (2025-12-26)
+- p-013: Find Command (2025-12-25)
+- p-010: Ready Command Extensions (2025-12-25)
+- p-014: Terminal Colors (2025-12-24)
+- p-012: Text Output Format (2025-12-24)
+- p-011: CDP Navigation Debugging (2025-12-23)
+- p-009: Design Review & Validation of p-008 Commands (2025-12-24)
+- p-008: Navigation & Interaction Commands (2025-12-23)
+- p-007: Observation Commands (2025-12-23)
+- p-006: CLI Framework (2025-12-15)
+- p-005: Daemon & IPC (2025-12-15)
+- p-004: Browser Launch (2025-12-15)
+- p-003: CDP Core Library (2025-12-15)
+- p-002: Project Definition (2025-12-11)
+- p-001: Project Initialization (2025-12-11)
 
 ## Quick Reference
 
@@ -138,6 +138,7 @@ webctl clear [console|network]
 
 This project uses Documentation Driven Development. Design decisions are documented in Design Records (DRs) before or during implementation.
 
-For complete DR writing guidelines: See [docs/design/dr-writing-guide.md](docs/design/dr-writing-guide.md)
-
-Location: `docs/design/design-records/`
+- Read `.ai/workflow.md` for feature development process
+- Read `.ai/projects/p-writing-guide.md` for project documentation
+- Read `.ai/design/dr-writing-guide.md` for design record format
+- Design records are in `.ai/design/design-records/`
