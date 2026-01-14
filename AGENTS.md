@@ -12,7 +12,7 @@ Under active development.
 
 Projects are stored in the docs/projects/ directory. Update this when starting a new project.
 
-- Active Project: docs/projects/p-036-testing-console.md
+- Active Project: docs/projects/p-037-testing-network.md
 - Design Record: N/A
 
 When projects are completed, move them to docs/projects/completed/, update docs/projects/README.md, and update the active project above to the next project.
@@ -20,6 +20,7 @@ When projects are completed, move them to docs/projects/completed/, update docs/
 ## Completed Projects
 
 Completed projects are in docs/projects/completed/
+- P-036: Testing console Command (2026-01-14)
 - P-035: Testing css Command (2026-01-13)
 - P-034: Testing html Command (2026-01-12)
 - P-052: CSS Command Redesign (2026-01-12)

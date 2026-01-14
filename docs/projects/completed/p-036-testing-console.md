@@ -1,7 +1,8 @@
 # P-036: Testing console Command
 
-- Status: In Progress
+- Status: Completed
 - Started: 2025-12-31
+- Completed: 2026-01-14
 
 ## Overview
 

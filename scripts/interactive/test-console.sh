@@ -60,7 +60,7 @@ read -p "Press Enter when page loaded..."
 
 heading "Inject console logs for testing"
 echo "Execute these in REPL or via evaluate command:"
-cmd "webctl evaluate \"console.log('Test log message'); console.warn('Test warning'); console.error('Test error'); console.info('Test info'); console.debug('Test debug');\""
+cmd "webctl eval \"console.log('Test log message'); console.warn('Test warning'); console.error('Test error'); console.info('Test info'); console.debug('Test debug');\""
 
 echo ""
 echo "Console logs injected"
@@ -370,7 +370,7 @@ echo "Verify: Any console logs from GitHub shown"
 read -p "Press Enter to continue..."
 
 heading "Inject more logs for variety"
-cmd "webctl evaluate \"for(let i=0; i<20; i++) { if(i%2===0) console.log('Even:', i); else console.warn('Odd:', i); }\""
+cmd "webctl eval \"for(let i=0; i<20; i++) { if(i%2===0) console.log('Even: ' + i); else console.warn('Odd: ' + i); }\""
 
 echo ""
 echo "20 logs injected (mix of log and warn)"
