@@ -490,4 +490,3 @@ func (d *Daemon) handleCSSMatched(sessionID string, params ipc.CSSParams) ipc.Re
 		Matched: rules,
 	})
 }
-

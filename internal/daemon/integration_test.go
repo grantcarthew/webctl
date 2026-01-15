@@ -138,7 +138,7 @@ func TestDaemon_Integration(t *testing.T) {
 	// Navigate to trigger network events
 	t.Run("navigate_triggers_network", func(t *testing.T) {
 		// Clear network buffer first
-		client.Send(ipc.Request{Cmd: "clear", Target: "network"})
+		_, _ = client.Send(ipc.Request{Cmd: "clear", Target: "network"})
 
 		// Navigate to a data URL
 		params, _ := json.Marshal(map[string]any{
@@ -166,7 +166,7 @@ func TestDaemon_Integration(t *testing.T) {
 		}
 
 		var data ipc.NetworkData
-		json.Unmarshal(resp.Data, &data)
+		_ = json.Unmarshal(resp.Data, &data)
 		t.Logf("network entries after navigate: %d", data.Count)
 
 		// Note: data: URLs may not generate network events in all Chrome versions
@@ -216,11 +216,6 @@ func TestDaemon_Integration(t *testing.T) {
 		if status.ActiveSession.URL != "https://example.com/" {
 			t.Errorf("expected session URL 'https://example.com/', got %q", status.ActiveSession.URL)
 		}
-
-		// Also verify the deprecated URL field for backwards compatibility
-		if status.URL != "https://example.com/" {
-			t.Errorf("expected status.URL 'https://example.com/', got %q", status.URL)
-		}
 	})
 
 	// Test clear command
@@ -229,7 +224,7 @@ func TestDaemon_Integration(t *testing.T) {
 		params, _ := json.Marshal(map[string]any{
 			"expression": `console.log("before-clear")`,
 		})
-		client.Send(ipc.Request{
+		_, _ = client.Send(ipc.Request{
 			Cmd:    "cdp",
 			Target: "Runtime.evaluate",
 			Params: params,
@@ -248,7 +243,7 @@ func TestDaemon_Integration(t *testing.T) {
 		// Verify console is empty
 		resp, _ = client.SendCmd("console")
 		var data ipc.ConsoleData
-		json.Unmarshal(resp.Data, &data)
+		_ = json.Unmarshal(resp.Data, &data)
 		if data.Count != 0 {
 			t.Errorf("expected 0 entries after clear, got %d", data.Count)
 		}
@@ -260,7 +255,7 @@ func TestDaemon_Integration(t *testing.T) {
 		params, _ := json.Marshal(map[string]any{
 			"expression": `console.log("test")`,
 		})
-		client.Send(ipc.Request{
+		_, _ = client.Send(ipc.Request{
 			Cmd:    "cdp",
 			Target: "Runtime.evaluate",
 			Params: params,
@@ -276,11 +271,11 @@ func TestDaemon_Integration(t *testing.T) {
 		// Verify both are empty
 		resp, _ = client.SendCmd("console")
 		var consoleData ipc.ConsoleData
-		json.Unmarshal(resp.Data, &consoleData)
+		_ = json.Unmarshal(resp.Data, &consoleData)
 
 		resp, _ = client.SendCmd("network")
 		var networkData ipc.NetworkData
-		json.Unmarshal(resp.Data, &networkData)
+		_ = json.Unmarshal(resp.Data, &networkData)
 
 		if consoleData.Count != 0 || networkData.Count != 0 {
 			t.Errorf("expected 0 entries after clear all, got console=%d network=%d",
@@ -435,8 +430,8 @@ func TestNetwork_Integration(t *testing.T) {
 
 		// Enable Network domain by calling network command first (lazy enablement)
 		// Then clear buffer and reload to capture Document request
-		client.SendCmd("network") // This enables Network.enable lazily
-		client.Send(ipc.Request{Cmd: "clear", Target: "network"})
+		_, _ = client.SendCmd("network") // This enables Network.enable lazily
+		_, _ = client.Send(ipc.Request{Cmd: "clear", Target: "network"})
 
 		// Reload page (same-origin navigation captures Document request)
 		resp, err = client.Send(ipc.Request{
@@ -512,7 +507,7 @@ func TestNetwork_Integration(t *testing.T) {
 	// Uses httpbin.org directly as the page to avoid CORS issues
 	t.Run("fetch_request_capture", func(t *testing.T) {
 		// Clear network buffer
-		client.Send(ipc.Request{Cmd: "clear", Target: "network"})
+		_, _ = client.Send(ipc.Request{Cmd: "clear", Target: "network"})
 
 		// Navigate directly to httpbin.org/json to capture the JSON response
 		params, _ := json.Marshal(map[string]any{
@@ -540,7 +535,7 @@ func TestNetwork_Integration(t *testing.T) {
 		}
 
 		var data ipc.NetworkData
-		json.Unmarshal(resp.Data, &data)
+		_ = json.Unmarshal(resp.Data, &data)
 
 		// Find the document request to httpbin
 		var jsonEntry *ipc.NetworkEntry
@@ -576,7 +571,7 @@ func TestNetwork_Integration(t *testing.T) {
 	// Navigate to a page that loads a non-existent resource
 	t.Run("failed_request_capture", func(t *testing.T) {
 		// Clear network buffer
-		client.Send(ipc.Request{Cmd: "clear", Target: "network"})
+		_, _ = client.Send(ipc.Request{Cmd: "clear", Target: "network"})
 
 		// Navigate to a data URL that tries to load a non-existent image
 		// The image request will fail with net::ERR_NAME_NOT_RESOLVED
@@ -584,7 +579,7 @@ func TestNetwork_Integration(t *testing.T) {
 		params, _ := json.Marshal(map[string]any{
 			"url": dataURL,
 		})
-		client.Send(ipc.Request{
+		_, _ = client.Send(ipc.Request{
 			Cmd:    "cdp",
 			Target: "Page.navigate",
 			Params: params,
@@ -596,7 +591,7 @@ func TestNetwork_Integration(t *testing.T) {
 		// Query network entries
 		resp, _ := client.SendCmd("network")
 		var data ipc.NetworkData
-		json.Unmarshal(resp.Data, &data)
+		_ = json.Unmarshal(resp.Data, &data)
 
 		// Find the failed image request
 		// Look for either Failed=true or Status=0 (indicates no response received)
@@ -655,7 +650,7 @@ func TestNetwork_Integration(t *testing.T) {
 		// Query network entries
 		resp, _ = client.SendCmd("network")
 		var data ipc.NetworkData
-		json.Unmarshal(resp.Data, &data)
+		_ = json.Unmarshal(resp.Data, &data)
 
 		if data.Count != 0 {
 			t.Errorf("expected 0 entries after clear, got %d", data.Count)
@@ -665,7 +660,7 @@ func TestNetwork_Integration(t *testing.T) {
 	// Test: Response headers captured
 	t.Run("response_headers_captured", func(t *testing.T) {
 		// Clear network buffer
-		client.Send(ipc.Request{Cmd: "clear", Target: "network"})
+		_, _ = client.Send(ipc.Request{Cmd: "clear", Target: "network"})
 
 		// Navigate to example.com
 		params, _ := json.Marshal(map[string]any{
@@ -693,7 +688,7 @@ func TestNetwork_Integration(t *testing.T) {
 		}
 
 		var data ipc.NetworkData
-		json.Unmarshal(resp.Data, &data)
+		_ = json.Unmarshal(resp.Data, &data)
 
 		t.Logf("network entries count: %d", data.Count)
 
@@ -1220,7 +1215,7 @@ func TestDaemon_EvalCommand(t *testing.T) {
 	params, _ := json.Marshal(map[string]any{
 		"url": "data:text/html,<html><head><title>Eval Test</title></head><body><h1>Test</h1></body></html>",
 	})
-	client.Send(ipc.Request{
+	_, _ = client.Send(ipc.Request{
 		Cmd:    "cdp",
 		Target: "Page.navigate",
 		Params: params,
@@ -1479,7 +1474,7 @@ func TestDaemon_CookiesCommand(t *testing.T) {
 	params, _ := json.Marshal(map[string]any{
 		"url": "http://localhost/test",
 	})
-	client.Send(ipc.Request{
+	_, _ = client.Send(ipc.Request{
 		Cmd:    "cdp",
 		Target: "Page.navigate",
 		Params: params,
@@ -1601,7 +1596,7 @@ func TestDaemon_CookiesCommand(t *testing.T) {
 		}
 
 		var data ipc.CookiesData
-		json.Unmarshal(resp.Data, &data)
+		_ = json.Unmarshal(resp.Data, &data)
 
 		found := false
 		for _, cookie := range data.Cookies {
@@ -1652,7 +1647,7 @@ func TestDaemon_CookiesCommand(t *testing.T) {
 		}
 
 		var data ipc.CookiesData
-		json.Unmarshal(resp.Data, &data)
+		_ = json.Unmarshal(resp.Data, &data)
 
 		for _, cookie := range data.Cookies {
 			if cookie.Name == "test_session" {

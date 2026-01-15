@@ -365,7 +365,7 @@ func outputJSON(data any) {
 	if isStdoutTTY() {
 		enc.SetIndent("", "  ")
 	}
-	enc.Encode(data)
+	_ = enc.Encode(data)
 }
 
 // outputError writes an error response in text format to stderr.

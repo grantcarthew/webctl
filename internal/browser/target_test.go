@@ -32,7 +32,7 @@ func TestFetchTargets_ParsesResponse(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		json.NewEncoder(w).Encode(targets)
+		_ = json.NewEncoder(w).Encode(targets)
 	}))
 	defer server.Close()
 
@@ -42,7 +42,7 @@ func TestFetchTargets_ParsesResponse(t *testing.T) {
 	host := parts[0]
 	var port int
 	if len(parts) > 1 {
-		fmt.Sscanf(parts[1], "%d", &port)
+		_, _ = fmt.Sscanf(parts[1], "%d", &port)
 	}
 
 	result, err := FetchTargets(context.Background(), host, port)
@@ -87,7 +87,7 @@ func TestFetchVersion_ParsesResponse(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		json.NewEncoder(w).Encode(info)
+		_ = json.NewEncoder(w).Encode(info)
 	}))
 	defer server.Close()
 
@@ -96,7 +96,7 @@ func TestFetchVersion_ParsesResponse(t *testing.T) {
 	host := parts[0]
 	var port int
 	if len(parts) > 1 {
-		fmt.Sscanf(parts[1], "%d", &port)
+		_, _ = fmt.Sscanf(parts[1], "%d", &port)
 	}
 
 	result, err := FetchVersion(context.Background(), host, port)

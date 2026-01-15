@@ -313,7 +313,7 @@ func (d *Daemon) handleLoadingFinished(evt cdp.Event) {
 		return
 	}
 
-	// Find the entry to get MIME type
+	// Find the entry to get MIME type (quick, non-blocking)
 	var mimeType string
 	var entryURL string
 	d.networkBuf.Update(func(entry *ipc.NetworkEntry) bool {
@@ -326,51 +326,55 @@ func (d *Daemon) handleLoadingFinished(evt cdp.Event) {
 		return false
 	})
 
-	// Fetch the response body using the session ID from the event
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Fetch the response body asynchronously to avoid blocking the read loop.
+	// CRITICAL: CDP calls block waiting for a response that comes through
+	// the same read loop. Synchronous CDP calls in event handlers cause deadlock.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
-	result, err := d.cdp.SendToSession(ctx, evt.SessionID, "Network.getResponseBody", map[string]any{
-		"requestId": params.RequestID,
-	})
-	if err != nil {
-		// Body may not be available (e.g., redirects, cached responses)
-		return
-	}
+		result, err := d.cdp.SendToSession(ctx, evt.SessionID, "Network.getResponseBody", map[string]any{
+			"requestId": params.RequestID,
+		})
+		if err != nil {
+			// Body may not be available (e.g., redirects, cached responses)
+			return
+		}
 
-	var bodyResp struct {
-		Body          string `json:"body"`
-		Base64Encoded bool   `json:"base64Encoded"`
-	}
-	if err := json.Unmarshal(result, &bodyResp); err != nil {
-		return
-	}
+		var bodyResp struct {
+			Body          string `json:"body"`
+			Base64Encoded bool   `json:"base64Encoded"`
+		}
+		if err := json.Unmarshal(result, &bodyResp); err != nil {
+			return
+		}
 
-	// Update the entry with body data
-	d.networkBuf.Update(func(entry *ipc.NetworkEntry) bool {
-		if entry.RequestID == params.RequestID {
-			if isBinaryMimeType(mimeType) {
-				// Save binary to file
-				bodyPath, err := saveBinaryBody(params.RequestID, entryURL, mimeType, bodyResp.Body, bodyResp.Base64Encoded)
-				if err == nil {
-					entry.BodyPath = bodyPath
-				}
-			} else {
-				// Store text body directly
-				if bodyResp.Base64Encoded {
-					// Decode base64 for text content
-					decoded, err := base64.StdEncoding.DecodeString(bodyResp.Body)
+		// Update the entry with body data
+		d.networkBuf.Update(func(entry *ipc.NetworkEntry) bool {
+			if entry.RequestID == params.RequestID {
+				if isBinaryMimeType(mimeType) {
+					// Save binary to file
+					bodyPath, err := saveBinaryBody(params.RequestID, entryURL, mimeType, bodyResp.Body, bodyResp.Base64Encoded)
 					if err == nil {
-						entry.Body = string(decoded)
+						entry.BodyPath = bodyPath
 					}
 				} else {
-					entry.Body = bodyResp.Body
+					// Store text body directly
+					if bodyResp.Base64Encoded {
+						// Decode base64 for text content
+						decoded, err := base64.StdEncoding.DecodeString(bodyResp.Body)
+						if err == nil {
+							entry.Body = string(decoded)
+						}
+					} else {
+						entry.Body = bodyResp.Body
+					}
 				}
+				return true
 			}
-			return true
-		}
-		return false
-	})
+			return false
+		})
+	}()
 }
 
 // handleLoadingFailed handles the Network.loadingFailed event.

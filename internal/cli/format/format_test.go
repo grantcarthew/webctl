@@ -17,29 +17,29 @@ func init() {
 
 func TestNewOutputOptions(t *testing.T) {
 	tests := []struct {
-		name         string
-		jsonOutput   bool
-		noColorFlag  bool
-		noColorEnv   string
+		name             string
+		jsonOutput       bool
+		noColorFlag      bool
+		noColorEnv       string
 		expectedUseColor bool
 	}{
 		{
-			name:         "JSON output disables color",
-			jsonOutput:   true,
-			noColorFlag:  false,
+			name:             "JSON output disables color",
+			jsonOutput:       true,
+			noColorFlag:      false,
 			expectedUseColor: false,
 		},
 		{
-			name:         "no-color flag disables color",
-			jsonOutput:   false,
-			noColorFlag:  true,
+			name:             "no-color flag disables color",
+			jsonOutput:       false,
+			noColorFlag:      true,
 			expectedUseColor: false,
 		},
 		{
-			name:         "NO_COLOR env disables color",
-			jsonOutput:   false,
-			noColorFlag:  false,
-			noColorEnv:   "1",
+			name:             "NO_COLOR env disables color",
+			jsonOutput:       false,
+			noColorFlag:      false,
+			noColorEnv:       "1",
 			expectedUseColor: false,
 		},
 	}
@@ -97,13 +97,13 @@ func TestStatus(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "not running",
-			data: ipc.StatusData{Running: false},
+			name:     "not running",
+			data:     ipc.StatusData{Running: false},
 			expected: "Not running (start with: webctl start)\n",
 		},
 		{
-			name: "running with PID but no browser",
-			data: ipc.StatusData{Running: true, PID: 1234, Sessions: []ipc.PageSession{}},
+			name:     "running with PID but no browser",
+			data:     ipc.StatusData{Running: true, PID: 1234, Sessions: []ipc.PageSession{}},
 			expected: "No browser\npid: 1234\n",
 		},
 		{
@@ -560,7 +560,7 @@ func TestMatchedRules(t *testing.T) {
 			{Selector: ".header", Properties: map[string]string{"color": "red"}},
 		}
 		var buf bytes.Buffer
-		MatchedRules(&buf, rules)
+		_ = MatchedRules(&buf, rules)
 		output := buf.String()
 		if !strings.Contains(output, "/* .header */") {
 			t.Errorf("output should contain selector as comment, got: %s", output)
@@ -573,7 +573,7 @@ func TestMatchedRules(t *testing.T) {
 			{Selector: ".b", Properties: map[string]string{"color": "blue"}},
 		}
 		var buf bytes.Buffer
-		MatchedRules(&buf, rules)
+		_ = MatchedRules(&buf, rules)
 		output := buf.String()
 		if !strings.Contains(output, "--") {
 			t.Errorf("output should contain separator, got: %s", output)

@@ -215,7 +215,7 @@ func TestIndexFileFallback(t *testing.T) {
 			if err := srv.Start(ctx); err != nil {
 				t.Fatalf("Failed to start server: %v", err)
 			}
-			defer srv.Stop(ctx)
+			defer func() { _ = srv.Stop(ctx) }()
 
 			// Test root path
 			resp, err := http.Get(srv.URL() + "/")

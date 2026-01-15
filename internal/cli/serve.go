@@ -72,11 +72,11 @@ Integration with webctl commands:
 }
 
 var (
-	serveProxy      string
-	servePort       int
-	serveHost       string
-	serveWatch      []string
-	serveIgnore     []string
+	serveProxy  string
+	servePort   int
+	serveHost   string
+	serveWatch  []string
+	serveIgnore []string
 )
 
 func init() {

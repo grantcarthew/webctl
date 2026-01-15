@@ -63,7 +63,7 @@ func TestWatcherFileEvents(t *testing.T) {
 	if err := w.Start(); err != nil {
 		t.Fatalf("Failed to start watcher: %v", err)
 	}
-	defer w.Stop()
+	defer func() { _ = w.Stop() }()
 
 	// Give watcher time to start
 	time.Sleep(100 * time.Millisecond)

@@ -33,7 +33,7 @@ func TestRunCookiesDefault_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	if !strings.Contains(err.Error(), "daemon not running") {
 		t.Errorf("expected 'daemon not running' error, got: %v", err)
@@ -102,7 +102,7 @@ func TestRunCookiesDefault_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -153,7 +153,7 @@ func TestRunCookiesDefault_UnknownSubcommand(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 }
 
 func TestRunCookiesShow_Success(t *testing.T) {
@@ -205,7 +205,7 @@ func TestRunCookiesShow_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -284,7 +284,7 @@ func TestRunCookiesSave_ToFile(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -375,7 +375,7 @@ func TestRunCookiesSave_ToDirectory(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -474,10 +474,10 @@ func TestFilterCookiesByText(t *testing.T) {
 		search   string
 		expected int
 	}{
-		{"search in name", "session", 2},     // matches session_id and tracking (SESSION_xyz)
-		{"search in value", "token", 1},      // matches auth_token
-		{"search both", "yes", 1},            // matches remember_me
-		{"case insensitive", "SESSION", 2},   // matches session_id and tracking
+		{"search in name", "session", 2},   // matches session_id and tracking (SESSION_xyz)
+		{"search in value", "token", 1},    // matches auth_token
+		{"search both", "yes", 1},          // matches remember_me
+		{"case insensitive", "SESSION", 2}, // matches session_id and tracking
 		{"no match", "nonexistent", 0},
 	}
 
@@ -538,7 +538,7 @@ func TestGetCookiesFromDaemon_WithFilters(t *testing.T) {
 			cmd.Flags().String("find", "", "")
 
 			for key, value := range tt.flags {
-				cmd.Flags().Set(key, value)
+				_ = cmd.Flags().Set(key, value)
 			}
 
 			result, err := getCookiesFromDaemon(cmd)
@@ -578,7 +578,7 @@ func TestGetCookiesFromDaemon_NoMatches(t *testing.T) {
 
 	cmd := &cobra.Command{}
 	cmd.Flags().String("find", "", "")
-	cmd.Flags().Set("find", "nonexistent")
+	_ = cmd.Flags().Set("find", "nonexistent")
 
 	_, err := getCookiesFromDaemon(cmd)
 	if err == nil {
@@ -641,7 +641,7 @@ func TestRunCookiesSet_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -700,7 +700,7 @@ func TestRunCookiesDelete_BasicSuccess(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {

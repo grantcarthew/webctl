@@ -32,9 +32,6 @@ func (d *Daemon) handleStatus() ipc.Response {
 	for i := range sessions {
 		if sessions[i].Active {
 			status.ActiveSession = &sessions[i]
-			// Populate deprecated fields for backwards compatibility
-			status.URL = sessions[i].URL
-			status.Title = sessions[i].Title
 			break
 		}
 	}
@@ -786,7 +783,7 @@ func (d *Daemon) searchHTML(html string, params ipc.FindParams) ([]ipc.FindMatch
 			}
 
 			// Generate selector and xpath for this line
-			selector, xpath := d.generateSelectorForLine(line, lines, i)
+			selector, xpath := d.generateSelectorForLine(line)
 
 			matches = append(matches, ipc.FindMatch{
 				Index: matchIndex,
@@ -814,7 +811,7 @@ func (d *Daemon) searchHTML(html string, params ipc.FindParams) ([]ipc.FindMatch
 // generateSelectorForLine generates a CSS selector and XPath for a matched line.
 // This is a simplified implementation - more sophisticated selector generation
 // would require full HTML parsing and DOM tree traversal.
-func (d *Daemon) generateSelectorForLine(line string, allLines []string, lineIndex int) (selector, xpath string) {
+func (d *Daemon) generateSelectorForLine(line string) (selector, xpath string) {
 	// Extract tag name from line (basic implementation)
 	// Look for opening tag: <tagname ...>
 	line = strings.TrimSpace(line)

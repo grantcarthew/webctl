@@ -49,23 +49,23 @@ func DefaultConfig() Config {
 
 // Daemon is the persistent webctl daemon process.
 type Daemon struct {
-	config       Config
-	browser      *browser.Browser
-	cdp          *cdp.Client
-	sessions     *SessionManager
-	consoleBuf   *RingBuffer[ipc.ConsoleEntry]
-	networkBuf   *RingBuffer[ipc.NetworkEntry]
-	server       *ipc.Server
-	devServer    *server.Server // Development web server (serve command)
-	devServerMu  sync.Mutex      // Protects devServer
-	shutdown     chan struct{}
-	shutdownOnce sync.Once
-	browserLost  bool           // Set when shutdown triggered by browser disconnection
-	browserLostMu sync.Mutex
+	config          Config
+	browser         *browser.Browser
+	cdp             *cdp.Client
+	sessions        *SessionManager
+	consoleBuf      *RingBuffer[ipc.ConsoleEntry]
+	networkBuf      *RingBuffer[ipc.NetworkEntry]
+	server          *ipc.Server
+	devServer       *server.Server // Development web server (serve command)
+	devServerMu     sync.Mutex     // Protects devServer
+	shutdown        chan struct{}
+	shutdownOnce    sync.Once
+	browserLost     bool // Set when shutdown triggered by browser disconnection
+	browserLostMu   sync.Mutex
 	debug           bool
 	terminalState   *term.State // Saved terminal state for restoration
 	terminalStateMu sync.Mutex
-	repl            *REPL       // REPL instance for external command notifications
+	repl            *REPL // REPL instance for external command notifications
 
 	// Navigation event waiting
 	navWaiters  sync.Map // map[string]chan *frameNavigatedInfo for sessionID -> waiter
@@ -317,7 +317,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 		go func() {
 			defer close(replDone)
-			repl.Run()
+			_ = repl.Run()
 		}()
 	}
 	// When stdin is not a TTY, replDone remains open - daemon waits for
@@ -416,15 +416,20 @@ func (d *Daemon) enableAutoAttach() error {
 
 // enableDomainsForSession enables CDP domains for a specific session.
 func (d *Daemon) enableDomainsForSession(sessionID string) error {
-	// NOTE: Enabling Network domain causes Chrome to track network activity
-	// and block Runtime.evaluate until networkIdle.
-	// We enable minimal domains and add Network only when needed.
-	domains := []string{"Runtime.enable", "Page.enable", "DOM.enable"}
+	// Enable all domains needed for observation and interaction.
+	// Network is enabled at startup to capture all network events from the beginning.
+	// NOTE: Previously Network was enabled lazily due to concerns about Runtime.evaluate
+	// blocking until networkIdle. Testing shows this is not an issue with our setup
+	// (manual Target.attachToTarget with flatten:true, no waitForDebuggerOnStart).
+	domains := []string{"Runtime.enable", "Page.enable", "DOM.enable", "Network.enable"}
 	for _, method := range domains {
 		if _, err := d.cdp.SendToSession(context.Background(), sessionID, method, nil); err != nil {
 			return fmt.Errorf("failed to enable %s: %w", method, err)
 		}
 	}
+
+	// Mark Network as enabled for this session
+	d.networkEnabled.Store(sessionID, true)
 
 	// Enable lifecycle events (required to receive Page.lifecycleEvent)
 	if _, err := d.cdp.SendToSession(context.Background(), sessionID, "Page.setLifecycleEventsEnabled", map[string]any{"enabled": true}); err != nil {
