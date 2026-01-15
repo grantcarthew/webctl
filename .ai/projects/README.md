@@ -63,7 +63,7 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-051 | Observation Commands Output Refactor | Completed | 2026-01-08 | 2026-01-09 |
 | p-052 | CSS Command Redesign | Completed | 2026-01-12 | 2026-01-12 |
 | p-053 | CSS Element Identification | Proposed | | |
-| p-054 | Force Stop and Cleanup | In Progress | 2026-01-15 | |
+| p-054 | Force Stop and Cleanup | Completed | 2026-01-15 | 2026-01-15 |
 
 Note: Completed projects are in `completed/`
 

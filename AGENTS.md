@@ -12,14 +12,15 @@ Under active development.
 
 Projects are stored in `.ai/projects/`. Update this section when starting a new project.
 
-- Active Project: .ai/projects/p-054-force-stop-cleanup.md
-- Design Record: .ai/design/design-records/dr-031-force-stop-cleanup.md
+- Active Project: .ai/projects/p-037-testing-network.md
+- Design Record: None
 
 When projects are completed, move them to `.ai/projects/completed/`, update `.ai/projects/README.md`, and update the active project above to the next project.
 
 ## Completed Projects
 
 Completed projects are in `.ai/projects/completed/`
+- p-054: Force Stop and Cleanup (2026-01-15)
 - p-036: Testing console Command (2026-01-14)
 - p-035: Testing css Command (2026-01-13)
 - p-034: Testing html Command (2026-01-12)

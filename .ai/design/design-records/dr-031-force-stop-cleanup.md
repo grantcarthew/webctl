@@ -1,7 +1,7 @@
 # DR-031: Force Stop and Cleanup
 
 - Date: 2026-01-15
-- Status: Accepted
+- Status: Implemented
 - Category: CLI
 
 ## Problem
@@ -22,10 +22,10 @@ This creates friction and confusion, especially for users unfamiliar with proces
 
 ## Decision
 
-Add `--force` flag to the `stop` command that performs comprehensive cleanup:
+Add `--force` and `--port` flags to the `stop` command for comprehensive cleanup:
 
 ```bash
-webctl stop --force
+webctl stop --force [--port 9222]
 ```
 
 Force stop terminates all webctl-related processes and cleans up all state:
@@ -110,7 +110,7 @@ When `webctl stop --force` is executed:
    - Remove pidfile
 
 3. Kill browser on CDP port:
-   - Find process listening on CDP port (default 9222)
+   - Find process listening on CDP port (--port flag, default 9222)
    - Send SIGTERM, wait briefly, then SIGKILL if needed
 
 4. Clean up files:
@@ -129,8 +129,9 @@ Process discovery:
 - On macOS/Linux, use signals for termination
 
 Port configuration:
-- Use default CDP port (9222) unless --port specified
-- Consider reading last-used port from state file
+- Add `--port` flag to stop command (default 9222)
+- Mirrors `--port` flag on start command for consistency
+- No state file needed - explicit flag is simpler and more predictable
 
 Error hint placement:
 - Add hints in CLI layer, not daemon layer

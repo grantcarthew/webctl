@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"strings"
 
 	"github.com/grantcarthew/webctl/internal/daemon"
 	"github.com/spf13/cobra"
@@ -31,7 +32,9 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Check if daemon is already running
 	if execFactory.IsDaemonRunning() {
-		return outputError("daemon is already running")
+		err := outputError("daemon is already running")
+		outputHint("use 'webctl stop' to stop the daemon, or 'webctl stop --force' to force cleanup")
+		return err
 	}
 
 	debugParam("headless=%v port=%d", startHeadless, startPort)
@@ -68,7 +71,12 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Run daemon (blocks until shutdown)
 	if err := d.Run(context.Background()); err != nil {
-		return outputError(err.Error())
+		outErr := outputError(err.Error())
+		// Add hint for port-in-use errors
+		if strings.Contains(err.Error(), "port") || strings.Contains(err.Error(), "in use") {
+			outputHint("use 'webctl stop --force' to kill orphaned processes")
+		}
+		return outErr
 	}
 
 	return nil

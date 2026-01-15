@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/grantcarthew/webctl/internal/daemon"
@@ -125,7 +126,11 @@ func runServeWithDaemon(mode, directory, proxyURL string) error {
 	// Check if daemon failed to start
 	select {
 	case err := <-daemonErr:
-		return outputError(fmt.Sprintf("failed to start daemon: %v", err))
+		outErr := outputError(fmt.Sprintf("failed to start daemon: %v", err))
+		if strings.Contains(err.Error(), "port") || strings.Contains(err.Error(), "in use") {
+			outputHint("use 'webctl stop --force' to kill orphaned processes")
+		}
+		return outErr
 	default:
 		// Daemon started successfully
 	}
@@ -163,7 +168,11 @@ func runServeWithDaemon(mode, directory, proxyURL string) error {
 	}
 
 	if !resp.OK {
-		return outputError(resp.Error)
+		outErr := outputError(resp.Error)
+		if strings.Contains(resp.Error, "already running") {
+			outputHint("use 'webctl stop' to stop the server, or 'webctl stop --force' to force cleanup")
+		}
+		return outErr
 	}
 
 	// Parse response data
@@ -278,7 +287,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	if !resp.OK {
-		return outputError(resp.Error)
+		outErr := outputError(resp.Error)
+		if strings.Contains(resp.Error, "already running") {
+			outputHint("use 'webctl stop' to stop the server, or 'webctl stop --force' to force cleanup")
+		}
+		return outErr
 	}
 
 	// Parse response data
