@@ -46,8 +46,8 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-034 | Testing html Command | Completed | 2025-12-31 | 2026-01-12 |
 | p-035 | Testing css Command | Completed | 2025-12-31 | 2026-01-13 |
 | p-036 | Testing console Command | Completed | 2025-12-31 | 2026-01-14 |
-| p-037 | Testing network Command | In Progress | 2025-12-31 | |
-| p-038 | Testing cookies Command | Proposed | | |
+| p-037 | Testing network Command | Completed | 2025-12-31 | 2026-01-15 |
+| p-038 | Testing cookies Command | In Progress | 2025-12-31 | |
 | p-039 | Testing screenshot Command | Proposed | | |
 | p-040 | Testing click Command | Proposed | | |
 | p-041 | Testing type Command | Proposed | | |
@@ -64,6 +64,8 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-052 | CSS Command Redesign | Completed | 2026-01-12 | 2026-01-12 |
 | p-053 | CSS Element Identification | Proposed | | |
 | p-054 | Force Stop and Cleanup | Completed | 2026-01-15 | 2026-01-15 |
+| p-055 | Test Framework Bash Modules | Completed | 2026-01-15 | 2026-01-15 |
+| p-056 | Test Library | Pending | | |
 
 Note: Completed projects are in `completed/`
 

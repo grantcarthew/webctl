@@ -37,5 +37,6 @@ Design Records (DRs) document significant technical decisions made during develo
 | DR-029 | [Cookies Command Interface](dr-029-cookies-command-interface.md) | Accepted | 2025-12-28 |
 | DR-030 | [Find Command Removal](dr-030-find-command-removal.md) | Accepted | 2025-12-28 |
 | DR-031 | [Force Stop and Cleanup](dr-031-force-stop-cleanup.md) | Accepted | 2026-01-15 |
+| DR-032 | [Test Framework Architecture](dr-032-test-framework-architecture.md) | Accepted | 2026-01-15 |
 
 Note: Superseded design records are in `superseded/`
