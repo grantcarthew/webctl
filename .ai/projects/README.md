@@ -46,9 +46,24 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-034 | Testing html Command | Completed | 2025-12-31 | 2026-01-12 |
 | p-035 | Testing css Command | Completed | 2025-12-31 | 2026-01-13 |
 | p-036 | Testing console Command | Completed | 2025-12-31 | 2026-01-14 |
+| p-037 | Testing network Command | In Progress | 2025-12-31 | |
+| p-038 | Testing cookies Command | Proposed | | |
+| p-039 | Testing screenshot Command | Proposed | | |
+| p-040 | Testing click Command | Proposed | | |
+| p-041 | Testing type Command | Proposed | | |
+| p-042 | Testing select Command | Proposed | | |
+| p-043 | Testing scroll Command | Proposed | | |
+| p-044 | Testing focus Command | Proposed | | |
+| p-045 | Testing key Command | Proposed | | |
+| p-046 | Testing eval Command | Proposed | | |
+| p-047 | Testing ready Command | Proposed | | |
+| p-048 | Testing clear Command | Proposed | | |
+| p-049 | Testing find Command | Proposed | | |
+| p-050 | Testing target Command | Proposed | | |
 | p-051 | Observation Commands Output Refactor | Completed | 2026-01-08 | 2026-01-09 |
 | p-052 | CSS Command Redesign | Completed | 2026-01-12 | 2026-01-12 |
 | p-053 | CSS Element Identification | Proposed | | |
+| p-054 | Force Stop and Cleanup | In Progress | 2026-01-15 | |
 
 Note: Completed projects are in `completed/`
 

@@ -12,8 +12,8 @@ Under active development.
 
 Projects are stored in `.ai/projects/`. Update this section when starting a new project.
 
-- Active Project: .ai/projects/p-037-testing-network.md
-- Design Record: N/A
+- Active Project: .ai/projects/p-054-force-stop-cleanup.md
+- Design Record: .ai/design/design-records/dr-031-force-stop-cleanup.md
 
 When projects are completed, move them to `.ai/projects/completed/`, update `.ai/projects/README.md`, and update the active project above to the next project.
 
