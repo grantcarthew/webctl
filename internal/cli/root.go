@@ -342,6 +342,16 @@ func outputNotice(msg string) error {
 	return printedError{err: errors.New(msg)}
 }
 
+// outputHint writes a hint message to stderr in text mode only.
+// Hints provide actionable suggestions after errors.
+// Skipped in JSON mode since structured errors are preferred.
+func outputHint(msg string) {
+	if JSONOutput {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "Hint: %s\n", msg)
+}
+
 // shouldUseColor determines if color output should be used based on flags and environment.
 func shouldUseColor() bool {
 	if JSONOutput {
