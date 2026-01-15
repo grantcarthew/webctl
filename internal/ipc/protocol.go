@@ -28,14 +28,10 @@ type Response struct {
 
 // StatusData is the response data for the "status" command.
 type StatusData struct {
-	Running       bool         `json:"running"`
-	PID           int          `json:"pid,omitempty"`
-	ActiveSession *PageSession `json:"activeSession,omitempty"`
+	Running       bool          `json:"running"`
+	PID           int           `json:"pid,omitempty"`
+	ActiveSession *PageSession  `json:"activeSession,omitempty"`
 	Sessions      []PageSession `json:"sessions,omitempty"`
-	// Deprecated: use ActiveSession.URL instead
-	URL string `json:"url,omitempty"`
-	// Deprecated: use ActiveSession.Title instead
-	Title string `json:"title,omitempty"`
 }
 
 // ConsoleEntry represents a console log entry.
@@ -281,10 +277,10 @@ type FindParams struct {
 
 // FindMatch represents a single match from the find command.
 type FindMatch struct {
-	Index    int          `json:"index"`
-	Context  FindContext  `json:"context"`
-	Selector string       `json:"selector"`
-	XPath    string       `json:"xpath"`
+	Index    int         `json:"index"`
+	Context  FindContext `json:"context"`
+	Selector string      `json:"selector"`
+	XPath    string      `json:"xpath"`
 }
 
 // FindContext holds the before/match/after lines for a match.

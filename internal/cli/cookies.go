@@ -631,7 +631,7 @@ func runCookiesDelete(cmd *cobra.Command, args []string) error {
 						"error":   resp.Error,
 						"matches": data.Matches,
 					}
-					outputJSON(os.Stdout, result)
+					_ = outputJSON(os.Stdout, result)
 				}
 				return outputError(resp.Error)
 			}

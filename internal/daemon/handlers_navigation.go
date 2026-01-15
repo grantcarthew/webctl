@@ -655,20 +655,6 @@ func (d *Daemon) getPageTitle(ctx context.Context, sessionID string) string {
 	return resp.Result.Value
 }
 
-// waitForFrameNavigated waits for a Page.frameNavigated event for the given session.
-func (d *Daemon) waitForFrameNavigated(sessionID string, timeout time.Duration) (*frameNavigatedInfo, error) {
-	ch := make(chan *frameNavigatedInfo, 1)
-	d.navWaiters.Store(sessionID, ch)
-	defer d.navWaiters.Delete(sessionID)
-
-	select {
-	case info := <-ch:
-		return info, nil
-	case <-time.After(timeout):
-		return nil, fmt.Errorf("timeout waiting for navigation")
-	}
-}
-
 // waitForLoadEvent waits for a Page.loadEventFired event for the given session.
 // Creates and registers a waiter channel internally.
 func (d *Daemon) waitForLoadEvent(sessionID string, timeout time.Duration) error {
@@ -697,4 +683,3 @@ func (d *Daemon) waitForLoadEvent(sessionID string, timeout time.Duration) error
 		return fmt.Errorf("timeout waiting for page load")
 	}
 }
-

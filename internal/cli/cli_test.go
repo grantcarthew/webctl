@@ -103,7 +103,7 @@ func TestOutputSuccess(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -146,7 +146,7 @@ func TestOutputError(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -187,7 +187,7 @@ func TestRunStatus_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -213,9 +213,11 @@ func TestRunStatus_DaemonRunning(t *testing.T) {
 
 	statusData := ipc.StatusData{
 		Running: true,
-		URL:     "https://example.com",
-		Title:   "Example",
 		PID:     12345,
+		ActiveSession: &ipc.PageSession{
+			URL:   "https://example.com",
+			Title: "Example",
+		},
 	}
 	statusJSON, _ := json.Marshal(statusData)
 
@@ -249,7 +251,7 @@ func TestRunStatus_DaemonRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -264,8 +266,12 @@ func TestRunStatus_DaemonRunning(t *testing.T) {
 	if data["running"] != true {
 		t.Errorf("expected running=true, got %v", data["running"])
 	}
-	if data["url"] != "https://example.com" {
-		t.Errorf("expected url=https://example.com, got %v", data["url"])
+	activeSession, ok := data["activeSession"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected activeSession to be map, got %T", data["activeSession"])
+	}
+	if activeSession["url"] != "https://example.com" {
+		t.Errorf("expected activeSession.url=https://example.com, got %v", activeSession["url"])
 	}
 
 	if !exec.closed {
@@ -306,7 +312,7 @@ func TestRunStop_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -345,7 +351,7 @@ func TestRunStop_NewExecutorError(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -393,7 +399,7 @@ func TestRunClear_AllBuffers(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -439,7 +445,7 @@ func TestRunClear_ConsoleOnly(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -574,7 +580,7 @@ func TestRunConsole_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -639,7 +645,7 @@ func TestRunConsole_EmptyBuffer(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -816,7 +822,7 @@ func TestRunConsoleDefault_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -910,7 +916,7 @@ func TestRunConsoleSave_CustomFilePath(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -1000,7 +1006,7 @@ func TestRunConsoleSave_DirectoryPath(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -1060,8 +1066,8 @@ func TestRunConsoleShow_RawFlag(t *testing.T) {
 	defer restore()
 
 	// Set --raw flag on parent command
-	consoleCmd.PersistentFlags().Set("raw", "true")
-	t.Cleanup(func() { consoleCmd.PersistentFlags().Set("raw", "false") })
+	_ = consoleCmd.PersistentFlags().Set("raw", "true")
+	t.Cleanup(func() { _ = consoleCmd.PersistentFlags().Set("raw", "false") })
 
 	// Capture stdout
 	old := os.Stdout
@@ -1078,7 +1084,7 @@ func TestRunConsoleShow_RawFlag(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -1133,13 +1139,13 @@ func TestRunConsoleShow_CombinedFilters(t *testing.T) {
 	defer restore()
 
 	// Set combined filters on the parent command: --type error --find "TypeError" --tail 2
-	consoleCmd.PersistentFlags().Set("type", "error")
-	consoleCmd.PersistentFlags().Set("find", "TypeError")
-	consoleCmd.PersistentFlags().Set("tail", "2")
+	_ = consoleCmd.PersistentFlags().Set("type", "error")
+	_ = consoleCmd.PersistentFlags().Set("find", "TypeError")
+	_ = consoleCmd.PersistentFlags().Set("tail", "2")
 	t.Cleanup(func() {
-		consoleCmd.PersistentFlags().Set("type", "")
-		consoleCmd.PersistentFlags().Set("find", "")
-		consoleCmd.PersistentFlags().Set("tail", "0")
+		_ = consoleCmd.PersistentFlags().Set("type", "")
+		_ = consoleCmd.PersistentFlags().Set("find", "")
+		_ = consoleCmd.PersistentFlags().Set("tail", "0")
 	})
 
 	// Capture stdout
@@ -1157,7 +1163,7 @@ func TestRunConsoleShow_CombinedFilters(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -1204,8 +1210,8 @@ func TestRunConsoleShow_FindNoMatches(t *testing.T) {
 	defer restore()
 
 	// Set --find with no matches on parent command
-	consoleCmd.PersistentFlags().Set("find", "nonexistent-string-xyz")
-	t.Cleanup(func() { consoleCmd.PersistentFlags().Set("find", "") })
+	_ = consoleCmd.PersistentFlags().Set("find", "nonexistent-string-xyz")
+	t.Cleanup(func() { _ = consoleCmd.PersistentFlags().Set("find", "") })
 
 	err := runConsoleDefault(consoleCmd, nil)
 
@@ -1264,7 +1270,7 @@ func TestRunConsoleShow_TextOutput(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	// Verify text format output
@@ -1295,9 +1301,11 @@ func TestExecuteArgs_recognizedCommand(t *testing.T) {
 	// Set up mock factory with proper status response
 	statusData := ipc.StatusData{
 		Running: true,
-		URL:     "https://example.com",
-		Title:   "Test",
 		PID:     12345,
+		ActiveSession: &ipc.PageSession{
+			URL:   "https://example.com",
+			Title: "Test",
+		},
 	}
 	statusJSON, _ := json.Marshal(statusData)
 
@@ -1465,8 +1473,8 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 	os.Stderr = oldStderr
 
 	var bufOut1, bufErr1 bytes.Buffer
-	bufOut1.ReadFrom(rOut1)
-	bufErr1.ReadFrom(rErr1)
+	_, _ = bufOut1.ReadFrom(rOut1)
+	_, _ = bufErr1.ReadFrom(rErr1)
 
 	if bufErr1.Len() > 0 {
 		t.Logf("First call stderr: %s", bufErr1.String())
@@ -1505,8 +1513,8 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 	os.Stderr = oldStderr
 
 	var bufOut2, bufErr2 bytes.Buffer
-	bufOut2.ReadFrom(rOut2)
-	bufErr2.ReadFrom(rErr2)
+	_, _ = bufOut2.ReadFrom(rOut2)
+	_, _ = bufErr2.ReadFrom(rErr2)
 
 	if bufErr2.Len() > 0 {
 		t.Logf("Second call stderr: %s", bufErr2.String())
@@ -1674,7 +1682,7 @@ func TestRunNetwork_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	var resp map[string]any
@@ -1744,7 +1752,7 @@ func TestRunNetwork_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -1793,7 +1801,7 @@ func TestRunTarget_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -1848,7 +1856,7 @@ func TestRunTarget_ListSessions(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -1911,7 +1919,7 @@ func TestRunTarget_SwitchSession(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -1963,7 +1971,7 @@ func TestRunTarget_AmbiguousMatch(t *testing.T) {
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -2103,7 +2111,7 @@ func TestRunScreenshot_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -2175,7 +2183,7 @@ func TestRunScreenshot_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -2215,7 +2223,7 @@ func TestRunScreenshot_CustomOutput(t *testing.T) {
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd == "screenshot" {
 				var params ipc.ScreenshotParams
-				json.Unmarshal(req.Params, &params)
+				_ = json.Unmarshal(req.Params, &params)
 				return ipc.Response{OK: true, Data: screenshotJSON}, nil
 			}
 			return ipc.Response{OK: false}, nil
@@ -2242,10 +2250,10 @@ func TestRunScreenshot_CustomOutput(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
-	json.Unmarshal(buf.Bytes(), &result)
+	_ = json.Unmarshal(buf.Bytes(), &result)
 
 	// Verify custom path is used
 	if result["path"] != customPath {
@@ -2269,7 +2277,7 @@ func TestRunScreenshot_FullPage(t *testing.T) {
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd == "screenshot" {
 				var params ipc.ScreenshotParams
-				json.Unmarshal(req.Params, &params)
+				_ = json.Unmarshal(req.Params, &params)
 				capturedFullPage = params.FullPage
 				return ipc.Response{OK: true, Data: screenshotJSON}, nil
 			}
@@ -2285,14 +2293,14 @@ func TestRunScreenshot_FullPage(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	screenshotCmd.PersistentFlags().Set("full-page", "true")
-	defer screenshotCmd.PersistentFlags().Set("full-page", "false")
+	_ = screenshotCmd.PersistentFlags().Set("full-page", "true")
+	defer func() { _ = screenshotCmd.PersistentFlags().Set("full-page", "false") }()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runScreenshotSave(screenshotSaveCmd, []string{tmpDir + "/test.png"})
+	_ = runScreenshotSave(screenshotSaveCmd, []string{tmpDir + "/test.png"})
 
 	w.Close()
 	os.Stdout = old
@@ -2323,7 +2331,7 @@ func TestRunHTML_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -2386,7 +2394,7 @@ func TestRunHTML_FullPage(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -2441,7 +2449,7 @@ func TestRunHTML_WithSelector(t *testing.T) {
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd == "html" {
 				var params ipc.HTMLParams
-				json.Unmarshal(req.Params, &params)
+				_ = json.Unmarshal(req.Params, &params)
 				capturedSelector = params.Selector
 				return ipc.Response{OK: true, Data: htmlJSON}, nil
 			}
@@ -2456,14 +2464,14 @@ func TestRunHTML_WithSelector(t *testing.T) {
 	defer restore()
 
 	// Set persistent flag on parent command
-	htmlCmd.PersistentFlags().Set("select", ".content")
-	defer htmlCmd.PersistentFlags().Set("select", "")
+	_ = htmlCmd.PersistentFlags().Set("select", ".content")
+	defer func() { _ = htmlCmd.PersistentFlags().Set("select", "") }()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runHTMLSave(htmlSaveCmd, []string{tmpDir + "/test.html"})
+	_ = runHTMLSave(htmlSaveCmd, []string{tmpDir + "/test.html"})
 
 	w.Close()
 	os.Stdout = old
@@ -2511,10 +2519,10 @@ func TestRunHTML_CustomOutput(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
-	json.Unmarshal(buf.Bytes(), &result)
+	_ = json.Unmarshal(buf.Bytes(), &result)
 
 	// Verify custom path is used
 	if result["path"] != customPath {
@@ -2548,7 +2556,7 @@ func TestRunEval_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !bytes.Contains([]byte(output), []byte("daemon not running")) {
@@ -2590,10 +2598,10 @@ func TestRunEval_BasicExpression(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
-	json.Unmarshal(buf.Bytes(), &result)
+	_ = json.Unmarshal(buf.Bytes(), &result)
 
 	if result["ok"] != true {
 		t.Errorf("expected ok=true, got %v", result["ok"])
@@ -2638,10 +2646,10 @@ func TestRunEval_Undefined(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
-	json.Unmarshal(buf.Bytes(), &result)
+	_ = json.Unmarshal(buf.Bytes(), &result)
 
 	if result["ok"] != true {
 		t.Errorf("expected ok=true, got %v", result["ok"])
@@ -2664,7 +2672,7 @@ func TestRunEval_MultipleArgs(t *testing.T) {
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd == "eval" {
 				var params ipc.EvalParams
-				json.Unmarshal(req.Params, &params)
+				_ = json.Unmarshal(req.Params, &params)
 				capturedExpression = params.Expression
 				return ipc.Response{OK: true, Data: evalJSON}, nil
 			}
@@ -2682,7 +2690,7 @@ func TestRunEval_MultipleArgs(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runEval(evalCmd, []string{"'Hello'", "+", "'World'"})
+	_ = runEval(evalCmd, []string{"'Hello'", "+", "'World'"})
 
 	w.Close()
 	os.Stdout = old
@@ -2724,7 +2732,7 @@ func TestRunEval_Error(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !bytes.Contains([]byte(output), []byte("ReferenceError")) {
@@ -2743,7 +2751,7 @@ func TestRunEval_Timeout(t *testing.T) {
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd == "eval" {
 				var params ipc.EvalParams
-				json.Unmarshal(req.Params, &params)
+				_ = json.Unmarshal(req.Params, &params)
 				capturedTimeout = params.Timeout
 				return ipc.Response{OK: true, Data: evalJSON}, nil
 			}
@@ -2757,14 +2765,14 @@ func TestRunEval_Timeout(t *testing.T) {
 	})
 	defer restore()
 
-	evalCmd.Flags().Set("timeout", "5s")
-	defer evalCmd.Flags().Set("timeout", "30s")
+	_ = evalCmd.Flags().Set("timeout", "5s")
+	defer func() { _ = evalCmd.Flags().Set("timeout", "30s") }()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runEval(evalCmd, []string{"42"})
+	_ = runEval(evalCmd, []string{"42"})
 
 	w.Close()
 	os.Stdout = old
@@ -2795,7 +2803,7 @@ func TestRunCookiesList_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
 	if !bytes.Contains([]byte(output), []byte("daemon not running")) {
@@ -2841,10 +2849,10 @@ func TestRunCookiesList_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
-	json.Unmarshal(buf.Bytes(), &result)
+	_ = json.Unmarshal(buf.Bytes(), &result)
 
 	if result["ok"] != true {
 		t.Errorf("expected ok=true, got %v", result["ok"])
@@ -2862,7 +2870,7 @@ func TestRunCookiesSet_Basic(t *testing.T) {
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd == "cookies" {
-				json.Unmarshal(req.Params, &capturedParams)
+				_ = json.Unmarshal(req.Params, &capturedParams)
 				return ipc.Response{OK: true}, nil
 			}
 			return ipc.Response{OK: false}, nil
@@ -2879,7 +2887,7 @@ func TestRunCookiesSet_Basic(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runCookiesSet(cookiesSetCmd, []string{"session", "xyz789"})
+	_ = runCookiesSet(cookiesSetCmd, []string{"session", "xyz789"})
 
 	w.Close()
 	os.Stdout = old
@@ -2904,7 +2912,7 @@ func TestRunCookiesSet_WithFlags(t *testing.T) {
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd == "cookies" {
-				json.Unmarshal(req.Params, &capturedParams)
+				_ = json.Unmarshal(req.Params, &capturedParams)
 				return ipc.Response{OK: true}, nil
 			}
 			return ipc.Response{OK: false}, nil
@@ -2917,24 +2925,24 @@ func TestRunCookiesSet_WithFlags(t *testing.T) {
 	})
 	defer restore()
 
-	cookiesSetCmd.Flags().Set("domain", "example.com")
-	cookiesSetCmd.Flags().Set("secure", "true")
-	cookiesSetCmd.Flags().Set("httponly", "true")
-	cookiesSetCmd.Flags().Set("max-age", "3600")
-	cookiesSetCmd.Flags().Set("samesite", "Strict")
+	_ = cookiesSetCmd.Flags().Set("domain", "example.com")
+	_ = cookiesSetCmd.Flags().Set("secure", "true")
+	_ = cookiesSetCmd.Flags().Set("httponly", "true")
+	_ = cookiesSetCmd.Flags().Set("max-age", "3600")
+	_ = cookiesSetCmd.Flags().Set("samesite", "Strict")
 	defer func() {
-		cookiesSetCmd.Flags().Set("domain", "")
-		cookiesSetCmd.Flags().Set("secure", "false")
-		cookiesSetCmd.Flags().Set("httponly", "false")
-		cookiesSetCmd.Flags().Set("max-age", "0")
-		cookiesSetCmd.Flags().Set("samesite", "")
+		_ = cookiesSetCmd.Flags().Set("domain", "")
+		_ = cookiesSetCmd.Flags().Set("secure", "false")
+		_ = cookiesSetCmd.Flags().Set("httponly", "false")
+		_ = cookiesSetCmd.Flags().Set("max-age", "0")
+		_ = cookiesSetCmd.Flags().Set("samesite", "")
 	}()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runCookiesSet(cookiesSetCmd, []string{"auth", "token123"})
+	_ = runCookiesSet(cookiesSetCmd, []string{"auth", "token123"})
 
 	w.Close()
 	os.Stdout = old
@@ -2967,7 +2975,7 @@ func TestRunCookiesDelete_Success(t *testing.T) {
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd == "cookies" {
-				json.Unmarshal(req.Params, &capturedParams)
+				_ = json.Unmarshal(req.Params, &capturedParams)
 				return ipc.Response{OK: true}, nil
 			}
 			return ipc.Response{OK: false}, nil
@@ -2994,10 +3002,10 @@ func TestRunCookiesDelete_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
-	json.Unmarshal(buf.Bytes(), &result)
+	_ = json.Unmarshal(buf.Bytes(), &result)
 
 	if result["ok"] != true {
 		t.Errorf("expected ok=true, got %v", result["ok"])
@@ -3061,10 +3069,10 @@ func TestRunCookiesDelete_AmbiguousError(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
-	json.Unmarshal(buf.Bytes(), &result)
+	_ = json.Unmarshal(buf.Bytes(), &result)
 
 	if result["ok"] != false {
 		t.Errorf("expected ok=false, got %v", result["ok"])
@@ -3087,7 +3095,7 @@ func TestRunCookiesDelete_WithDomain(t *testing.T) {
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
 			if req.Cmd == "cookies" {
-				json.Unmarshal(req.Params, &capturedParams)
+				_ = json.Unmarshal(req.Params, &capturedParams)
 				return ipc.Response{OK: true}, nil
 			}
 			return ipc.Response{OK: false}, nil
@@ -3100,14 +3108,14 @@ func TestRunCookiesDelete_WithDomain(t *testing.T) {
 	})
 	defer restore()
 
-	cookiesDeleteCmd.Flags().Set("domain", "api.example.com")
-	defer cookiesDeleteCmd.Flags().Set("domain", "")
+	_ = cookiesDeleteCmd.Flags().Set("domain", "api.example.com")
+	defer func() { _ = cookiesDeleteCmd.Flags().Set("domain", "") }()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runCookiesDelete(cookiesDeleteCmd, []string{"session"})
+	_ = runCookiesDelete(cookiesDeleteCmd, []string{"session"})
 
 	w.Close()
 	os.Stdout = old
@@ -3178,7 +3186,7 @@ func TestRunNavigate_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -3205,7 +3213,7 @@ func TestRunNavigate_Success(t *testing.T) {
 			if req.Cmd != "navigate" {
 				t.Errorf("expected cmd=navigate, got %s", req.Cmd)
 			}
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true, Data: navJSON}, nil
 		},
 	}
@@ -3235,7 +3243,7 @@ func TestRunNavigate_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -3258,7 +3266,7 @@ func TestRunNavigate_WithWaitFlag(t *testing.T) {
 	var capturedParams ipc.NavigateParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true, Data: navJSON}, nil
 		},
 	}
@@ -3269,18 +3277,18 @@ func TestRunNavigate_WithWaitFlag(t *testing.T) {
 	})
 	defer restore()
 
-	navigateCmd.Flags().Set("wait", "true")
-	navigateCmd.Flags().Set("timeout", "5000")
+	_ = navigateCmd.Flags().Set("wait", "true")
+	_ = navigateCmd.Flags().Set("timeout", "5000")
 	defer func() {
-		navigateCmd.Flags().Set("wait", "false")
-		navigateCmd.Flags().Set("timeout", "30000")
+		_ = navigateCmd.Flags().Set("wait", "false")
+		_ = navigateCmd.Flags().Set("timeout", "30000")
 	}()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runNavigate(navigateCmd, []string{"example.com"})
+	_ = runNavigate(navigateCmd, []string{"example.com"})
 
 	w.Close()
 	os.Stdout = old
@@ -3301,7 +3309,7 @@ func TestRunNavigate_LocalhostUsesHTTP(t *testing.T) {
 	var capturedParams ipc.NavigateParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true, Data: navJSON}, nil
 		},
 	}
@@ -3316,7 +3324,7 @@ func TestRunNavigate_LocalhostUsesHTTP(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runNavigate(navigateCmd, []string{"localhost:3000"})
+	_ = runNavigate(navigateCmd, []string{"localhost:3000"})
 
 	w.Close()
 	os.Stdout = old
@@ -3354,7 +3362,7 @@ func TestRunNavigate_Error(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -3388,7 +3396,7 @@ func TestRunReload_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -3411,7 +3419,7 @@ func TestRunReload_Success(t *testing.T) {
 			if req.Cmd != "reload" {
 				t.Errorf("expected cmd=reload, got %s", req.Cmd)
 			}
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true, Data: navJSON}, nil
 		},
 	}
@@ -3441,7 +3449,7 @@ func TestRunReload_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -3461,7 +3469,7 @@ func TestRunReload_WithWaitFlag(t *testing.T) {
 	var capturedParams ipc.ReloadParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true, Data: navJSON}, nil
 		},
 	}
@@ -3472,18 +3480,18 @@ func TestRunReload_WithWaitFlag(t *testing.T) {
 	})
 	defer restore()
 
-	reloadCmd.Flags().Set("wait", "true")
-	reloadCmd.Flags().Set("timeout", "10000")
+	_ = reloadCmd.Flags().Set("wait", "true")
+	_ = reloadCmd.Flags().Set("timeout", "10000")
 	defer func() {
-		reloadCmd.Flags().Set("wait", "false")
-		reloadCmd.Flags().Set("timeout", "30000")
+		_ = reloadCmd.Flags().Set("wait", "false")
+		_ = reloadCmd.Flags().Set("timeout", "30000")
 	}()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runReload(reloadCmd, []string{})
+	_ = runReload(reloadCmd, []string{})
 
 	w.Close()
 	os.Stdout = old
@@ -3515,7 +3523,7 @@ func TestRunBack_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -3561,7 +3569,7 @@ func TestRunBack_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -3604,7 +3612,7 @@ func TestRunBack_NoHistory(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -3627,7 +3635,7 @@ func TestRunBack_WithWaitFlag(t *testing.T) {
 	var capturedParams ipc.HistoryParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true, Data: navJSON}, nil
 		},
 	}
@@ -3638,18 +3646,18 @@ func TestRunBack_WithWaitFlag(t *testing.T) {
 	})
 	defer restore()
 
-	backCmd.Flags().Set("wait", "true")
-	backCmd.Flags().Set("timeout", "15000")
+	_ = backCmd.Flags().Set("wait", "true")
+	_ = backCmd.Flags().Set("timeout", "15000")
 	defer func() {
-		backCmd.Flags().Set("wait", "false")
-		backCmd.Flags().Set("timeout", "30000")
+		_ = backCmd.Flags().Set("wait", "false")
+		_ = backCmd.Flags().Set("timeout", "30000")
 	}()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runBack(backCmd, []string{})
+	_ = runBack(backCmd, []string{})
 
 	w.Close()
 	os.Stdout = old
@@ -3681,7 +3689,7 @@ func TestRunForward_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -3727,7 +3735,7 @@ func TestRunForward_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -3770,7 +3778,7 @@ func TestRunForward_NoHistory(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -3793,7 +3801,7 @@ func TestRunForward_WithWaitFlag(t *testing.T) {
 	var capturedParams ipc.HistoryParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true, Data: navJSON}, nil
 		},
 	}
@@ -3804,18 +3812,18 @@ func TestRunForward_WithWaitFlag(t *testing.T) {
 	})
 	defer restore()
 
-	forwardCmd.Flags().Set("wait", "true")
-	forwardCmd.Flags().Set("timeout", "20000")
+	_ = forwardCmd.Flags().Set("wait", "true")
+	_ = forwardCmd.Flags().Set("timeout", "20000")
 	defer func() {
-		forwardCmd.Flags().Set("wait", "false")
-		forwardCmd.Flags().Set("timeout", "30000")
+		_ = forwardCmd.Flags().Set("wait", "false")
+		_ = forwardCmd.Flags().Set("timeout", "30000")
 	}()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runForward(forwardCmd, []string{})
+	_ = runForward(forwardCmd, []string{})
 
 	w.Close()
 	os.Stdout = old
@@ -3849,7 +3857,7 @@ func TestRunClick_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -3869,7 +3877,7 @@ func TestRunClick_Success(t *testing.T) {
 				t.Errorf("expected cmd=click, got %s", req.Cmd)
 			}
 			var params ipc.ClickParams
-			json.Unmarshal(req.Params, &params)
+			_ = json.Unmarshal(req.Params, &params)
 			if params.Selector != "#submit-btn" {
 				t.Errorf("expected selector=#submit-btn, got %s", params.Selector)
 			}
@@ -3897,7 +3905,7 @@ func TestRunClick_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -3941,7 +3949,7 @@ func TestRunClick_WithWarning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -3984,7 +3992,7 @@ func TestRunClick_ElementNotFound(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -4020,7 +4028,7 @@ func TestRunFocus_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -4040,7 +4048,7 @@ func TestRunFocus_Success(t *testing.T) {
 				t.Errorf("expected cmd=focus, got %s", req.Cmd)
 			}
 			var params ipc.FocusParams
-			json.Unmarshal(req.Params, &params)
+			_ = json.Unmarshal(req.Params, &params)
 			if params.Selector != "#email-input" {
 				t.Errorf("expected selector=#email-input, got %s", params.Selector)
 			}
@@ -4068,7 +4076,7 @@ func TestRunFocus_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -4108,7 +4116,7 @@ func TestRunFocus_ElementNotFound(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -4141,7 +4149,7 @@ func TestRunType_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -4161,7 +4169,7 @@ func TestRunType_TextOnly(t *testing.T) {
 			if req.Cmd != "type" {
 				t.Errorf("expected cmd=type, got %s", req.Cmd)
 			}
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4194,7 +4202,7 @@ func TestRunType_TextOnly(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -4211,7 +4219,7 @@ func TestRunType_WithSelector(t *testing.T) {
 	var capturedParams ipc.TypeParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4226,7 +4234,7 @@ func TestRunType_WithSelector(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runType(typeCmd, []string{"#input", "test text"})
+	_ = runType(typeCmd, []string{"#input", "test text"})
 
 	w.Close()
 	os.Stdout = old
@@ -4244,7 +4252,7 @@ func TestRunType_WithKeyFlag(t *testing.T) {
 	var capturedParams ipc.TypeParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4255,14 +4263,14 @@ func TestRunType_WithKeyFlag(t *testing.T) {
 	})
 	defer restore()
 
-	typeCmd.Flags().Set("key", "Enter")
-	defer typeCmd.Flags().Set("key", "")
+	_ = typeCmd.Flags().Set("key", "Enter")
+	defer func() { _ = typeCmd.Flags().Set("key", "") }()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runType(typeCmd, []string{"#search", "query"})
+	_ = runType(typeCmd, []string{"#search", "query"})
 
 	w.Close()
 	os.Stdout = old
@@ -4277,7 +4285,7 @@ func TestRunType_WithClearFlag(t *testing.T) {
 	var capturedParams ipc.TypeParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4288,14 +4296,14 @@ func TestRunType_WithClearFlag(t *testing.T) {
 	})
 	defer restore()
 
-	typeCmd.Flags().Set("clear", "true")
-	defer typeCmd.Flags().Set("clear", "false")
+	_ = typeCmd.Flags().Set("clear", "true")
+	defer func() { _ = typeCmd.Flags().Set("clear", "false") }()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runType(typeCmd, []string{"#input", "new value"})
+	_ = runType(typeCmd, []string{"#input", "new value"})
 
 	w.Close()
 	os.Stdout = old
@@ -4310,7 +4318,7 @@ func TestRunType_AllFlags(t *testing.T) {
 	var capturedParams ipc.TypeParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4321,18 +4329,18 @@ func TestRunType_AllFlags(t *testing.T) {
 	})
 	defer restore()
 
-	typeCmd.Flags().Set("key", "Tab")
-	typeCmd.Flags().Set("clear", "true")
+	_ = typeCmd.Flags().Set("key", "Tab")
+	_ = typeCmd.Flags().Set("clear", "true")
 	defer func() {
-		typeCmd.Flags().Set("key", "")
-		typeCmd.Flags().Set("clear", "false")
+		_ = typeCmd.Flags().Set("key", "")
+		_ = typeCmd.Flags().Set("clear", "false")
 	}()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runType(typeCmd, []string{"#form-field", "updated"})
+	_ = runType(typeCmd, []string{"#form-field", "updated"})
 
 	w.Close()
 	os.Stdout = old
@@ -4372,7 +4380,7 @@ func TestRunKey_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -4392,7 +4400,7 @@ func TestRunKey_Success(t *testing.T) {
 			if req.Cmd != "key" {
 				t.Errorf("expected cmd=key, got %s", req.Cmd)
 			}
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4421,7 +4429,7 @@ func TestRunKey_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -4438,7 +4446,7 @@ func TestRunKey_WithCtrlModifier(t *testing.T) {
 	var capturedParams ipc.KeyParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4449,14 +4457,14 @@ func TestRunKey_WithCtrlModifier(t *testing.T) {
 	})
 	defer restore()
 
-	keyCmd.Flags().Set("ctrl", "true")
-	defer keyCmd.Flags().Set("ctrl", "false")
+	_ = keyCmd.Flags().Set("ctrl", "true")
+	defer func() { _ = keyCmd.Flags().Set("ctrl", "false") }()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runKey(keyCmd, []string{"a"})
+	_ = runKey(keyCmd, []string{"a"})
 
 	w.Close()
 	os.Stdout = old
@@ -4474,7 +4482,7 @@ func TestRunKey_WithMetaModifier(t *testing.T) {
 	var capturedParams ipc.KeyParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4485,14 +4493,14 @@ func TestRunKey_WithMetaModifier(t *testing.T) {
 	})
 	defer restore()
 
-	keyCmd.Flags().Set("meta", "true")
-	defer keyCmd.Flags().Set("meta", "false")
+	_ = keyCmd.Flags().Set("meta", "true")
+	defer func() { _ = keyCmd.Flags().Set("meta", "false") }()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runKey(keyCmd, []string{"c"})
+	_ = runKey(keyCmd, []string{"c"})
 
 	w.Close()
 	os.Stdout = old
@@ -4510,7 +4518,7 @@ func TestRunKey_AllModifiers(t *testing.T) {
 	var capturedParams ipc.KeyParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4521,22 +4529,22 @@ func TestRunKey_AllModifiers(t *testing.T) {
 	})
 	defer restore()
 
-	keyCmd.Flags().Set("ctrl", "true")
-	keyCmd.Flags().Set("alt", "true")
-	keyCmd.Flags().Set("shift", "true")
-	keyCmd.Flags().Set("meta", "true")
+	_ = keyCmd.Flags().Set("ctrl", "true")
+	_ = keyCmd.Flags().Set("alt", "true")
+	_ = keyCmd.Flags().Set("shift", "true")
+	_ = keyCmd.Flags().Set("meta", "true")
 	defer func() {
-		keyCmd.Flags().Set("ctrl", "false")
-		keyCmd.Flags().Set("alt", "false")
-		keyCmd.Flags().Set("shift", "false")
-		keyCmd.Flags().Set("meta", "false")
+		_ = keyCmd.Flags().Set("ctrl", "false")
+		_ = keyCmd.Flags().Set("alt", "false")
+		_ = keyCmd.Flags().Set("shift", "false")
+		_ = keyCmd.Flags().Set("meta", "false")
 	}()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runKey(keyCmd, []string{"Delete"})
+	_ = runKey(keyCmd, []string{"Delete"})
 
 	w.Close()
 	os.Stdout = old
@@ -4579,7 +4587,7 @@ func TestRunSelect_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -4599,7 +4607,7 @@ func TestRunSelect_Success(t *testing.T) {
 			if req.Cmd != "select" {
 				t.Errorf("expected cmd=select, got %s", req.Cmd)
 			}
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4631,7 +4639,7 @@ func TestRunSelect_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -4671,7 +4679,7 @@ func TestRunSelect_ElementNotFound(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -4714,7 +4722,7 @@ func TestRunSelect_NotASelectElement(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -4791,7 +4799,7 @@ func TestRunScroll_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -4811,7 +4819,7 @@ func TestRunScroll_ElementMode(t *testing.T) {
 			if req.Cmd != "scroll" {
 				t.Errorf("expected cmd=scroll, got %s", req.Cmd)
 			}
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4843,7 +4851,7 @@ func TestRunScroll_ElementMode(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -4860,7 +4868,7 @@ func TestRunScroll_ToMode(t *testing.T) {
 	var capturedParams ipc.ScrollParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4871,14 +4879,14 @@ func TestRunScroll_ToMode(t *testing.T) {
 	})
 	defer restore()
 
-	scrollCmd.Flags().Set("to", "100,500")
-	defer scrollCmd.Flags().Set("to", "")
+	_ = scrollCmd.Flags().Set("to", "100,500")
+	defer func() { _ = scrollCmd.Flags().Set("to", "") }()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runScroll(scrollCmd, []string{})
+	_ = runScroll(scrollCmd, []string{})
 
 	w.Close()
 	os.Stdout = old
@@ -4899,7 +4907,7 @@ func TestRunScroll_ByMode(t *testing.T) {
 	var capturedParams ipc.ScrollParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -4910,14 +4918,14 @@ func TestRunScroll_ByMode(t *testing.T) {
 	})
 	defer restore()
 
-	scrollCmd.Flags().Set("by", "0,-100")
-	defer scrollCmd.Flags().Set("by", "")
+	_ = scrollCmd.Flags().Set("by", "0,-100")
+	defer func() { _ = scrollCmd.Flags().Set("by", "") }()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runScroll(scrollCmd, []string{})
+	_ = runScroll(scrollCmd, []string{})
 
 	w.Close()
 	os.Stdout = old
@@ -4947,8 +4955,8 @@ func TestRunScroll_InvalidToCoords(t *testing.T) {
 	})
 	defer restore()
 
-	scrollCmd.Flags().Set("to", "invalid")
-	defer scrollCmd.Flags().Set("to", "")
+	_ = scrollCmd.Flags().Set("to", "invalid")
+	defer func() { _ = scrollCmd.Flags().Set("to", "") }()
 
 	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
@@ -4964,7 +4972,7 @@ func TestRunScroll_InvalidToCoords(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -5004,7 +5012,7 @@ func TestRunScroll_NoModeSpecified(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -5047,7 +5055,7 @@ func TestRunScroll_ElementNotFound(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -5083,7 +5091,7 @@ func TestRunReady_DaemonNotRunning(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -5103,7 +5111,7 @@ func TestRunReady_Success(t *testing.T) {
 			if req.Cmd != "ready" {
 				t.Errorf("expected cmd=ready, got %s", req.Cmd)
 			}
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -5133,7 +5141,7 @@ func TestRunReady_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var result map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
@@ -5150,7 +5158,7 @@ func TestRunReady_WithCustomTimeout(t *testing.T) {
 	var capturedParams ipc.ReadyParams
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			json.Unmarshal(req.Params, &capturedParams)
+			_ = json.Unmarshal(req.Params, &capturedParams)
 			return ipc.Response{OK: true}, nil
 		},
 	}
@@ -5161,14 +5169,14 @@ func TestRunReady_WithCustomTimeout(t *testing.T) {
 	})
 	defer restore()
 
-	readyCmd.Flags().Set("timeout", "10s")
-	defer readyCmd.Flags().Set("timeout", "30s")
+	_ = readyCmd.Flags().Set("timeout", "10s")
+	defer func() { _ = readyCmd.Flags().Set("timeout", "30s") }()
 
 	old := os.Stdout
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	runReady(readyCmd, []string{})
+	_ = runReady(readyCmd, []string{})
 
 	w.Close()
 	os.Stdout = old
@@ -5207,7 +5215,7 @@ func TestRunReady_Timeout(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {
@@ -5250,7 +5258,7 @@ func TestRunReady_NoActiveSession(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	buf.ReadFrom(r)
+	_, _ = buf.ReadFrom(r)
 
 	var resp map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &resp); err != nil {

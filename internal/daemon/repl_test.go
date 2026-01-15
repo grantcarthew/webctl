@@ -81,7 +81,7 @@ func TestNewREPL(t *testing.T) {
 	}
 
 	// Call cmdExec to verify it works
-	r.cmdExec([]string{"test"})
+	_, _ = r.cmdExec([]string{"test"})
 	if !cmdExecCalled {
 		t.Error("cmdExec was not called")
 	}

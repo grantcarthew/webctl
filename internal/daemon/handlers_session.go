@@ -60,11 +60,11 @@ func (d *Daemon) handleClear(target string) ipc.Response {
 		d.consoleBuf.Clear()
 	case "network":
 		d.networkBuf.Clear()
-		clearBodiesDir()
+		_ = clearBodiesDir()
 	case "", "all":
 		d.consoleBuf.Clear()
 		d.networkBuf.Clear()
-		clearBodiesDir()
+		_ = clearBodiesDir()
 	default:
 		return ipc.ErrorResponse(fmt.Sprintf("unknown clear target: %s", target))
 	}

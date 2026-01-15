@@ -24,6 +24,7 @@ type Server struct {
 	handler    Handler
 	wg         sync.WaitGroup
 	closed     chan struct{}
+	closeOnce  sync.Once
 }
 
 // NewServer creates a new Unix socket server.
@@ -107,7 +108,9 @@ func (s *Server) handleConn(conn net.Conn) {
 		var req Request
 		if err := json.Unmarshal(line, &req); err != nil {
 			resp := ErrorResponse("invalid request format")
-			s.writeResponse(conn, resp)
+			if err := s.writeResponse(conn, resp); err != nil {
+				return
+			}
 			continue
 		}
 
@@ -135,20 +138,16 @@ func (s *Server) SocketPath() string {
 }
 
 // Close stops the server and cleans up resources.
+// Safe to call multiple times concurrently.
 func (s *Server) Close() error {
-	select {
-	case <-s.closed:
-		return nil
-	default:
+	var err error
+	s.closeOnce.Do(func() {
 		close(s.closed)
-	}
-
-	err := s.listener.Close()
-	s.wg.Wait()
-
-	// Clean up socket file
-	os.Remove(s.socketPath)
-
+		err = s.listener.Close()
+		s.wg.Wait()
+		// Clean up socket file
+		os.Remove(s.socketPath)
+	})
 	return err
 }
 

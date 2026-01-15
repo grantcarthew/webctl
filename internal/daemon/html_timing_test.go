@@ -226,7 +226,7 @@ func BenchmarkHTMLExtraction(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go d.Run(ctx)
+	go func() { _ = d.Run(ctx) }()
 
 	// Wait for daemon
 	deadline := time.Now().Add(30 * time.Second)

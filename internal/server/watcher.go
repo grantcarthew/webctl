@@ -21,21 +21,21 @@ type FileEvent struct {
 
 // WatcherConfig holds file watcher configuration.
 type WatcherConfig struct {
-	Paths   []string                 // Paths to watch (files or directories)
-	Ignore  []string                 // Glob patterns to ignore
-	OnEvent func(event FileEvent)   // Callback for file events
-	Debug   bool                     // Enable debug logging
+	Paths   []string              // Paths to watch (files or directories)
+	Ignore  []string              // Glob patterns to ignore
+	OnEvent func(event FileEvent) // Callback for file events
+	Debug   bool                  // Enable debug logging
 }
 
 // Watcher watches files for changes and triggers callbacks.
 type Watcher struct {
-	config     WatcherConfig
-	fsWatcher  *fsnotify.Watcher
-	debouncer  *debouncer
-	mu         sync.Mutex
-	running    bool
-	done       chan struct{}
-	debugLog   func(format string, args ...any)
+	config    WatcherConfig
+	fsWatcher *fsnotify.Watcher
+	debouncer *debouncer
+	mu        sync.Mutex
+	running   bool
+	done      chan struct{}
+	debugLog  func(format string, args ...any)
 }
 
 // NewWatcher creates a new file watcher.

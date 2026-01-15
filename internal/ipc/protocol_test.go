@@ -8,9 +8,11 @@ import (
 func TestSuccessResponse(t *testing.T) {
 	data := StatusData{
 		Running: true,
-		URL:     "https://example.com",
-		Title:   "Example",
 		PID:     1234,
+		ActiveSession: &PageSession{
+			URL:   "https://example.com",
+			Title: "Example",
+		},
 	}
 
 	resp := SuccessResponse(data)
@@ -30,7 +32,7 @@ func TestSuccessResponse(t *testing.T) {
 	if err := json.Unmarshal(resp.Data, &status); err != nil {
 		t.Fatalf("failed to unmarshal data: %v", err)
 	}
-	if status.Running != true || status.URL != "https://example.com" {
+	if status.Running != true || status.ActiveSession.URL != "https://example.com" {
 		t.Error("data mismatch")
 	}
 }
@@ -125,17 +127,17 @@ func TestConsoleEntry_JSON(t *testing.T) {
 
 func TestNetworkEntry_JSON(t *testing.T) {
 	entry := NetworkEntry{
-		RequestID:    "req-123",
-		URL:          "https://api.example.com/data",
-		Method:       "GET",
-		Status:       200,
-		StatusText:   "OK",
-		Type:         "XHR",
-		MimeType:     "application/json",
-		RequestTime:  1000,
-		ResponseTime: 1500,
-		Duration:     0.5,
-		Size:         1024,
+		RequestID:      "req-123",
+		URL:            "https://api.example.com/data",
+		Method:         "GET",
+		Status:         200,
+		StatusText:     "OK",
+		Type:           "XHR",
+		MimeType:       "application/json",
+		RequestTime:    1000,
+		ResponseTime:   1500,
+		Duration:       0.5,
+		Size:           1024,
 		RequestHeaders: map[string]string{"Content-Type": "application/json"},
 	}
 

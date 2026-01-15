@@ -10,22 +10,22 @@ import (
 
 // Target represents a CDP target (page, worker, etc).
 type Target struct {
-	ID          string `json:"id"`
-	Type        string `json:"type"`
-	Title       string `json:"title"`
-	URL         string `json:"url"`
-	Description string `json:"description,omitempty"`
+	ID           string `json:"id"`
+	Type         string `json:"type"`
+	Title        string `json:"title"`
+	URL          string `json:"url"`
+	Description  string `json:"description,omitempty"`
 	WebSocketURL string `json:"webSocketDebuggerUrl"`
 }
 
 // VersionInfo contains browser version information from /json/version.
 type VersionInfo struct {
-	Browser      string `json:"Browser"`
-	ProtocolVer  string `json:"Protocol-Version"`
-	UserAgent    string `json:"User-Agent"`
-	V8Version    string `json:"V8-Version"`
+	Browser       string `json:"Browser"`
+	ProtocolVer   string `json:"Protocol-Version"`
+	UserAgent     string `json:"User-Agent"`
+	V8Version     string `json:"V8-Version"`
 	WebKitVersion string `json:"WebKit-Version"`
-	WebSocketURL string `json:"webSocketDebuggerUrl"`
+	WebSocketURL  string `json:"webSocketDebuggerUrl"`
 }
 
 // FetchTargets retrieves the list of available targets from the CDP endpoint.

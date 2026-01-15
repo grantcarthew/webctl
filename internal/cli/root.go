@@ -18,6 +18,26 @@ import (
 // ErrNoMatches indicates a search found no matches (informational, not an error).
 var ErrNoMatches = errors.New("no matches found")
 
+// printedError wraps an error that has already been printed to stderr.
+// Used to prevent double-printing in main.go.
+type printedError struct {
+	err error
+}
+
+func (e printedError) Error() string {
+	return e.err.Error()
+}
+
+func (e printedError) Unwrap() error {
+	return e.err
+}
+
+// IsPrintedError returns true if the error has already been printed.
+func IsPrintedError(err error) bool {
+	var pe printedError
+	return errors.As(err, &pe)
+}
+
 // ErrNoElements indicates a selector matched no elements (informational, not an error).
 var ErrNoElements = errors.New("no elements found")
 
@@ -284,15 +304,16 @@ func outputSuccess(data any) error {
 	return err
 }
 
-// outputError writes an error response to stderr and returns an error.
+// outputError writes an error response to stderr and returns a printedError.
 // Uses text format by default, JSON if --json flag is set.
+// The returned error is wrapped in printedError to prevent double-printing.
 func outputError(msg string) error {
 	if JSONOutput {
 		resp := map[string]any{
 			"ok":    false,
 			"error": msg,
 		}
-		outputJSON(os.Stderr, resp)
+		_ = outputJSON(os.Stderr, resp)
 	} else {
 		// Apply color to error prefix if colors are enabled
 		if shouldUseColor() {
@@ -302,22 +323,23 @@ func outputError(msg string) error {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
 		}
 	}
-	return fmt.Errorf("%s", msg)
+	return printedError{err: fmt.Errorf("%s", msg)}
 }
 
 // outputNotice writes a notice message to stderr without "Error:" prefix.
 // Used for informational messages that still result in non-zero exit code.
+// The returned error is wrapped in printedError to prevent double-printing.
 func outputNotice(msg string) error {
 	if JSONOutput {
 		resp := map[string]any{
 			"ok":      false,
 			"message": msg,
 		}
-		outputJSON(os.Stderr, resp)
+		_ = outputJSON(os.Stderr, resp)
 	} else {
 		fmt.Fprintln(os.Stderr, msg)
 	}
-	return errors.New(msg)
+	return printedError{err: errors.New(msg)}
 }
 
 // shouldUseColor determines if color output should be used based on flags and environment.

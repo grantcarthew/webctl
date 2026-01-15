@@ -35,8 +35,8 @@ func TestServer_ClientCommunication(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go server.Serve(ctx)
-	defer server.Close()
+	go func() { _ = server.Serve(ctx) }()
+	defer func() { _ = server.Close() }()
 
 	// Give server time to start
 	time.Sleep(50 * time.Millisecond)
@@ -97,8 +97,8 @@ func TestServer_MultipleClients(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go server.Serve(ctx)
-	defer server.Close()
+	go func() { _ = server.Serve(ctx) }()
+	defer func() { _ = server.Close() }()
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -145,7 +145,7 @@ func TestServer_CleanupOnClose(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go server.Serve(ctx)
+	go func() { _ = server.Serve(ctx) }()
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -155,7 +155,7 @@ func TestServer_CleanupOnClose(t *testing.T) {
 	}
 
 	cancel()
-	server.Close()
+	_ = server.Close()
 
 	// Verify socket is cleaned up
 	if _, err := os.Stat(socketPath); !os.IsNotExist(err) {

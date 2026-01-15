@@ -21,7 +21,7 @@ func TestDaemon_parseRequestEvent_usesWallTime(t *testing.T) {
 	// wallTime should be used (Unix epoch in seconds)
 	// timestamp is monotonic and should be ignored
 	wallTime := float64(time.Now().Unix()) // Unix epoch seconds
-	monotonic := 12345.678                  // Some arbitrary monotonic time
+	monotonic := 12345.678                 // Some arbitrary monotonic time
 
 	params := map[string]any{
 		"requestId": "test-123",
@@ -175,7 +175,7 @@ func TestExtensionFromMimeType(t *testing.T) {
 		{"application/json", ""},
 		{"unknown/type", ""},
 		{"image/png; charset=utf-8", ".png"}, // handles parameters
-		{"IMAGE/PNG", ".png"},                 // case insensitive
+		{"IMAGE/PNG", ".png"},                // case insensitive
 	}
 
 	for _, tt := range tests {

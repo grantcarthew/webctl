@@ -13,13 +13,13 @@ import (
 
 // mockConn implements the Conn interface for testing.
 type mockConn struct {
-	mu           sync.Mutex
-	readCh       chan []byte // Channel-based message delivery
-	written      [][]byte
-	readErr      error
-	writeErr     error
-	closed       bool
-	closeCh      chan struct{}
+	mu       sync.Mutex
+	readCh   chan []byte // Channel-based message delivery
+	written  [][]byte
+	readErr  error
+	writeErr error
+	closed   bool
+	closeCh  chan struct{}
 }
 
 func newMockConn(messages ...[]byte) *mockConn {
@@ -74,18 +74,6 @@ func (m *mockConn) Close(code websocket.StatusCode, reason string) error {
 		close(m.closeCh)
 	}
 	return nil
-}
-
-func (m *mockConn) getWritten() [][]byte {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	result := make([][]byte, len(m.written))
-	copy(result, m.written)
-	return result
-}
-
-func (m *mockConn) queueResponse(data []byte) {
-	m.readCh <- data
 }
 
 func TestClient_Send_CorrelatesResponseByID(t *testing.T) {

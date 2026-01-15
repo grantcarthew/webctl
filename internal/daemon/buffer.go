@@ -6,9 +6,9 @@ import "sync"
 // When the buffer is full, new items overwrite the oldest items.
 type RingBuffer[T any] struct {
 	items []T
-	head  int  // next write position
-	count int  // number of items currently in buffer
-	cap   int  // maximum capacity
+	head  int // next write position
+	count int // number of items currently in buffer
+	cap   int // maximum capacity
 	mu    sync.RWMutex
 }
 
@@ -144,8 +144,6 @@ func (b *RingBuffer[T]) RemoveIf(fn func(*T) bool) {
 	// Re-add kept items
 	b.head = 0
 	b.count = len(keep)
-	for i, item := range keep {
-		b.items[i] = item
-	}
+	copy(b.items, keep)
 	b.head = b.count % b.cap
 }
