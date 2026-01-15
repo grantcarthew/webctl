@@ -81,9 +81,41 @@ setup.sh:
 
 - p-055: Bash Modules (completed)
 
+## Current State
+
+Bash modules (p-055) are complete and ready:
+
+- `scripts/bash_modules/colours.sh` - Colour definitions with NO_COLOR support
+- `scripts/bash_modules/terminal.sh` - Log functions (log_success, log_failure, log_heading, etc.)
+- `scripts/bash_modules/verify.sh` - Validation functions (is_json, file_exists, dependency_check, etc.)
+- `scripts/bash_modules/user-input.sh` - User prompt functions
+
+Directory structure to create:
+
+- `scripts/test/` - Does not exist yet
+- `scripts/test/lib/` - Target for test library files
+
+Existing resources:
+
+- `testdata/index.html` - Basic test page
+- `testdata/backend.go` - Test backend server
+- `scripts/interactive/` - 25 manual test scripts (to be replaced by automated tests)
+- webctl binary builds and runs with all commands functional
+
+Key integration points:
+
+- terminal.sh provides log_success/log_failure for assertion output
+- verify.sh provides is_json, file_exists for reuse in assertions
+- webctl status command can verify daemon is running
+- webctl serve provides test server capability
+
+## Decisions
+
+1. **Assertion output verbosity:** Verbose - always show pass/fail messages for each assertion (matches DR-032 output format)
+
 ## Notes
 
 - Test library should use stderr for all logging (via terminal.sh)
-- Assertions should be silent on success by default, verbose on failure
 - Daemon start should verify it's running before returning
 - All temporary files should be cleaned up on exit
+- Test failure behaviour: continue running remaining tests (collect all failures)
