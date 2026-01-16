@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scroll Long Test Page</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; margin: 0; }
+    .marker {
+      padding: 20px;
+      margin: 20px 0;
+      background: #e9ecef;
+      border-left: 4px solid #0066cc;
+    }
+    .marker-top { border-color: #28a745; background: #d4edda; }
+    .marker-middle { border-color: #ffc107; background: #fff3cd; }
+    .marker-bottom { border-color: #dc3545; background: #f8d7da; }
+    .spacer { height: 800px; background: linear-gradient(180deg, #f8f9fa 0%, #e9ecef 100%); }
+    .position-indicator {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      padding: 10px;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      border-radius: 5px;
+      font-family: monospace;
+    }
+    #scroll-target {
+      padding: 30px;
+      background: #007bff;
+      color: white;
+      text-align: center;
+      margin: 20px 0;
+    }
+    .numbered-section {
+      padding: 40px 20px;
+      margin: 20px 0;
+      background: #f0f0f0;
+      text-align: center;
+    }
+    .numbered-section h2 { margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="position-indicator">
+    Scroll Y: <span id="scroll-y">0</span>px
+  </div>
+
+  <h1 id="page-top">Scroll Long Test Page</h1>
+  <p>This page is designed to test scroll functionality with markers at various positions.</p>
+
+  <div class="marker marker-top" id="marker-top">
+    <strong>TOP MARKER</strong>
+    <p>Position: near top of page</p>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="numbered-section" id="section-1">
+    <h2>Section 1</h2>
+    <p>First numbered section</p>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="marker marker-middle" id="marker-middle">
+    <strong>MIDDLE MARKER</strong>
+    <p>Position: middle of page</p>
+  </div>
+
+  <div id="scroll-target">
+    <h2>Scroll Target</h2>
+    <p>Use this element as a scroll target: #scroll-target</p>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="numbered-section" id="section-2">
+    <h2>Section 2</h2>
+    <p>Second numbered section</p>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="numbered-section" id="section-3">
+    <h2>Section 3</h2>
+    <p>Third numbered section</p>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="marker marker-bottom" id="marker-bottom">
+    <strong>BOTTOM MARKER</strong>
+    <p>Position: near bottom of page</p>
+  </div>
+
+  <div class="numbered-section" id="section-4">
+    <h2>Section 4</h2>
+    <p>Fourth and final section</p>
+  </div>
+
+  <div style="height: 200px;"></div>
+
+  <p id="page-bottom"><a href="#page-top">Back to top</a></p>
+
+  <script>
+    // Update scroll position indicator
+    function updateScrollPosition() {
+      document.getElementById('scroll-y').textContent = Math.round(window.scrollY);
+    }
+
+    window.addEventListener('scroll', updateScrollPosition);
+    updateScrollPosition();
+
+    // Add scroll position as data attribute for testing
+    window.addEventListener('scroll', () => {
+      document.body.setAttribute('data-scroll-y', Math.round(window.scrollY));
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CSS Showcase Test Page</title>
+  <style>
+    /* Element selectors */
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background-color: #ffffff;
+      color: #333333;
+    }
+
+    h1 {
+      color: #0066cc;
+      border-bottom: 2px solid #0066cc;
+      padding-bottom: 10px;
+    }
+
+    h2 {
+      color: #444444;
+      margin-top: 30px;
+    }
+
+    p {
+      line-height: 1.6;
+    }
+
+    /* ID selectors */
+    #unique-element {
+      background-color: #e6f3ff;
+      padding: 15px;
+      border: 1px solid #0066cc;
+      border-radius: 5px;
+    }
+
+    #special-box {
+      width: 200px;
+      height: 100px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Class selectors */
+    .highlight {
+      background-color: #ffff00;
+      padding: 2px 5px;
+    }
+
+    .primary-btn {
+      background-color: #0066cc;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .secondary-btn {
+      background-color: #6c757d;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 10px 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    /* Attribute selectors */
+    input[type="text"] {
+      border: 2px solid #ccc;
+      padding: 8px;
+      border-radius: 4px;
+    }
+
+    input[type="text"]:focus {
+      border-color: #0066cc;
+      outline: none;
+    }
+
+    a[href^="https"] {
+      color: #28a745;
+    }
+
+    a[href$=".pdf"] {
+      color: #dc3545;
+    }
+
+    [data-testid] {
+      outline: 1px dashed #999;
+    }
+
+    /* Pseudo-classes */
+    .hover-example:hover {
+      background-color: #f0f0f0;
+      transform: scale(1.02);
+      transition: all 0.2s ease;
+    }
+
+    li:first-child {
+      font-weight: bold;
+    }
+
+    li:last-child {
+      font-style: italic;
+    }
+
+    li:nth-child(odd) {
+      background-color: #f9f9f9;
+    }
+
+    /* Pseudo-elements */
+    .quote::before {
+      content: '"';
+      font-size: 2em;
+      color: #ccc;
+    }
+
+    .quote::after {
+      content: '"';
+      font-size: 2em;
+      color: #ccc;
+    }
+
+    /* Combinators */
+    .parent > .direct-child {
+      color: #9c27b0;
+    }
+
+    .ancestor .descendant {
+      text-decoration: underline;
+    }
+
+    h2 + p {
+      font-size: 1.1em;
+    }
+
+    /* Flexbox example */
+    .flex-container {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .flex-item {
+      flex: 1;
+      min-width: 100px;
+      padding: 20px;
+      background-color: #e9ecef;
+      text-align: center;
+    }
+
+    /* Grid example */
+    .grid-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 20px 0;
+    }
+
+    .grid-item {
+      padding: 20px;
+      background-color: #d4edda;
+      text-align: center;
+      border-radius: 4px;
+    }
+
+    /* Media query */
+    @media (max-width: 600px) {
+      .grid-container {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Animation */
+    .animated {
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+
+    /* Custom properties */
+    :root {
+      --primary-color: #0066cc;
+      --secondary-color: #6c757d;
+      --spacing: 10px;
+    }
+
+    .uses-variables {
+      color: var(--primary-color);
+      margin: var(--spacing);
+    }
+  </style>
+</head>
+<body>
+  <h1>CSS Showcase Test Page</h1>
+  <p>This page demonstrates various CSS selectors and styles for testing.</p>
+
+  <h2>ID Selectors</h2>
+  <div id="unique-element">This element has a unique ID: #unique-element</div>
+  <div id="special-box">Gradient Box</div>
+
+  <h2>Class Selectors</h2>
+  <p>This text contains a <span class="highlight">highlighted</span> word.</p>
+  <button class="primary-btn">Primary Button</button>
+  <button class="secondary-btn">Secondary Button</button>
+
+  <div class="card">
+    <h3>Card Component</h3>
+    <p>This is a card with shadow and border.</p>
+  </div>
+
+  <h2>Attribute Selectors</h2>
+  <p><input type="text" placeholder="Text input with attribute selector"></p>
+  <p><a href="https://example.com">External HTTPS link (green)</a></p>
+  <p><a href="document.pdf">PDF link (red)</a></p>
+  <p><span data-testid="test-span">Element with data-testid attribute</span></p>
+
+  <h2>Pseudo-classes</h2>
+  <div class="hover-example" style="padding: 10px; border: 1px solid #ddd;">
+    Hover over me to see the effect
+  </div>
+  <ul>
+    <li>First item (bold)</li>
+    <li>Second item</li>
+    <li>Third item</li>
+    <li>Last item (italic)</li>
+  </ul>
+
+  <h2>Pseudo-elements</h2>
+  <p class="quote">This is a quoted text with decorative quotes.</p>
+
+  <h2>Combinators</h2>
+  <div class="parent">
+    <div class="direct-child">Direct child (purple)</div>
+    <div>
+      <span class="descendant">Descendant (underlined)</span>
+    </div>
+  </div>
+
+  <h2>Flexbox Layout</h2>
+  <div class="flex-container">
+    <div class="flex-item">Flex 1</div>
+    <div class="flex-item">Flex 2</div>
+    <div class="flex-item">Flex 3</div>
+  </div>
+
+  <h2>Grid Layout</h2>
+  <div class="grid-container">
+    <div class="grid-item">Grid 1</div>
+    <div class="grid-item">Grid 2</div>
+    <div class="grid-item">Grid 3</div>
+    <div class="grid-item">Grid 4</div>
+    <div class="grid-item">Grid 5</div>
+    <div class="grid-item">Grid 6</div>
+  </div>
+
+  <h2>Animation</h2>
+  <div class="animated" style="padding: 20px; background: #ffc107; display: inline-block;">
+    Pulsing animation
+  </div>
+
+  <h2>CSS Variables</h2>
+  <p class="uses-variables">This text uses CSS custom properties (variables).</p>
+</body>
+</html>

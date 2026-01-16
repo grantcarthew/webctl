@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Click Targets Test Page</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    button { margin: 5px; padding: 10px 20px; cursor: pointer; }
+    .click-area {
+      width: 150px;
+      height: 100px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin: 10px;
+      border: 2px solid #333;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .click-area:hover { background-color: #f0f0f0; }
+    .click-area.clicked { background-color: #d4edda; border-color: #28a745; }
+    #click-log { margin-top: 20px; padding: 15px; background: #f0f0f0; min-height: 100px; white-space: pre-wrap; font-family: monospace; }
+    #click-count { font-size: 2em; font-weight: bold; color: #0066cc; }
+    .toggle-btn { background: #e9ecef; }
+    .toggle-btn.active { background: #28a745; color: white; }
+    .double-click-target { background: #fff3cd; }
+    .double-click-target.double-clicked { background: #ffc107; }
+  </style>
+</head>
+<body>
+  <h1>Click Targets Test Page</h1>
+  <p>Click count: <span id="click-count">0</span></p>
+
+  <h2>Basic Buttons</h2>
+  <button id="btn-simple" onclick="handleClick(this, 'simple')">Simple Button</button>
+  <button id="btn-primary" onclick="handleClick(this, 'primary')" style="background: #0066cc; color: white;">Primary Button</button>
+  <button id="btn-danger" onclick="handleClick(this, 'danger')" style="background: #dc3545; color: white;">Danger Button</button>
+
+  <h2>Toggle Buttons</h2>
+  <button id="btn-toggle-1" class="toggle-btn" onclick="toggleButton(this)">Toggle 1</button>
+  <button id="btn-toggle-2" class="toggle-btn" onclick="toggleButton(this)">Toggle 2</button>
+  <button id="btn-toggle-3" class="toggle-btn" onclick="toggleButton(this)">Toggle 3</button>
+
+  <h2>Click Areas (Divs)</h2>
+  <div class="click-area" id="area-1" onclick="handleAreaClick(this)">Area 1</div>
+  <div class="click-area" id="area-2" onclick="handleAreaClick(this)">Area 2</div>
+  <div class="click-area" id="area-3" onclick="handleAreaClick(this)">Area 3</div>
+
+  <h2>Double Click Target</h2>
+  <div class="click-area double-click-target" id="double-click-area" ondblclick="handleDoubleClick(this)">
+    Double-click me
+  </div>
+
+  <h2>Counter Buttons</h2>
+  <button id="btn-increment" onclick="updateCounter(1)">Increment (+1)</button>
+  <button id="btn-decrement" onclick="updateCounter(-1)">Decrement (-1)</button>
+  <button id="btn-reset" onclick="resetCounter()">Reset Counter</button>
+
+  <h2>Nested Click Target</h2>
+  <div id="outer-target" onclick="logClick('outer')" style="padding: 30px; background: #e9ecef; display: inline-block;">
+    <div id="inner-target" onclick="logClick('inner'); event.stopPropagation();" style="padding: 20px; background: #dee2e6;">
+      Inner (stops propagation)
+    </div>
+  </div>
+
+  <h2>Delayed Feedback</h2>
+  <button id="btn-delayed" onclick="delayedFeedback(this)">Click for Delayed Feedback</button>
+  <span id="delayed-status"></span>
+
+  <h2>Click Log</h2>
+  <button onclick="clearLog()">Clear Log</button>
+  <div id="click-log">Click events will appear here...</div>
+
+  <script>
+    let clickCount = 0;
+
+    function handleClick(element, type) {
+      clickCount++;
+      updateClickCount();
+      element.setAttribute('data-clicked', 'true');
+      element.setAttribute('data-click-type', type);
+      logClick(`Button clicked: ${type}`);
+    }
+
+    function toggleButton(element) {
+      clickCount++;
+      updateClickCount();
+      element.classList.toggle('active');
+      const isActive = element.classList.contains('active');
+      element.setAttribute('data-active', isActive);
+      logClick(`Toggle: ${element.id} is now ${isActive ? 'active' : 'inactive'}`);
+    }
+
+    function handleAreaClick(element) {
+      clickCount++;
+      updateClickCount();
+      element.classList.add('clicked');
+      element.setAttribute('data-clicked', 'true');
+      logClick(`Area clicked: ${element.id}`);
+    }
+
+    function handleDoubleClick(element) {
+      clickCount += 2;
+      updateClickCount();
+      element.classList.add('double-clicked');
+      element.setAttribute('data-double-clicked', 'true');
+      element.textContent = 'Double-clicked!';
+      logClick('Double-click detected!');
+    }
+
+    function updateCounter(delta) {
+      clickCount++;
+      updateClickCount();
+      logClick(`Counter updated by ${delta > 0 ? '+' : ''}${delta}`);
+    }
+
+    function resetCounter() {
+      clickCount = 0;
+      updateClickCount();
+      logClick('Counter reset to 0');
+    }
+
+    function updateClickCount() {
+      document.getElementById('click-count').textContent = clickCount;
+      document.getElementById('click-count').setAttribute('data-count', clickCount);
+    }
+
+    function logClick(message) {
+      const log = document.getElementById('click-log');
+      const timestamp = new Date().toISOString().substr(11, 12);
+      log.textContent = `[${timestamp}] ${message}\n` + log.textContent;
+    }
+
+    function clearLog() {
+      document.getElementById('click-log').textContent = '';
+      logClick('Log cleared');
+    }
+
+    function delayedFeedback(element) {
+      clickCount++;
+      updateClickCount();
+      element.disabled = true;
+      element.textContent = 'Processing...';
+      document.getElementById('delayed-status').textContent = 'waiting...';
+
+      setTimeout(() => {
+        element.disabled = false;
+        element.textContent = 'Click for Delayed Feedback';
+        element.setAttribute('data-completed', 'true');
+        document.getElementById('delayed-status').textContent = 'Done!';
+        logClick('Delayed feedback completed');
+      }, 1000);
+    }
+  </script>
+</body>
+</html>

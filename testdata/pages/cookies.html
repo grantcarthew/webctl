@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cookies Test Page</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .button-group { margin: 10px 0; }
+    button { margin-right: 10px; padding: 8px 16px; }
+    #cookie-display { margin-top: 20px; padding: 15px; background: #f0f0f0; white-space: pre-wrap; }
+    .form-group { margin: 10px 0; }
+    input[type="text"] { padding: 5px; width: 200px; }
+  </style>
+</head>
+<body>
+  <h1>Cookies Test Page</h1>
+
+  <div class="form-group">
+    <label for="cookie-name">Cookie Name:</label>
+    <input type="text" id="cookie-name" value="test-cookie">
+  </div>
+
+  <div class="form-group">
+    <label for="cookie-value">Cookie Value:</label>
+    <input type="text" id="cookie-value" value="test-value">
+  </div>
+
+  <div class="button-group">
+    <button id="set-cookie" onclick="setCookie()">Set Cookie</button>
+    <button id="get-cookies" onclick="getCookies()">Get All Cookies</button>
+    <button id="delete-cookie" onclick="deleteCookie()">Delete Cookie</button>
+    <button id="clear-all" onclick="clearAllCookies()">Clear All Cookies</button>
+  </div>
+
+  <div class="button-group">
+    <button id="set-session" onclick="setSessionCookie()">Set Session Cookie</button>
+    <button id="set-persistent" onclick="setPersistentCookie()">Set Persistent Cookie</button>
+    <button id="set-multiple" onclick="setMultipleCookies()">Set Multiple Cookies</button>
+  </div>
+
+  <div id="cookie-display">Cookie output will appear here</div>
+
+  <script>
+    function setCookie() {
+      const name = document.getElementById('cookie-name').value;
+      const value = document.getElementById('cookie-value').value;
+      document.cookie = `${name}=${value}; path=/`;
+      updateDisplay(`Cookie set: ${name}=${value}`);
+    }
+
+    function getCookies() {
+      const cookies = document.cookie || '(no cookies)';
+      updateDisplay(`All cookies:\n${cookies}`);
+    }
+
+    function deleteCookie() {
+      const name = document.getElementById('cookie-name').value;
+      document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      updateDisplay(`Cookie deleted: ${name}`);
+    }
+
+    function clearAllCookies() {
+      const cookies = document.cookie.split(';');
+      for (let cookie of cookies) {
+        const name = cookie.split('=')[0].trim();
+        document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      }
+      updateDisplay('All cookies cleared');
+    }
+
+    function setSessionCookie() {
+      document.cookie = 'session-cookie=session-value; path=/';
+      updateDisplay('Session cookie set: session-cookie=session-value');
+    }
+
+    function setPersistentCookie() {
+      const expires = new Date(Date.now() + 86400000).toUTCString();
+      document.cookie = `persistent-cookie=persistent-value; path=/; expires=${expires}`;
+      updateDisplay(`Persistent cookie set: persistent-cookie=persistent-value (expires: ${expires})`);
+    }
+
+    function setMultipleCookies() {
+      document.cookie = 'cookie-one=value1; path=/';
+      document.cookie = 'cookie-two=value2; path=/';
+      document.cookie = 'cookie-three=value3; path=/';
+      updateDisplay('Multiple cookies set: cookie-one, cookie-two, cookie-three');
+    }
+
+    function updateDisplay(message) {
+      document.getElementById('cookie-display').textContent = message;
+    }
+
+    // Set initial test cookie on load
+    document.addEventListener('DOMContentLoaded', function() {
+      document.cookie = 'initial-cookie=loaded; path=/';
+      updateDisplay('Page loaded. Initial cookie set: initial-cookie=loaded');
+    });
+  </script>
+</body>
+</html>

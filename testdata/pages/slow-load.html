@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Slow Load Test Page</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    #loading { color: #666; }
+    #delayed-content { display: none; padding: 20px; background: #d4edda; border: 1px solid #28a745; border-radius: 5px; margin-top: 20px; }
+    #delayed-content.visible { display: block; }
+    .timer { font-family: monospace; font-size: 1.2em; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>Slow Load Test Page</h1>
+  <p>This page delays content rendering for testing <code>webctl ready</code> command.</p>
+  <p>Use query parameter <code>?delay=2000</code> to set delay in milliseconds (default: 1000ms).</p>
+
+  <div id="loading">
+    <p>Loading content...</p>
+    <p class="timer">Elapsed: <span id="elapsed">0</span>ms</p>
+  </div>
+
+  <div id="delayed-content">
+    <h2 id="content-loaded">Content Loaded Successfully</h2>
+    <p id="load-message">This content appeared after the configured delay.</p>
+    <p>Delay was: <span id="delay-value"></span>ms</p>
+  </div>
+
+  <div id="extra-delayed" style="display: none; margin-top: 20px; padding: 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 5px;">
+    <h3 id="extra-content">Extra Delayed Content</h3>
+    <p>This content appears 500ms after the main content.</p>
+  </div>
+
+  <script>
+    // Parse delay from query string, default to 1000ms
+    const urlParams = new URLSearchParams(window.location.search);
+    const delay = parseInt(urlParams.get('delay')) || 1000;
+
+    // Update elapsed time display
+    const startTime = Date.now();
+    const elapsedEl = document.getElementById('elapsed');
+    const timerInterval = setInterval(() => {
+      elapsedEl.textContent = Date.now() - startTime;
+    }, 100);
+
+    // Show delayed content after specified delay
+    setTimeout(() => {
+      clearInterval(timerInterval);
+      elapsedEl.textContent = delay;
+
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('delayed-content').classList.add('visible');
+      document.getElementById('delay-value').textContent = delay;
+
+      // Create a new element for webctl ready selector testing
+      const marker = document.createElement('div');
+      marker.id = 'ready-marker';
+      marker.textContent = 'Ready';
+      marker.setAttribute('data-loaded', 'true');
+      document.body.appendChild(marker);
+    }, delay);
+
+    // Show extra content 500ms after main content
+    setTimeout(() => {
+      document.getElementById('extra-delayed').style.display = 'block';
+    }, delay + 500);
+  </script>
+</body>
+</html>
