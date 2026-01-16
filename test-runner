@@ -1,0 +1,594 @@
+#!/usr/bin/env bash
+
+# test-runner
+# -----------
+# Unified test runner for webctl project.
+# Provides interface for Go tests, bash tests, and quality checks.
+
+set -e
+set -o pipefail
+
+# Determine script location and project root
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" || exit 1; pwd)"
+PROJECT_ROOT="${SCRIPT_DIR}"
+BASH_MODULES_DIR="${PROJECT_ROOT}/scripts/bash_modules"
+
+# Import terminal output functions
+if [[ -f "${BASH_MODULES_DIR}/terminal.sh" ]]; then
+  source "${BASH_MODULES_DIR}/terminal.sh"
+else
+  # Fallback if modules not available
+  log_heading() { echo "=== $1 ==="; }
+  log_success() { echo "[OK] $1"; }
+  log_failure() { echo "[FAIL] $1"; }
+  log_message() { echo "$1"; }
+  log_warning() { echo "[WARN] $1"; }
+fi
+
+# Configuration
+GO_TEST_PATH="./internal/..."
+TEST_DIR="${PROJECT_ROOT}/scripts/test"
+INTERACTIVE_DIR="${PROJECT_ROOT}/scripts/interactive"
+
+# Skip prompts flag
+SKIP_PROMPTS=false
+
+# -----------------------------------------------------------------------------
+# Help and Usage
+# -----------------------------------------------------------------------------
+
+show_help() {
+  cat <<'EOF'
+test-runner - Unified test runner for webctl
+
+Usage: ./test-runner [command] [subcommand] [options]
+
+Commands:
+  go [type]           Run Go tests
+    unit              Short tests only (fast)
+    integration       Full integration tests
+    race              Tests with race detector
+    cover             Tests with coverage report
+    bench             Run benchmarks
+
+  cli [name]          Run CLI test suite
+  repl [name]         Run REPL test suite
+  workflow [name]     Run workflow test suite
+
+  interactive [name]  Show interactive test menu (or run specific test)
+
+  lint                Run static analysis (go vet, staticcheck)
+  fmt                 Check code formatting
+
+  ci                  Run CI suite (go + lint + cli)
+  quick               Fast feedback (go unit + lint)
+
+Options:
+  -y                  Skip confirmation prompts
+  --list              List available test suites
+  --help              Show this help message
+
+Examples:
+  ./test-runner                     Show this help
+  ./test-runner go                  Run all Go tests
+  ./test-runner go unit             Run unit tests only
+  ./test-runner go cover            Run with coverage
+  ./test-runner cli                 Run all CLI tests
+  ./test-runner cli navigation      Run specific CLI test
+  ./test-runner interactive         Show interactive test menu
+  ./test-runner lint                Run linters
+  ./test-runner ci                  Run full CI suite
+  ./test-runner quick               Fast feedback loop
+  ./test-runner --list              List available suites
+EOF
+}
+
+show_list() {
+  log_heading "Available Test Suites"
+  echo ""
+
+  echo "Go Tests:"
+  echo "  go              All Go tests"
+  echo "  go unit         Short tests (-short flag)"
+  echo "  go integration  Integration tests"
+  echo "  go race         Race detection (-race flag)"
+  echo "  go cover        Coverage report"
+  echo "  go bench        Benchmarks"
+  echo ""
+
+  echo "Bash Test Suites:"
+  list_test_suite "cli" "${TEST_DIR}/cli"
+  list_test_suite "repl" "${TEST_DIR}/repl"
+  list_test_suite "workflow" "${TEST_DIR}/workflow"
+  echo ""
+
+  echo "Interactive Tests:"
+  list_interactive_tests
+  echo ""
+
+  echo "Quality Checks:"
+  echo "  lint            go vet + staticcheck"
+  echo "  fmt             gofmt check"
+  echo ""
+
+  echo "Shortcuts:"
+  echo "  ci              Full CI suite (go + lint + cli)"
+  echo "  quick           Fast feedback (go unit + lint)"
+}
+
+list_test_suite() {
+  local name="$1"
+  local dir="$2"
+
+  if [[ ! -d "${dir}" ]]; then
+    echo "  ${name}            (no tests yet)"
+    return
+  fi
+
+  local tests
+  tests=$(find "${dir}" -name 'test-*.sh' -type f 2>/dev/null | sort)
+
+  if [[ -z "${tests}" ]]; then
+    echo "  ${name}            (no tests yet)"
+    return
+  fi
+
+  echo "  ${name}            Available tests:"
+  while IFS= read -r test_file; do
+    local test_name
+    test_name=$(basename "${test_file}" .sh | sed 's/^test-//')
+    echo "    - ${test_name}"
+  done <<< "${tests}"
+}
+
+list_interactive_tests() {
+  if [[ ! -d "${INTERACTIVE_DIR}" ]]; then
+    echo "  (no interactive tests)"
+    return
+  fi
+
+  local tests
+  tests=$(find "${INTERACTIVE_DIR}" -name 'test-*.sh' -type f 2>/dev/null | sort)
+
+  if [[ -z "${tests}" ]]; then
+    echo "  (no interactive tests)"
+    return
+  fi
+
+  local count=0
+  while IFS= read -r test_file; do
+    local test_name
+    test_name=$(basename "${test_file}" .sh | sed 's/^test-//')
+    echo "  ${test_name}"
+    ((count++))
+  done <<< "${tests}"
+  echo "  (${count} tests available)"
+}
+
+# -----------------------------------------------------------------------------
+# Go Test Commands
+# -----------------------------------------------------------------------------
+
+run_go_tests() {
+  local subcommand="${1:-all}"
+
+  case "${subcommand}" in
+    all)
+      log_heading "Running All Go Tests"
+      run_go_unit
+      run_go_race
+      run_go_integration
+      ;;
+    unit)
+      run_go_unit
+      ;;
+    integration)
+      run_go_integration
+      ;;
+    race)
+      run_go_race
+      ;;
+    cover)
+      run_go_cover
+      ;;
+    bench)
+      run_go_bench
+      ;;
+    *)
+      log_failure "Unknown go subcommand: ${subcommand}"
+      echo "Valid subcommands: unit, integration, race, cover, bench"
+      exit 1
+      ;;
+  esac
+}
+
+run_go_unit() {
+  log_heading "Go Unit Tests"
+  log_message "Running: go test -short ${GO_TEST_PATH}"
+  echo ""
+
+  if go test -short ${GO_TEST_PATH}; then
+    log_success "Unit tests passed"
+  else
+    log_failure "Unit tests failed"
+    exit 1
+  fi
+}
+
+run_go_integration() {
+  log_heading "Go Integration Tests"
+  log_message "Running: go test -run Integration ${GO_TEST_PATH}"
+  echo ""
+
+  if go test -run Integration ${GO_TEST_PATH}; then
+    log_success "Integration tests passed"
+  else
+    log_failure "Integration tests failed"
+    exit 1
+  fi
+}
+
+run_go_race() {
+  log_heading "Go Race Detection"
+  log_message "Running: go test -short -race ${GO_TEST_PATH}"
+  echo ""
+
+  if go test -short -race ${GO_TEST_PATH}; then
+    log_success "No race conditions detected"
+  else
+    log_failure "Race conditions detected"
+    exit 1
+  fi
+}
+
+run_go_cover() {
+  log_heading "Go Coverage"
+  log_message "Running: go test -coverprofile=coverage.out ${GO_TEST_PATH}"
+  echo ""
+
+  if go test -coverprofile=coverage.out ${GO_TEST_PATH}; then
+    log_success "Tests passed"
+    echo ""
+    go tool cover -func=coverage.out | grep "total:" || true
+    log_message "Full report: go tool cover -html=coverage.out"
+  else
+    log_failure "Tests failed"
+    exit 1
+  fi
+}
+
+run_go_bench() {
+  log_heading "Go Benchmarks"
+  log_message "Running: go test -bench=. -benchmem ${GO_TEST_PATH}"
+  echo ""
+
+  if go test -bench=. -benchmem -run='^$' ${GO_TEST_PATH}; then
+    log_success "Benchmarks completed"
+  else
+    log_failure "Benchmarks failed"
+    exit 1
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# Bash Test Suite Commands
+# -----------------------------------------------------------------------------
+
+run_bash_suite() {
+  local suite_name="$1"
+  local specific_test="$2"
+  local suite_dir="${TEST_DIR}/${suite_name}"
+
+  if [[ ! -d "${suite_dir}" ]]; then
+    log_failure "Test suite directory not found: ${suite_dir}"
+    exit 1
+  fi
+
+  if [[ -n "${specific_test}" ]]; then
+    run_specific_bash_test "${suite_dir}" "${specific_test}"
+  else
+    run_all_bash_tests "${suite_dir}" "${suite_name}"
+  fi
+}
+
+run_specific_bash_test() {
+  local suite_dir="$1"
+  local test_name="$2"
+  local test_file="${suite_dir}/test-${test_name}.sh"
+
+  if [[ ! -f "${test_file}" ]]; then
+    log_failure "Test not found: ${test_file}"
+    echo "Available tests:"
+    find "${suite_dir}" -name 'test-*.sh' -type f 2>/dev/null | while read -r f; do
+      echo "  - $(basename "${f}" .sh | sed 's/^test-//')"
+    done
+    exit 1
+  fi
+
+  log_heading "Running: ${test_name}"
+  if bash "${test_file}"; then
+    log_success "Test passed: ${test_name}"
+  else
+    log_failure "Test failed: ${test_name}"
+    exit 1
+  fi
+}
+
+run_all_bash_tests() {
+  local suite_dir="$1"
+  local suite_name="$2"
+
+  local tests
+  tests=$(find "${suite_dir}" -name 'test-*.sh' -type f 2>/dev/null | sort)
+
+  if [[ -z "${tests}" ]]; then
+    log_warning "No tests found in ${suite_name} suite"
+    return 0
+  fi
+
+  log_heading "Running ${suite_name} Test Suite"
+
+  local passed=0
+  local failed=0
+
+  while IFS= read -r test_file; do
+    local test_name
+    test_name=$(basename "${test_file}" .sh | sed 's/^test-//')
+
+    log_message "Running: ${test_name}..."
+    if bash "${test_file}"; then
+      log_success "${test_name}"
+      ((passed++))
+    else
+      log_failure "${test_name}"
+      ((failed++))
+    fi
+  done <<< "${tests}"
+
+  echo ""
+  log_heading "${suite_name} Summary"
+  log_message "Passed: ${passed}"
+  log_message "Failed: ${failed}"
+
+  if [[ ${failed} -gt 0 ]]; then
+    exit 1
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# Interactive Test Menu
+# -----------------------------------------------------------------------------
+
+run_interactive() {
+  local specific_test="$1"
+
+  if [[ -n "${specific_test}" ]]; then
+    run_specific_interactive "${specific_test}"
+    return
+  fi
+
+  if [[ ! -d "${INTERACTIVE_DIR}" ]]; then
+    log_failure "Interactive test directory not found: ${INTERACTIVE_DIR}"
+    exit 1
+  fi
+
+  local tests
+  mapfile -t tests < <(find "${INTERACTIVE_DIR}" -name 'test-*.sh' -type f 2>/dev/null | sort)
+
+  if [[ ${#tests[@]} -eq 0 ]]; then
+    log_warning "No interactive tests found"
+    return 0
+  fi
+
+  log_heading "Interactive Test Menu"
+  echo ""
+  echo "Select a test to run:"
+  echo ""
+
+  local i=1
+  for test_file in "${tests[@]}"; do
+    local test_name
+    test_name=$(basename "${test_file}" .sh | sed 's/^test-//')
+    printf "  %2d) %s\n" "${i}" "${test_name}"
+    ((i++))
+  done
+
+  echo ""
+  printf "   0) Exit\n"
+  echo ""
+
+  read -r -p "Enter selection: " selection
+
+  if [[ "${selection}" == "0" ]] || [[ -z "${selection}" ]]; then
+    log_message "Exiting"
+    return 0
+  fi
+
+  if ! [[ "${selection}" =~ ^[0-9]+$ ]] || [[ "${selection}" -lt 1 ]] || [[ "${selection}" -gt ${#tests[@]} ]]; then
+    log_failure "Invalid selection: ${selection}"
+    exit 1
+  fi
+
+  local selected_test="${tests[$((selection - 1))]}"
+  log_heading "Running: $(basename "${selected_test}" .sh)"
+  bash "${selected_test}"
+}
+
+run_specific_interactive() {
+  local test_name="$1"
+  local test_file="${INTERACTIVE_DIR}/test-${test_name}.sh"
+
+  if [[ ! -f "${test_file}" ]]; then
+    log_failure "Interactive test not found: ${test_file}"
+    exit 1
+  fi
+
+  log_heading "Running: ${test_name}"
+  bash "${test_file}"
+}
+
+# -----------------------------------------------------------------------------
+# Quality Check Commands
+# -----------------------------------------------------------------------------
+
+run_lint() {
+  log_heading "Running Linters"
+
+  local failed=false
+
+  log_message "Running: go vet ${GO_TEST_PATH}"
+  if go vet ${GO_TEST_PATH}; then
+    log_success "go vet passed"
+  else
+    log_failure "go vet failed"
+    failed=true
+  fi
+
+  if command -v staticcheck >/dev/null 2>&1; then
+    echo ""
+    log_message "Running: staticcheck ${GO_TEST_PATH}"
+    if staticcheck ${GO_TEST_PATH}; then
+      log_success "staticcheck passed"
+    else
+      log_failure "staticcheck failed"
+      failed=true
+    fi
+  else
+    log_warning "staticcheck not installed, skipping"
+  fi
+
+  if [[ "${failed}" == "true" ]]; then
+    exit 1
+  fi
+}
+
+run_fmt() {
+  log_heading "Checking Formatting"
+
+  local unformatted
+  unformatted=$(gofmt -l . 2>/dev/null | grep -v vendor || true)
+
+  if [[ -z "${unformatted}" ]]; then
+    log_success "All files formatted correctly"
+  else
+    log_failure "Files need formatting:"
+    echo "${unformatted}"
+    echo ""
+    log_message "Run 'gofmt -w .' to fix"
+    exit 1
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# Shortcut Commands
+# -----------------------------------------------------------------------------
+
+run_ci() {
+  log_heading "CI Test Suite"
+  echo ""
+
+  run_go_tests "all"
+  echo ""
+  run_lint
+  echo ""
+
+  # Run CLI tests if they exist
+  if [[ -d "${TEST_DIR}/cli" ]] && find "${TEST_DIR}/cli" -name 'test-*.sh' -type f 2>/dev/null | grep -q .; then
+    run_bash_suite "cli"
+  fi
+
+  echo ""
+  log_success "CI suite completed successfully"
+}
+
+run_quick() {
+  log_heading "Quick Feedback"
+  echo ""
+
+  run_go_unit
+  echo ""
+  run_lint
+
+  echo ""
+  log_success "Quick checks passed"
+}
+
+# -----------------------------------------------------------------------------
+# Main
+# -----------------------------------------------------------------------------
+
+main() {
+  cd "${PROJECT_ROOT}"
+
+  # Parse global options
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -y)
+        SKIP_PROMPTS=true
+        shift
+        ;;
+      --list)
+        show_list
+        exit 0
+        ;;
+      --help|-h)
+        show_help
+        exit 0
+        ;;
+      -*)
+        log_failure "Unknown option: $1"
+        echo "Use --help for usage information"
+        exit 1
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
+  # No command - show help
+  if [[ $# -eq 0 ]]; then
+    show_help
+    exit 0
+  fi
+
+  local command="$1"
+  shift
+
+  case "${command}" in
+    go)
+      run_go_tests "$@"
+      ;;
+    cli)
+      run_bash_suite "cli" "$@"
+      ;;
+    repl)
+      run_bash_suite "repl" "$@"
+      ;;
+    workflow)
+      run_bash_suite "workflow" "$@"
+      ;;
+    interactive)
+      run_interactive "$@"
+      ;;
+    lint)
+      run_lint
+      ;;
+    fmt)
+      run_fmt
+      ;;
+    ci)
+      run_ci
+      ;;
+    quick)
+      run_quick
+      ;;
+    *)
+      log_failure "Unknown command: ${command}"
+      echo "Use --help for usage information"
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

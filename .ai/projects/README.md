@@ -65,7 +65,9 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-053 | CSS Element Identification | Proposed | | |
 | p-054 | Force Stop and Cleanup | Completed | 2026-01-15 | 2026-01-15 |
 | p-055 | Test Framework Bash Modules | Completed | 2026-01-15 | 2026-01-15 |
-| p-056 | Test Library | Pending | | |
+| p-056 | Test Library | Completed | 2026-01-16 | 2026-01-16 |
+| p-057 | Test Runner | Completed | 2026-01-16 | 2026-01-16 |
+| p-058 | Test Pages | Pending | | |
 
 Note: Completed projects are in `completed/`
 
