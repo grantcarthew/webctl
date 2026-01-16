@@ -104,10 +104,11 @@ function start_daemon() {
   log_message "Starting daemon${headless_flag:+ (headless)}..."
 
   # Start daemon in background
+  # Note: REPL is automatically skipped when stdin is not a TTY (background process)
   if [[ -n "${headless_flag}" ]]; then
-    "${WEBCTL_BINARY}" start --headless --no-repl &
+    "${WEBCTL_BINARY}" start --headless &
   else
-    "${WEBCTL_BINARY}" start --no-repl &
+    "${WEBCTL_BINARY}" start &
   fi
 
   # Wait for daemon to be ready (max 10 seconds)

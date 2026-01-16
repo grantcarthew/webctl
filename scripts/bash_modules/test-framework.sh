@@ -88,10 +88,18 @@ function run_test() {
   start_time=$(date +%s.%N 2>/dev/null || date +%s)
 
   # Run command and capture outputs
+  # Save errexit state and disable it for command execution
+  local errexit_was_set=false
+  if [[ $- == *e* ]]; then
+    errexit_was_set=true
+  fi
   set +e
   "${cmd[@]}" >"${stdout_file}" 2>"${stderr_file}"
   TEST_EXIT_CODE=$?
-  set -e
+  # Restore errexit state
+  if [[ "${errexit_was_set}" == "true" ]]; then
+    set -e
+  fi
 
   # Capture end time and calculate duration
   end_time=$(date +%s.%N 2>/dev/null || date +%s)

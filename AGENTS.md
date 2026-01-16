@@ -22,7 +22,7 @@ When completing a project and starting the next:
 
 Projects are stored in `.ai/projects/`.
 
-- Active Project: .ai/projects/p-059-cli-start-stop-tests.md
+- Active Project: .ai/projects/p-060-cli-navigation-tests.md
 - Design Record: .ai/design/design-records/dr-032-test-framework-architecture.md
 
 ## Quick Reference
