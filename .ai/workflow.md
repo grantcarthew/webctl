@@ -91,7 +91,10 @@ If all success criteria are met:
 
 - Move project to `.ai/projects/completed/`
 - Update `.ai/projects/README.md` with completion date
+- Create next project file from design record or roadmap (if it doesn't exist)
 - Update `AGENTS.md` to set next project as active
+
+Do not wait for user confirmation to create the next project - this is part of completing the current one.
 
 ### 9. Repeat
 

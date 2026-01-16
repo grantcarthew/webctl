@@ -19,9 +19,8 @@ Manual testing of webctl CLI commands is time-consuming and error-prone. The cur
 Create a Bash-based automated test framework with:
 
 1. A root-level `test-runner` controller script
-2. Shared bash modules in `scripts/bash_modules/`
-3. Test-specific library in `scripts/test/lib/`
-4. Test suites organised by category (cli/, repl/, workflow/)
+2. Shared bash modules in `scripts/bash_modules/` (including test library)
+3. Test suites organised by category (cli/, repl/, workflow/)
 5. Test pages in `testdata/pages/`
 6. Verbose output showing commands and results
 7. Support for Go test integration
@@ -63,18 +62,16 @@ webctl/
 ├── test-runner                      # Root controller script
 │
 ├── scripts/
-│   ├── bash_modules/                # Shared modules (from ~/bin/scripts/)
+│   ├── bash_modules/                # Shared modules (including test library)
 │   │   ├── colours.sh               # Color definitions
 │   │   ├── terminal.sh              # Log functions
 │   │   ├── verify.sh                # Validation functions
-│   │   └── user-input.sh            # User prompts
+│   │   ├── user-input.sh            # User prompts
+│   │   ├── test-framework.sh        # Test counters, run_test wrapper
+│   │   ├── assertions.sh            # assert_*, test-specific checks
+│   │   └── setup.sh                 # Build, daemon, server management
 │   │
 │   ├── test/
-│   │   ├── lib/
-│   │   │   ├── test-framework.sh    # Test counters, run_test wrapper
-│   │   │   ├── assertions.sh        # assert_*, test-specific checks
-│   │   │   └── setup.sh             # Build, daemon, server management
-│   │   │
 │   │   ├── cli/                     # CLI command tests
 │   │   │   ├── test-start-stop.sh
 │   │   │   ├── test-navigation.sh
@@ -281,7 +278,7 @@ The framework will be implemented across multiple focused projects:
 | Project | Scope | Deliverables |
 |---------|-------|--------------|
 | p-055 | Bash Modules | Copy bash_modules/ to scripts/, adapt for NO_COLOR |
-| p-056 | Test Library | lib/test-framework.sh, assertions.sh, setup.sh |
+| p-056 | Test Library | bash_modules/test-framework.sh, assertions.sh, setup.sh |
 | p-057 | Test Runner | test-runner script with --help, --list, go/cli/repl dispatch |
 | p-058 | Test Pages | testdata/pages/*.html (forms, navigation, cookies, etc.) |
 | p-059 | CLI Start/Stop Tests | scripts/test/cli/test-start-stop.sh |
