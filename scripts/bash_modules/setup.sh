@@ -211,7 +211,7 @@ function start_test_server() {
   log_message "Starting test server on port ${port}..."
 
   # Start serve in background
-  "${WEBCTL_BINARY}" serve "${TESTDATA_DIR}" --port "${port}" --no-open &
+  "${WEBCTL_BINARY}" serve "${TESTDATA_DIR}" --port "${port}" &
   TEST_SERVER_PID=$!
 
   # Wait for server to be ready (max 5 seconds)

@@ -1,7 +1,8 @@
 # p-060: CLI Navigation Tests
 
-- Status: Pending
-- Started:
+- Status: Done
+- Started: 2026-01-16
+- Completed: 2026-01-16
 - Design Record: .ai/design/design-records/dr-032-test-framework-architecture.md
 
 ## Overview
@@ -34,12 +35,12 @@ Out of Scope:
 
 ## Success Criteria
 
-- [ ] scripts/test/cli/test-navigation.sh created
-- [ ] Tests pass with ./test-runner cli navigation
-- [ ] navigate command tests: basic URL, file URL, invalid URL
-- [ ] reload command tests: basic reload
-- [ ] back command tests: with history, without history
-- [ ] forward command tests: with history, without history
+- [x] scripts/test/cli/test-navigation.sh created
+- [x] Tests pass with ./test-runner cli navigation
+- [x] navigate command tests: basic URL, file URL, invalid URL
+- [x] reload command tests: basic reload
+- [x] back command tests: with history, without history
+- [x] forward command tests: with history, without history
 
 ## Deliverables
 
@@ -82,14 +83,14 @@ test_summary
 
 Key test scenarios:
 
-1. Navigate to test server URL - expect "OK" and exit 0
-2. Navigate to file:// URL - expect "OK" and exit 0
-3. Navigate to invalid URL - expect error and exit 1
-4. Reload current page - expect "OK" and exit 0
-5. Back after navigation - expect "OK" and exit 0
-6. Back with no history - expect error and exit 1
-7. Forward after back - expect "OK" and exit 0
-8. Forward with no forward history - expect error and exit 1
+1. Navigate to test server URL - expect "OK" in stdout, exit 0
+2. Navigate to file:// URL - expect "OK" in stdout, exit 0
+3. Navigate to invalid URL - expect error in stdout/stderr, exit 1
+4. Reload current page - expect "OK" in stdout, exit 0
+5. Back after navigation - expect "OK" in stdout, exit 0
+6. Back with no history - expect "No previous page" in stderr, exit 1
+7. Forward after back - expect "OK" in stdout, exit 0
+8. Forward with no forward history - expect "No next page" in stderr, exit 1
 
 ## Current State
 
@@ -100,35 +101,52 @@ Key test scenarios:
   - test-framework.sh - run_test wrapper, TEST_STDOUT/STDERR/EXIT_CODE vars, test_summary
   - assertions.sh - assert_success, assert_failure, assert_contains, assert_equals, etc.
   - setup.sh - daemon and test server management, cleanup handlers
-- scripts/test/cli/test-start-stop.sh - existing test file (17 tests)
+- scripts/test/cli/test-start-stop.sh - existing test file (17 tests) demonstrating the pattern
 
 ### CLI Commands
 
 navigate command (internal/cli/navigate.go):
 - Arguments: URL (required)
-- Text output: "OK" on success
-- Error output: navigation failure message (exit 1)
+- Text output: "OK" on success (stdout)
+- Error output: navigation failure message (stderr, exit 1)
+- URL normalisation: adds https:// by default, http:// for localhost/127.0.0.1
 
 reload command (internal/cli/reload.go):
 - No arguments
-- Text output: "OK" on success
-- Error output: reload failure message (exit 1)
+- Text output: "OK" on success (stdout)
+- Error output: reload failure message (stderr, exit 1)
 
 back command (internal/cli/back.go):
 - No arguments
-- Text output: "OK" on success
-- Error output: "no history" or similar (exit 1)
+- Text output: "OK" on success (stdout)
+- No history: "No previous page" (stderr via outputNotice, exit 1)
+- Note: Uses outputNotice - no "Error:" prefix, just the message
 
 forward command (internal/cli/forward.go):
 - No arguments
-- Text output: "OK" on success
-- Error output: "no forward history" or similar (exit 1)
+- Text output: "OK" on success (stdout)
+- No history: "No next page" (stderr via outputNotice, exit 1)
+- Note: Uses outputNotice - no "Error:" prefix, just the message
 
 ### Test Server
 
-- start_test_server starts webctl serve on testdata directory
-- get_test_url returns test server URLs
-- testdata/ contains HTML pages for testing
+- start_test_server starts webctl serve on testdata directory (port 8888)
+- get_test_url returns test server URLs (e.g., get_test_url "/pages/navigation.html")
+- testdata/pages/ contains test pages:
+  - navigation.html - links to other pages (ideal for history tests)
+  - forms.html, cookies.html, console-types.html, etc.
+
+### Test Pattern (from test-start-stop.sh)
+
+```bash
+source "${PROJECT_ROOT}/scripts/bash_modules/test-framework.sh"
+source "${PROJECT_ROOT}/scripts/bash_modules/assertions.sh"
+source "${PROJECT_ROOT}/scripts/bash_modules/setup.sh"
+
+setup_cleanup_trap
+require_webctl
+# ... test code using run_test, assert_*, test_section, test_summary
+```
 
 ## Dependencies
 
