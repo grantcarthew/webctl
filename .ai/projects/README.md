@@ -67,7 +67,8 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-055 | Test Framework Bash Modules | Completed | 2026-01-15 | 2026-01-15 |
 | p-056 | Test Library | Completed | 2026-01-16 | 2026-01-16 |
 | p-057 | Test Runner | Completed | 2026-01-16 | 2026-01-16 |
-| p-058 | Test Pages | Pending | | |
+| p-058 | Test Pages | Completed | 2026-01-16 | 2026-01-16 |
+| p-059 | CLI Start/Stop Tests | Pending | | |
 
 Note: Completed projects are in `completed/`
 

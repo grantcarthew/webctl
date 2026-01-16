@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forms Test Page</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; }
+    #form-output { margin-top: 20px; padding: 10px; background: #f0f0f0; }
+  </style>
+</head>
+<body>
+  <h1>Forms Test Page</h1>
+
+  <form id="test-form" action="javascript:void(0)" onsubmit="this.setAttribute('event', 'submit')">
+    <div class="form-group">
+      <label for="text-input">Text Input</label>
+      <input type="text" id="text-input" name="text" placeholder="Enter text"
+             onchange="this.setAttribute('event', 'change')"
+             oninput="this.setAttribute('event', 'input')">
+    </div>
+
+    <div class="form-group">
+      <label for="email-input">Email Input</label>
+      <input type="email" id="email-input" name="email" placeholder="Enter email"
+             onchange="this.setAttribute('event', 'change')">
+    </div>
+
+    <div class="form-group">
+      <label for="password-input">Password Input</label>
+      <input type="password" id="password-input" name="password" placeholder="Enter password"
+             onchange="this.setAttribute('event', 'change')">
+    </div>
+
+    <div class="form-group">
+      <label for="textarea">Textarea</label>
+      <textarea id="textarea" name="textarea" rows="4" cols="40"
+                onchange="this.setAttribute('event', 'change')"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="select">Select Dropdown</label>
+      <select id="select" name="select" onchange="this.setAttribute('event', 'change')">
+        <option value="">-- Select an option --</option>
+        <option value="option1">Option 1</option>
+        <option value="option2">Option 2</option>
+        <option value="option3">Option 3</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="multi-select">Multi Select</label>
+      <select id="multi-select" name="multi-select" multiple size="4"
+              onchange="this.setAttribute('event', 'change')">
+        <option value="a">Choice A</option>
+        <option value="b">Choice B</option>
+        <option value="c">Choice C</option>
+        <option value="d">Choice D</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>
+        <input type="checkbox" id="checkbox" name="checkbox" value="checked"
+               onchange="this.setAttribute('event', 'change')">
+        Checkbox
+      </label>
+    </div>
+
+    <div class="form-group">
+      <label>Radio Buttons</label>
+      <label>
+        <input type="radio" name="radio-group" id="radio1" value="radio1"
+               onchange="this.setAttribute('event', 'change')">
+        Radio 1
+      </label>
+      <label>
+        <input type="radio" name="radio-group" id="radio2" value="radio2"
+               onchange="this.setAttribute('event', 'change')">
+        Radio 2
+      </label>
+      <label>
+        <input type="radio" name="radio-group" id="radio3" value="radio3"
+               onchange="this.setAttribute('event', 'change')">
+        Radio 3
+      </label>
+    </div>
+
+    <div class="form-group">
+      <label for="number-input">Number Input</label>
+      <input type="number" id="number-input" name="number" min="0" max="100"
+             onchange="this.setAttribute('event', 'change')">
+    </div>
+
+    <div class="form-group">
+      <label for="range-input">Range Input</label>
+      <input type="range" id="range-input" name="range" min="0" max="100"
+             onchange="this.setAttribute('event', 'change')">
+    </div>
+
+    <div class="form-group">
+      <button type="submit" id="submit-btn">Submit</button>
+      <button type="reset" id="reset-btn">Reset</button>
+    </div>
+  </form>
+
+  <div id="form-output">Form output will appear here</div>
+</body>
+</html>

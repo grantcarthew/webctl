@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Requests Test Page</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    button { margin: 5px; padding: 8px 16px; }
+    .button-group { margin: 15px 0; }
+    #request-output { margin-top: 20px; padding: 15px; background: #f0f0f0; white-space: pre-wrap; min-height: 100px; }
+    .status-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+    .status-pending { background: #ffc107; }
+    .status-success { background: #28a745; }
+    .status-error { background: #dc3545; }
+  </style>
+</head>
+<body>
+  <h1>Network Requests Test Page</h1>
+  <p>These requests require <code>webctl serve --proxy</code> with the test backend running.</p>
+
+  <div class="button-group">
+    <h2>Basic Requests</h2>
+    <button id="btn-get" onclick="doGet()">GET /api/hello</button>
+    <button id="btn-post" onclick="doPost()">POST /api/echo</button>
+    <button id="btn-users" onclick="getUsers()">GET /api/users</button>
+  </div>
+
+  <div class="button-group">
+    <h2>Status Code Requests</h2>
+    <button id="btn-200" onclick="getStatus(200)">GET 200 OK</button>
+    <button id="btn-201" onclick="getStatus(201)">GET 201 Created</button>
+    <button id="btn-400" onclick="getStatus(400)">GET 400 Bad Request</button>
+    <button id="btn-404" onclick="getStatus(404)">GET 404 Not Found</button>
+    <button id="btn-500" onclick="getStatus(500)">GET 500 Server Error</button>
+  </div>
+
+  <div class="button-group">
+    <h2>Delayed Requests</h2>
+    <button id="btn-delay-500" onclick="doDelay(500)">Delay 500ms</button>
+    <button id="btn-delay-1000" onclick="doDelay(1000)">Delay 1000ms</button>
+    <button id="btn-delay-2000" onclick="doDelay(2000)">Delay 2000ms</button>
+  </div>
+
+  <div class="button-group">
+    <h2>Multiple Requests</h2>
+    <button id="btn-multiple" onclick="doMultiple()">Trigger Multiple</button>
+    <button id="btn-clear" onclick="clearOutput()">Clear Output</button>
+  </div>
+
+  <div id="request-output">Request output will appear here</div>
+
+  <script>
+    async function doGet() {
+      appendOutput('→ GET /api/hello');
+      try {
+        const res = await fetch('/api/hello');
+        const data = await res.json();
+        appendOutput(`← ${res.status}: ${JSON.stringify(data)}`);
+      } catch (err) {
+        appendOutput(`← Error: ${err.message}`);
+      }
+    }
+
+    async function doPost() {
+      const body = { message: 'Hello from test page', timestamp: Date.now() };
+      appendOutput(`→ POST /api/echo: ${JSON.stringify(body)}`);
+      try {
+        const res = await fetch('/api/echo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        appendOutput(`← ${res.status}: ${JSON.stringify(data)}`);
+      } catch (err) {
+        appendOutput(`← Error: ${err.message}`);
+      }
+    }
+
+    async function getUsers() {
+      appendOutput('→ GET /api/users');
+      try {
+        const res = await fetch('/api/users');
+        const data = await res.json();
+        appendOutput(`← ${res.status}: ${JSON.stringify(data)}`);
+      } catch (err) {
+        appendOutput(`← Error: ${err.message}`);
+      }
+    }
+
+    async function getStatus(code) {
+      appendOutput(`→ GET /status/${code}`);
+      try {
+        const res = await fetch(`/status/${code}`);
+        const text = await res.text();
+        appendOutput(`← ${res.status}: ${text}`);
+      } catch (err) {
+        appendOutput(`← Error: ${err.message}`);
+      }
+    }
+
+    async function doDelay(ms) {
+      appendOutput(`→ GET /delay?ms=${ms}`);
+      try {
+        const res = await fetch(`/delay?ms=${ms}`);
+        const data = await res.json();
+        appendOutput(`← ${res.status}: ${JSON.stringify(data)}`);
+      } catch (err) {
+        appendOutput(`← Error: ${err.message}`);
+      }
+    }
+
+    async function doMultiple() {
+      appendOutput('→ Triggering multiple requests...');
+      await Promise.all([
+        doGet(),
+        getUsers(),
+        getStatus(200)
+      ]);
+      appendOutput('← All requests completed');
+    }
+
+    function appendOutput(message) {
+      const output = document.getElementById('request-output');
+      output.textContent += message + '\n';
+    }
+
+    function clearOutput() {
+      document.getElementById('request-output').textContent = '';
+    }
+  </script>
+</body>
+</html>

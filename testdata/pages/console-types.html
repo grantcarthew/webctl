@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Console Types Test Page</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    button { margin: 5px; padding: 8px 16px; }
+    .button-group { margin: 15px 0; }
+    #status { margin-top: 20px; padding: 15px; background: #f0f0f0; }
+  </style>
+</head>
+<body>
+  <h1>Console Types Test Page</h1>
+  <p>Open browser DevTools to see console output.</p>
+
+  <div class="button-group">
+    <h2>Trigger Console Messages</h2>
+    <button id="btn-log" onclick="triggerLog()">console.log</button>
+    <button id="btn-info" onclick="triggerInfo()">console.info</button>
+    <button id="btn-warn" onclick="triggerWarn()">console.warn</button>
+    <button id="btn-error" onclick="triggerError()">console.error</button>
+    <button id="btn-debug" onclick="triggerDebug()">console.debug</button>
+  </div>
+
+  <div class="button-group">
+    <h2>Special Console Methods</h2>
+    <button id="btn-table" onclick="triggerTable()">console.table</button>
+    <button id="btn-group" onclick="triggerGroup()">console.group</button>
+    <button id="btn-count" onclick="triggerCount()">console.count</button>
+    <button id="btn-time" onclick="triggerTime()">console.time</button>
+    <button id="btn-assert" onclick="triggerAssert()">console.assert</button>
+  </div>
+
+  <div class="button-group">
+    <h2>Trigger All</h2>
+    <button id="btn-all" onclick="triggerAll()">Trigger All Types</button>
+    <button id="btn-clear" onclick="console.clear()">Clear Console</button>
+  </div>
+
+  <div id="status">Console output status will appear here</div>
+
+  <script>
+    function triggerLog() {
+      console.log('TEST_LOG: This is a log message');
+      updateStatus('Triggered: console.log');
+    }
+
+    function triggerInfo() {
+      console.info('TEST_INFO: This is an info message');
+      updateStatus('Triggered: console.info');
+    }
+
+    function triggerWarn() {
+      console.warn('TEST_WARN: This is a warning message');
+      updateStatus('Triggered: console.warn');
+    }
+
+    function triggerError() {
+      console.error('TEST_ERROR: This is an error message');
+      updateStatus('Triggered: console.error');
+    }
+
+    function triggerDebug() {
+      console.debug('TEST_DEBUG: This is a debug message');
+      updateStatus('Triggered: console.debug');
+    }
+
+    function triggerTable() {
+      console.table([
+        { name: 'Alice', age: 30 },
+        { name: 'Bob', age: 25 }
+      ]);
+      updateStatus('Triggered: console.table');
+    }
+
+    function triggerGroup() {
+      console.group('TEST_GROUP');
+      console.log('Inside group: item 1');
+      console.log('Inside group: item 2');
+      console.groupEnd();
+      updateStatus('Triggered: console.group');
+    }
+
+    function triggerCount() {
+      console.count('TEST_COUNT');
+      updateStatus('Triggered: console.count');
+    }
+
+    function triggerTime() {
+      console.time('TEST_TIMER');
+      for (let i = 0; i < 1000; i++) { /* busy work */ }
+      console.timeEnd('TEST_TIMER');
+      updateStatus('Triggered: console.time/timeEnd');
+    }
+
+    function triggerAssert() {
+      console.assert(false, 'TEST_ASSERT: This assertion failed');
+      updateStatus('Triggered: console.assert (false)');
+    }
+
+    function triggerAll() {
+      triggerLog();
+      triggerInfo();
+      triggerWarn();
+      triggerError();
+      triggerDebug();
+      updateStatus('Triggered: all console types');
+    }
+
+    function updateStatus(message) {
+      document.getElementById('status').textContent = message;
+    }
+
+    // Automatically trigger console messages on load
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('AUTOLOAD_LOG: Page loaded - log message');
+      console.info('AUTOLOAD_INFO: Page loaded - info message');
+      console.warn('AUTOLOAD_WARN: Page loaded - warning message');
+      console.error('AUTOLOAD_ERROR: Page loaded - error message');
+      updateStatus('Page loaded. Auto-triggered: log, info, warn, error');
+    });
+  </script>
+</body>
+</html>

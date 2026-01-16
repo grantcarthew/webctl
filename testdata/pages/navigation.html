@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Navigation Test Page</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    nav { margin-bottom: 20px; }
+    nav a { display: block; margin: 10px 0; }
+    #current-page { font-weight: bold; color: #333; }
+  </style>
+</head>
+<body>
+  <h1>Navigation Test Page</h1>
+  <p id="current-page">Current: navigation.html</p>
+
+  <nav>
+    <h2>Internal Links</h2>
+    <a href="forms.html" id="link-forms">Go to Forms</a>
+    <a href="cookies.html" id="link-cookies">Go to Cookies</a>
+    <a href="console-types.html" id="link-console">Go to Console Types</a>
+    <a href="network-requests.html" id="link-network">Go to Network Requests</a>
+    <a href="css-showcase.html" id="link-css">Go to CSS Showcase</a>
+    <a href="slow-load.html" id="link-slow">Go to Slow Load</a>
+    <a href="scroll-long.html" id="link-scroll">Go to Scroll Long</a>
+    <a href="click-targets.html" id="link-click">Go to Click Targets</a>
+  </nav>
+
+  <nav>
+    <h2>Hash Navigation</h2>
+    <a href="#section1" id="link-section1">Go to Section 1</a>
+    <a href="#section2" id="link-section2">Go to Section 2</a>
+    <a href="#section3" id="link-section3">Go to Section 3</a>
+  </nav>
+
+  <div style="margin-top: 50px;">
+    <h2 id="section1">Section 1</h2>
+    <p>This is section 1 content.</p>
+  </div>
+
+  <div style="margin-top: 500px;">
+    <h2 id="section2">Section 2</h2>
+    <p>This is section 2 content.</p>
+  </div>
+
+  <div style="margin-top: 500px;">
+    <h2 id="section3">Section 3</h2>
+    <p>This is section 3 content.</p>
+  </div>
+
+  <div style="margin-top: 100px;">
+    <a href="#" id="link-top">Back to Top</a>
+  </div>
+</body>
+</html>
