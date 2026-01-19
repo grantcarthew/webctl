@@ -273,7 +273,9 @@ Test isolation:
 
 ## Implementation Projects
 
-The framework will be implemented across multiple focused projects:
+The framework will be implemented across multiple focused projects.
+
+**Test Script Workflow:** Before implementing any test script project (p-059 through p-066), read `.ai/tasks/cli-test-script.md` and follow the coverage matrix workflow to ensure complete test coverage.
 
 | Project | Scope | Deliverables |
 |---------|-------|--------------|
