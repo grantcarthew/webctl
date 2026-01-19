@@ -350,6 +350,8 @@ func outputHint(msg string) {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "Hint: %s\n", msg)
+	// Ensure the hint is flushed to stderr before returning
+	os.Stderr.Sync()
 }
 
 // shouldUseColor determines if color output should be used based on flags and environment.
