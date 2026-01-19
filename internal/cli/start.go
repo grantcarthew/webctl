@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/grantcarthew/webctl/internal/daemon"
@@ -32,9 +33,9 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Check if daemon is already running
 	if execFactory.IsDaemonRunning() {
-		err := outputError("daemon is already running")
+		outputError("daemon is already running")
 		outputHint("use 'webctl stop' to stop the daemon, or 'webctl stop --force' to force cleanup")
-		return err
+		return printedError{err: fmt.Errorf("daemon is already running")}
 	}
 
 	debugParam("headless=%v port=%d", startHeadless, startPort)
