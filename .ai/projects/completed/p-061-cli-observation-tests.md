@@ -38,13 +38,14 @@ Out of Scope:
 ## Success Criteria
 
 - [x] scripts/test/cli/test-observation.sh created
-- [x] Tests pass with ./test-runner cli observation (80/80 passing)
-- [x] html command tests: basic output, selector, find, save
-- [x] css command tests: basic output, selector, computed, get (inline/matched commands don't exist)
-- [x] console command tests: basic output, type filter
-- [x] network command tests: basic output, status filter, method filter
-- [x] cookies command tests: basic output, set, delete
-- [x] screenshot command tests: save to file
+- [x] Tests pass with ./test-runner cli observation (127/127 passing)
+- [x] html command tests: basic output, selector, find, save, context flags, error cases
+- [x] css command tests: basic output, selector, computed, get, inline, matched, context flags, error cases
+- [x] console command tests: basic output, type filter, range limiting (--head, --tail, --range), error cases
+- [x] network command tests: basic output, status filter, method filter, range limiting, error cases
+- [x] cookies command tests: basic output, set, delete, domain filter, error cases
+- [x] screenshot command tests: save to file, full-page
+- [x] Backend integration tests: proxy mode, API requests, status code filtering
 
 ## Deliverables
 
