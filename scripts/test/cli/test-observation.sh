@@ -25,6 +25,10 @@ force_stop_daemon
 start_daemon --headless
 start_test_server
 
+# Wait for serve auto-navigation to complete before running tests
+# webctl serve automatically navigates the browser to the served URL
+sleep 3
+
 # =============================================================================
 # HTML Command Tests
 # =============================================================================
@@ -130,8 +134,38 @@ run_test "css get h1 color" "${WEBCTL_BINARY}" css get "h1" "color"
 assert_success "${TEST_EXIT_CODE}" "css get returns success"
 assert_contains "${TEST_STDOUT}" "rgb" "Output contains color value"
 
-# Note: css inline and css matched subcommands don't exist in webctl
-# Skipping these tests
+test_section "CSS Command - Inline Styles"
+
+# Test: Get inline styles for elements with style attributes
+run_test "css inline for elements with style" "${WEBCTL_BINARY}" css inline "[style]"
+assert_success "${TEST_EXIT_CODE}" "css inline returns success"
+assert_contains "${TEST_STDOUT}" "padding" "Output contains inline style property"
+
+# Test: Get inline styles for element without inline styles (should succeed with empty/no output)
+run_test "css inline for element without inline styles" "${WEBCTL_BINARY}" css inline "h1"
+# May succeed with empty output or fail if no inline styles - checking behavior
+# assert_success "${TEST_EXIT_CODE}" "css inline for h1 returns success"
+
+# Test: CSS inline with multiple matching elements
+run_test "css inline for multiple elements" "${WEBCTL_BINARY}" css inline ".animated, .hover-example"
+assert_success "${TEST_EXIT_CODE}" "css inline for multiple elements returns success"
+
+test_section "CSS Command - Matched Rules"
+
+# Test: Get matched CSS rules for body
+run_test "css matched for body" "${WEBCTL_BINARY}" css matched "body"
+assert_success "${TEST_EXIT_CODE}" "css matched returns success"
+assert_contains "${TEST_STDOUT}" "font-family" "Output contains matched CSS property"
+
+# Test: Get matched CSS rules for h1
+run_test "css matched for h1" "${WEBCTL_BINARY}" css matched "h1"
+assert_success "${TEST_EXIT_CODE}" "css matched for h1 returns success"
+assert_contains "${TEST_STDOUT}" "color" "Output contains matched color property"
+
+# Test: Get matched CSS rules for element with class
+run_test "css matched for .highlight" "${WEBCTL_BINARY}" css matched ".highlight"
+assert_success "${TEST_EXIT_CODE}" "css matched for .highlight returns success"
+assert_contains "${TEST_STDOUT}" "background-color" "Output contains background-color property"
 
 test_section "CSS Command - Save Modes"
 
@@ -248,9 +282,10 @@ assert_success "${TEST_EXIT_CODE}" "network --method GET returns success"
 
 test_section "Network Command - Text Search"
 
-# Test: Network with text search (may have no matches if no API calls made)
-run_test "network with --find" "${WEBCTL_BINARY}" network --find "network"
-# Don't assert success - may be no matches, which is valid
+# Test: Network with text search for the API request (buffer was cleared, so page request is gone)
+run_test "network with --find" "${WEBCTL_BINARY}" network --find "api"
+assert_success "${TEST_EXIT_CODE}" "network --find returns success"
+assert_contains "${TEST_STDOUT}" "api" "Output contains the API request"
 
 test_section "Network Command - Save Modes"
 
@@ -378,6 +413,250 @@ TEMP_FULLPAGE_FILE=$(create_temp_file ".png")
 run_test "screenshot --full-page" "${WEBCTL_BINARY}" screenshot --full-page save "${TEMP_FULLPAGE_FILE}"
 assert_success "${TEST_EXIT_CODE}" "screenshot --full-page returns success"
 assert_file_exists "${TEMP_FULLPAGE_FILE}" "Full-page screenshot file created"
+
+# =============================================================================
+# Error Case Tests
+# =============================================================================
+
+test_section "Error Cases - HTML Command"
+
+# Test: HTML with find that has no matches
+run_test "html --find with no matches" "${WEBCTL_BINARY}" html --find "NONEXISTENT_TEXT_XYZ_12345"
+assert_failure "${TEST_EXIT_CODE}" "No matches returns failure"
+
+# Test: HTML with selector that matches nothing
+run_test "html --select with no matches" "${WEBCTL_BINARY}" html --select ".nonexistent-class-xyz-12345"
+assert_failure "${TEST_EXIT_CODE}" "No matching selector returns failure"
+
+# Test: HTML with invalid selector syntax
+run_test "html --select with invalid syntax" "${WEBCTL_BINARY}" html --select "[invalid::syntax"
+assert_failure "${TEST_EXIT_CODE}" "Invalid selector syntax returns failure"
+
+test_section "Error Cases - CSS Command"
+
+# Navigate to CSS page for error tests
+run_test "setup: navigate to css-showcase.html for error tests" "${WEBCTL_BINARY}" navigate "$(get_test_url '/pages/css-showcase.html')"
+sleep 2
+
+# Test: CSS computed with selector that matches nothing
+run_test "css computed with no matching elements" "${WEBCTL_BINARY}" css computed ".nonexistent-class-xyz-12345"
+assert_failure "${TEST_EXIT_CODE}" "No matching elements returns failure"
+
+# Test: CSS get with selector that matches nothing
+run_test "css get with no matching elements" "${WEBCTL_BINARY}" css get ".nonexistent-class-xyz-12345" "color"
+assert_failure "${TEST_EXIT_CODE}" "CSS get with no match returns failure"
+
+# Test: CSS matched with selector that matches nothing
+run_test "css matched with no matching elements" "${WEBCTL_BINARY}" css matched ".nonexistent-class-xyz-12345"
+assert_failure "${TEST_EXIT_CODE}" "CSS matched with no match returns failure"
+
+# Test: CSS inline with selector that matches nothing
+run_test "css inline with no matching elements" "${WEBCTL_BINARY}" css inline ".nonexistent-class-xyz-12345"
+assert_failure "${TEST_EXIT_CODE}" "CSS inline with no match returns failure"
+
+# Test: CSS get with nonexistent property (valid selector, invalid property)
+run_test "css get with nonexistent property" "${WEBCTL_BINARY}" css get "h1" "nonexistent-fake-property"
+# Note: Returns failure for nonexistent/invalid properties
+assert_failure "${TEST_EXIT_CODE}" "CSS get with nonexistent property returns failure"
+
+# Test: CSS computed with invalid selector syntax
+run_test "css computed with invalid selector syntax" "${WEBCTL_BINARY}" css computed "[invalid::syntax"
+assert_failure "${TEST_EXIT_CODE}" "Invalid CSS selector syntax returns failure"
+
+test_section "Error Cases - Console Command"
+
+# Test: Console with invalid type filter (returns success with no output - filters to nothing)
+run_test "console --type with invalid type" "${WEBCTL_BINARY}" console --type "invalidtype"
+assert_success "${TEST_EXIT_CODE}" "Invalid type returns success (filters to no entries)"
+
+# Test: Console with find that has no matches
+run_test "console --find with no matches" "${WEBCTL_BINARY}" console --find "NONEXISTENT_CONSOLE_TEXT_XYZ"
+assert_failure "${TEST_EXIT_CODE}" "No console matches returns failure"
+
+test_section "Error Cases - Cookies Command"
+
+# Navigate to cookies page for error tests
+run_test "setup: navigate to cookies.html for error tests" "${WEBCTL_BINARY}" navigate "$(get_test_url '/pages/cookies.html')"
+sleep 2
+
+# Test: Cookies delete nonexistent cookie (idempotent - should succeed)
+run_test "cookies delete nonexistent" "${WEBCTL_BINARY}" cookies delete "nonexistent-cookie-xyz-12345"
+assert_success "${TEST_EXIT_CODE}" "Delete nonexistent cookie succeeds (idempotent)"
+
+# Test: Cookies with domain that has no matches (returns empty, success)
+run_test "cookies --domain with no matches" "${WEBCTL_BINARY}" cookies --domain "nonexistent.domain.xyz"
+assert_success "${TEST_EXIT_CODE}" "Domain filter with no matches succeeds"
+
+# Test: Cookies --find with no matches
+run_test "cookies --find with no matches" "${WEBCTL_BINARY}" cookies --find "NONEXISTENT_COOKIE_VALUE_XYZ"
+assert_failure "${TEST_EXIT_CODE}" "Find with no matches returns failure"
+
+test_section "Error Cases - Network Command"
+
+# Test: Network after clearing buffer (empty buffer handling)
+run_test "clear network buffer for error test" "${WEBCTL_BINARY}" clear network
+assert_success "${TEST_EXIT_CODE}" "Clear network succeeds"
+
+# Test: Network with empty buffer returns success (empty output is valid)
+run_test "network with empty buffer" "${WEBCTL_BINARY}" network
+assert_success "${TEST_EXIT_CODE}" "Network with empty buffer succeeds"
+
+# Test: Network --find with no matches in empty buffer
+run_test "network --find with empty buffer" "${WEBCTL_BINARY}" network --find "NONEXISTENT_REQUEST_XYZ"
+assert_failure "${TEST_EXIT_CODE}" "Network find with no matches returns failure"
+
+# =============================================================================
+# Range Limiting Tests
+# =============================================================================
+
+test_section "Range Limiting - Console Command"
+
+# Navigate to console page to generate logs
+run_test "setup: navigate to console-types.html for range tests" "${WEBCTL_BINARY}" navigate "$(get_test_url '/pages/console-types.html')"
+sleep 3
+
+# Test: Console with --head
+run_test "console --head 2" "${WEBCTL_BINARY}" console --head 2
+assert_success "${TEST_EXIT_CODE}" "console --head returns success"
+
+# Test: Console with --tail
+run_test "console --tail 2" "${WEBCTL_BINARY}" console --tail 2
+assert_success "${TEST_EXIT_CODE}" "console --tail returns success"
+
+# Test: Console with --range
+run_test "console --range 1-2" "${WEBCTL_BINARY}" console --range "1-2"
+assert_success "${TEST_EXIT_CODE}" "console --range returns success"
+
+# Test: Mutually exclusive flags should fail
+run_test "console --head and --tail together" "${WEBCTL_BINARY}" console --head 2 --tail 2
+assert_failure "${TEST_EXIT_CODE}" "head and tail together returns failure"
+
+test_section "Range Limiting - Network Command"
+
+# Navigate to trigger some network requests
+run_test "setup: navigate to network page for range tests" "${WEBCTL_BINARY}" navigate "$(get_test_url '/pages/network-requests.html')"
+sleep 2
+
+# Test: Network with --head
+run_test "network --head 5" "${WEBCTL_BINARY}" network --head 5
+assert_success "${TEST_EXIT_CODE}" "network --head returns success"
+
+# Test: Network with --tail
+run_test "network --tail 3" "${WEBCTL_BINARY}" network --tail 3
+assert_success "${TEST_EXIT_CODE}" "network --tail returns success"
+
+# =============================================================================
+# Context Flag Tests
+# =============================================================================
+
+test_section "Context Flags - HTML Command"
+
+# Navigate to navigation page for context tests
+run_test "setup: navigate to navigation.html for context tests" "${WEBCTL_BINARY}" navigate "$(get_test_url '/pages/navigation.html')"
+sleep 2
+
+# Test: HTML --find with -B (before context)
+run_test "html --find with -B 2" "${WEBCTL_BINARY}" html --find "Navigation" -B 2
+assert_success "${TEST_EXIT_CODE}" "html with before context returns success"
+
+# Test: HTML --find with -A (after context)
+run_test "html --find with -A 2" "${WEBCTL_BINARY}" html --find "Navigation" -A 2
+assert_success "${TEST_EXIT_CODE}" "html with after context returns success"
+
+# Test: HTML --find with -C (surrounding context)
+run_test "html --find with -C 2" "${WEBCTL_BINARY}" html --find "Navigation" -C 2
+assert_success "${TEST_EXIT_CODE}" "html with surrounding context returns success"
+
+test_section "Context Flags - CSS Command"
+
+# Navigate to CSS page for context tests
+run_test "setup: navigate to css-showcase.html for context tests" "${WEBCTL_BINARY}" navigate "$(get_test_url '/pages/css-showcase.html')"
+sleep 2
+
+# Test: CSS --find with -B (before context)
+run_test "css --find with -B 1" "${WEBCTL_BINARY}" css --find "background" -B 1
+assert_success "${TEST_EXIT_CODE}" "css with before context returns success"
+
+# Test: CSS --find with -A (after context)
+run_test "css --find with -A 1" "${WEBCTL_BINARY}" css --find "background" -A 1
+assert_success "${TEST_EXIT_CODE}" "css with after context returns success"
+
+# Test: CSS --find with -C (surrounding context)
+run_test "css --find with -C 1" "${WEBCTL_BINARY}" css --find "background" -C 1
+assert_success "${TEST_EXIT_CODE}" "css with surrounding context returns success"
+
+# Note: Console command does not support context flags (-A, -B, -C)
+# Those flags are only available for html and css commands
+
+# =============================================================================
+# Backend Integration Tests
+# =============================================================================
+
+test_section "Backend Integration - Setup"
+
+# Start the backend server for proxy testing
+start_backend 3000
+
+# Stop existing test server and restart with proxy mode
+stop_test_server
+"${WEBCTL_BINARY}" stop --force 2>/dev/null || true
+sleep 2
+
+# Start serve with proxy to backend (proxy mode, no directory)
+"${WEBCTL_BINARY}" serve --proxy "http://localhost:3000" --port 8888 &
+TEST_SERVER_PID=$!
+sleep 4
+
+test_section "Backend Integration - API Requests"
+
+# Navigate to the backend root page (via proxy)
+run_test "setup: navigate to backend via proxy" "${WEBCTL_BINARY}" navigate "http://localhost:8888/"
+sleep 2
+
+# Clear network buffer
+run_test "clear network for backend tests" "${WEBCTL_BINARY}" clear network
+assert_success "${TEST_EXIT_CODE}" "Network buffer cleared"
+
+# Trigger API request to backend via proxy
+run_test "trigger backend API request" "${WEBCTL_BINARY}" eval "fetch('/api/hello').then(r => r.json())"
+sleep 2
+
+# Test: Verify API request was captured
+run_test "network finds backend API call" "${WEBCTL_BINARY}" network --find "api/hello"
+assert_success "${TEST_EXIT_CODE}" "Backend API call found in network"
+assert_contains "${TEST_STDOUT}" "api/hello" "Output contains API path"
+
+test_section "Backend Integration - Status Codes"
+
+# Trigger 404 request
+run_test "trigger 404 request" "${WEBCTL_BINARY}" eval "fetch('/status/404').catch(() => {})"
+sleep 2
+
+# Test: Filter by 404 status
+run_test "network --status 404" "${WEBCTL_BINARY}" network --status 404
+assert_success "${TEST_EXIT_CODE}" "404 status filter works"
+assert_contains "${TEST_STDOUT}" "404" "Output contains 404 status"
+
+# Trigger 500 request
+run_test "trigger 500 request" "${WEBCTL_BINARY}" eval "fetch('/status/500').catch(() => {})"
+sleep 3
+
+# Test: Filter by 5xx status codes (includes 500)
+run_test "network --status 5xx" "${WEBCTL_BINARY}" network --status 5xx
+assert_success "${TEST_EXIT_CODE}" "5xx status filter works"
+
+test_section "Backend Integration - Users Endpoint"
+
+# Trigger users API request
+run_test "trigger users API request" "${WEBCTL_BINARY}" eval "fetch('/api/users').then(r => r.json())"
+sleep 2
+
+# Test: Find users endpoint in network
+run_test "network finds users API call" "${WEBCTL_BINARY}" network --find "api/users"
+assert_success "${TEST_EXIT_CODE}" "Users API call found"
+
+# Stop backend server
+stop_backend
 
 # =============================================================================
 # Summary
