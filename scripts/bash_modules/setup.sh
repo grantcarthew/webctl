@@ -257,6 +257,64 @@ function get_test_url() {
   echo "http://localhost:${TEST_SERVER_PORT}${path}"
 }
 
+# Backend Server Management
+# -----------------------------------------------------------------------------
+
+BACKEND_PID=""
+BACKEND_PORT="${BACKEND_PORT:-3000}"
+
+function start_backend() {
+  # start_backend [port]
+  # Starts the test backend server. Returns 0 on success.
+
+  local port="${1:-${BACKEND_PORT}}"
+
+  if [[ -n "${BACKEND_PID}" ]] && kill -0 "${BACKEND_PID}" 2>/dev/null; then
+    log_message "Backend server already running (PID: ${BACKEND_PID})"
+    return 0
+  fi
+
+  log_message "Starting backend server on port ${port}..."
+
+  # Start backend in background
+  go run "${PROJECT_ROOT}/scripts/test/backend.go" "${port}" >/dev/null 2>&1 &
+  BACKEND_PID=$!
+
+  # Wait for backend to be ready (max 5 seconds)
+  local attempts=0
+  local max_attempts=10
+  while [[ ${attempts} -lt ${max_attempts} ]]; do
+    if curl -s "http://localhost:${port}/" >/dev/null 2>&1; then
+      log_success "Backend server started on port ${port}"
+      return 0
+    fi
+    sleep 0.5
+    ((attempts++))
+  done
+
+  log_failure "Backend server failed to start"
+  BACKEND_PID=""
+  return 1
+}
+
+function stop_backend() {
+  # stop_backend
+  # Stops the backend server
+
+  if [[ -z "${BACKEND_PID}" ]]; then
+    return 0
+  fi
+
+  if kill -0 "${BACKEND_PID}" 2>/dev/null; then
+    log_message "Stopping backend server (PID: ${BACKEND_PID})..."
+    kill "${BACKEND_PID}" 2>/dev/null || true
+    wait "${BACKEND_PID}" 2>/dev/null || true
+    log_success "Backend server stopped"
+  fi
+
+  BACKEND_PID=""
+}
+
 # Temporary File Management
 # -----------------------------------------------------------------------------
 
@@ -298,7 +356,7 @@ function cleanup_temp_files() {
 
 function cleanup() {
   # cleanup
-  # Full cleanup: stops server, daemon (if we started it), removes temp files
+  # Full cleanup: stops servers, daemon (if we started it), removes temp files
 
   local exit_code=$?
 
@@ -306,6 +364,7 @@ function cleanup() {
   exec 3>&2
   exec 2>/dev/null
 
+  stop_backend
   stop_test_server
   stop_daemon
   cleanup_temp_files

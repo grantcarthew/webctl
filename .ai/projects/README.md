@@ -70,7 +70,7 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-058 | Test Pages | Completed | 2026-01-16 | 2026-01-16 |
 | p-059 | CLI Start/Stop Tests | Completed | 2026-01-16 | 2026-01-16 |
 | p-060 | CLI Navigation Tests | Completed | 2026-01-16 | 2026-01-16 |
-| p-061 | CLI Observation Tests | Pending | | |
+| p-061 | CLI Observation Tests | Completed | 2026-01-17 | 2026-01-17 |
 
 Note: Completed projects are in `completed/`
 
