@@ -75,6 +75,19 @@ Key activities:
 - Update project index and AGENTS.md
 - Set next project as active
 
+### [cli-test-script.md](./cli-test-script.md)
+
+Guides agents through creating comprehensive CLI test scripts with complete coverage.
+
+When to use: Implementing automated test scripts for webctl CLI commands.
+
+Key activities:
+
+- Analyze command source for all flags and behaviors
+- Create coverage matrix before implementation
+- Test all flags, JSON output, no-color mode, error cases
+- Verify coverage completeness before marking done
+
 ---
 
 ## How to Use Task Documents
