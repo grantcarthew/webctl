@@ -22,8 +22,7 @@ When completing a project and starting the next:
 
 Projects are stored in `.ai/projects/`.
 
-- Active Project: None (p-061 completed)
-- Next: p-062 CLI Interaction Tests (per DR-032) or other priorities
+- Active Project: p-062 CLI Interaction Tests
 - Design Record: .ai/design/design-records/dr-032-test-framework-architecture.md
 
 ## Quick Reference
