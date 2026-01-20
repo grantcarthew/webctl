@@ -154,13 +154,43 @@ function assert_not_contains() {
 
 function assert_matches() {
   # assert_matches pattern actual [message]
-  # Asserts that actual matches regex pattern
+  # Asserts that actual matches regex pattern.
+  # NOTE: Pattern is interpreted as an extended regex (ERE).
+  # Special characters like . * + ? are regex metacharacters.
+  # Use assert_contains for literal substring matching.
 
   local pattern="${1}"
   local actual="${2}"
   local message="${3:-String matches pattern}"
 
   if [[ "${actual}" =~ ${pattern} ]]; then
+    log_success "${message}"
+    increment_pass
+    return 0
+  else
+    log_failure "${message}"
+    log_message "    Pattern: '${pattern}'"
+    log_message "    Actual:  '${actual:0:200}'"
+    increment_fail
+    return 1
+  fi
+}
+
+function assert_matches_literal() {
+  # assert_matches_literal pattern actual [message]
+  # Asserts that actual contains the literal pattern string.
+  # Unlike assert_matches, this escapes regex metacharacters.
+  # Useful when searching for strings that contain . * + ? etc.
+
+  local pattern="${1}"
+  local actual="${2}"
+  local message="${3:-String contains literal pattern}"
+
+  # Escape regex metacharacters for literal matching
+  local escaped_pattern
+  escaped_pattern=$(printf '%s' "${pattern}" | sed 's/[.[\*^$()+?{|\\]/\\&/g')
+
+  if [[ "${actual}" =~ ${escaped_pattern} ]]; then
     log_success "${message}"
     increment_pass
     return 0
@@ -439,6 +469,232 @@ function assert_less_than() {
     return 0
   else
     log_failure "${message}: ${actual} is not less than ${expected}"
+    increment_fail
+    return 1
+  fi
+}
+
+# Page State Assertions
+# -----------------------------------------------------------------------------
+
+function assert_on_page() {
+  # assert_on_page url_pattern [message]
+  # Asserts that the browser is on a page matching the URL pattern
+
+  local url_pattern="${1}"
+  local message="${2:-On expected page}"
+
+  # Import setup.sh helpers if not already loaded
+  if ! declare -f get_current_url >/dev/null 2>&1; then
+    source "${BASH_MODULES_DIR}/setup.sh"
+  fi
+
+  local current_url
+  current_url=$(get_current_url)
+
+  if [[ "${current_url}" == *"${url_pattern}"* ]]; then
+    log_success "${message}: on ${url_pattern}"
+    increment_pass
+    return 0
+  else
+    log_failure "${message}: expected URL containing '${url_pattern}'"
+    log_message "    Actual: '${current_url}'"
+    increment_fail
+    return 1
+  fi
+}
+
+function assert_page_title() {
+  # assert_page_title expected_title [message]
+  # Asserts that the browser's current page has the expected title
+
+  local expected_title="${1}"
+  local message="${2:-Page title matches}"
+
+  # Import setup.sh helpers if not already loaded
+  if ! declare -f get_current_title >/dev/null 2>&1; then
+    source "${BASH_MODULES_DIR}/setup.sh"
+  fi
+
+  local current_title
+  current_title=$(get_current_title)
+
+  if [[ "${current_title}" == "${expected_title}" ]]; then
+    log_success "${message}: '${expected_title}'"
+    increment_pass
+    return 0
+  else
+    log_failure "${message}"
+    log_message "    Expected: '${expected_title}'"
+    log_message "    Actual:   '${current_title}'"
+    increment_fail
+    return 1
+  fi
+}
+
+# Captured State Assertions
+# -----------------------------------------------------------------------------
+# These assertions use state captured immediately after test execution,
+# providing more reliable assertions than making fresh browser queries.
+
+function assert_captured_url() {
+  # assert_captured_url url_pattern [message]
+  # Asserts that the captured URL (from capture_page_state) contains the pattern.
+  # Call capture_page_state after run_test before using this assertion.
+
+  local url_pattern="${1}"
+  local message="${2:-Captured URL matches}"
+
+  # Import setup.sh helpers if not already loaded
+  if ! declare -f get_captured_url >/dev/null 2>&1; then
+    source "${BASH_MODULES_DIR}/setup.sh"
+  fi
+
+  local captured_url
+  captured_url=$(get_captured_url)
+
+  if [[ -z "${captured_url}" ]]; then
+    log_failure "${message}: no URL captured (call capture_page_state first)"
+    increment_fail
+    return 1
+  fi
+
+  if [[ "${captured_url}" == *"${url_pattern}"* ]]; then
+    log_success "${message}: found '${url_pattern}'"
+    increment_pass
+    return 0
+  else
+    log_failure "${message}: '${url_pattern}' not in captured URL"
+    log_message "    Captured: '${captured_url}'"
+    increment_fail
+    return 1
+  fi
+}
+
+function assert_captured_title() {
+  # assert_captured_title expected_title [message]
+  # Asserts that the captured title (from capture_page_state) matches expected.
+  # Call capture_page_state after run_test before using this assertion.
+
+  local expected_title="${1}"
+  local message="${2:-Captured title matches}"
+
+  # Import setup.sh helpers if not already loaded
+  if ! declare -f get_captured_title >/dev/null 2>&1; then
+    source "${BASH_MODULES_DIR}/setup.sh"
+  fi
+
+  local captured_title
+  captured_title=$(get_captured_title)
+
+  if [[ "${captured_title}" == "${expected_title}" ]]; then
+    log_success "${message}: '${expected_title}'"
+    increment_pass
+    return 0
+  else
+    log_failure "${message}"
+    log_message "    Expected: '${expected_title}'"
+    log_message "    Captured: '${captured_title}'"
+    increment_fail
+    return 1
+  fi
+}
+
+# Output Format Assertions
+# -----------------------------------------------------------------------------
+
+function assert_no_ansi_codes() {
+  # assert_no_ansi_codes value [message]
+  # Asserts that value contains no ANSI escape sequences.
+  # Checks for ESC (0x1B) character which starts all ANSI sequences.
+
+  local value="${1}"
+  local message="${2:-No ANSI escape codes}"
+
+  # Check for ESC character (octal 033, hex 1B)
+  # This catches all ANSI sequences: colors, cursor movement, etc.
+  if [[ "${value}" == *$'\033'* ]] || [[ "${value}" == *$'\x1b'* ]]; then
+    log_failure "${message}: found ANSI escape sequence"
+    increment_fail
+    return 1
+  else
+    log_success "${message}"
+    increment_pass
+    return 0
+  fi
+}
+
+function assert_valid_json_error() {
+  # assert_valid_json_error json [message]
+  # Asserts that JSON is a valid error response with ok=false and error/message field.
+  # Accepts either .error or .message field for compatibility with different error formats.
+  # Use this for consistent error response validation.
+
+  local json="${1}"
+  local message="${2:-Valid JSON error response}"
+
+  if ! echo "${json}" | jq empty >/dev/null 2>&1; then
+    log_failure "${message}: invalid JSON"
+    log_message "    Value: '${json:0:200}'"
+    increment_fail
+    return 1
+  fi
+
+  local ok_value error_value
+  ok_value=$(echo "${json}" | jq -r '.ok' 2>/dev/null)
+  # Check for .error first, then fall back to .message
+  error_value=$(echo "${json}" | jq -r '.error // .message // empty' 2>/dev/null)
+
+  if [[ "${ok_value}" != "false" ]]; then
+    log_failure "${message}: .ok should be false, got '${ok_value}'"
+    increment_fail
+    return 1
+  fi
+
+  if [[ -z "${error_value}" ]]; then
+    log_failure "${message}: .error/.message field missing or empty"
+    increment_fail
+    return 1
+  fi
+
+  log_success "${message}: ok=false, error='${error_value:0:50}'"
+  increment_pass
+  return 0
+}
+
+function assert_json_error_contains() {
+  # assert_json_error_contains json needle [message]
+  # Asserts that JSON error response contains needle in the error message.
+  # Accepts either .error or .message field for compatibility with different error formats.
+  # Validates JSON structure AND checks error content.
+
+  local json="${1}"
+  local needle="${2}"
+  local message="${3:-JSON error contains}"
+
+  if ! echo "${json}" | jq empty >/dev/null 2>&1; then
+    log_failure "${message}: invalid JSON"
+    increment_fail
+    return 1
+  fi
+
+  local error_value
+  # Check for .error first, then fall back to .message
+  error_value=$(echo "${json}" | jq -r '.error // .message // empty' 2>/dev/null)
+
+  if [[ -z "${error_value}" ]]; then
+    log_failure "${message}: .error/.message field missing"
+    increment_fail
+    return 1
+  fi
+
+  if [[ "${error_value}" == *"${needle}"* ]]; then
+    log_success "${message}: found '${needle}' in error"
+    increment_pass
+    return 0
+  else
+    log_failure "${message}: '${needle}' not in error"
+    log_message "    Error: '${error_value}'"
     increment_fail
     return 1
   fi
