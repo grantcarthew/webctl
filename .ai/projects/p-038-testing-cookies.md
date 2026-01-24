@@ -1,7 +1,9 @@
 # p-038: Testing cookies Command
 
-- Status: In Progress
+- Status: Superseded
 - Started: 2025-12-31
+- Superseded: 2026-01-24
+- Superseded By: p-061 CLI Observation Tests (automated test framework)
 
 ## Overview
 
