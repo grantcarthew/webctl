@@ -6,12 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/grantcarthew/webctl/internal/cdp"
-	"github.com/grantcarthew/webctl/internal/htmlformat"
 	"github.com/grantcarthew/webctl/internal/ipc"
 )
 
@@ -652,211 +650,14 @@ func (d *Daemon) handleCookiesDelete(sessionID string, params ipc.CookiesParams)
 }
 
 // handleFind searches HTML content for text patterns.
+// handleFind has been removed per DR-030 (Find Command Removal).
+// The standalone 'find' command has been replaced with universal --find flags
+// on all observation commands (html, css, console, network, cookies).
+//
+// If this handler is ever called, it returns an error directing users to use
+// the html --find flag instead.
 func (d *Daemon) handleFind(req ipc.Request) ipc.Response {
-	// Check if browser is connected (fail-fast if not)
-	if ok, resp := d.requireBrowser(); !ok {
-		return resp
-	}
-
-	activeID := d.sessions.ActiveID()
-	if activeID == "" {
-		return d.noActiveSessionError()
-	}
-
-	// Parse find parameters
-	var params ipc.FindParams
-	if err := json.Unmarshal(req.Params, &params); err != nil {
-		return ipc.ErrorResponse(fmt.Sprintf("invalid find parameters: %v", err))
-	}
-
-	// Get HTML content from page
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Get window ObjectID
-	windowResult, err := d.sendToSession(ctx, activeID, "Runtime.evaluate", map[string]any{
-		"expression": "window",
-	})
-	if err != nil {
-		return ipc.ErrorResponse(fmt.Sprintf("failed to get window: %v", err))
-	}
-
-	var windowResp struct {
-		Result struct {
-			ObjectID string `json:"objectId"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(windowResult, &windowResp); err != nil {
-		return ipc.ErrorResponse(fmt.Sprintf("failed to parse window response: %v", err))
-	}
-
-	// Get documentElement
-	callResult, err := d.sendToSession(ctx, activeID, "Runtime.callFunctionOn", map[string]any{
-		"objectId":            windowResp.Result.ObjectID,
-		"functionDeclaration": "function() { return document.documentElement; }",
-		"returnByValue":       false,
-	})
-	if err != nil {
-		return ipc.ErrorResponse(fmt.Sprintf("failed to get documentElement: %v", err))
-	}
-
-	var callResp struct {
-		Result struct {
-			ObjectID string `json:"objectId"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(callResult, &callResp); err != nil {
-		return ipc.ErrorResponse(fmt.Sprintf("failed to parse callFunctionOn response: %v", err))
-	}
-
-	// Get outer HTML
-	htmlResult, err := d.sendToSession(ctx, activeID, "DOM.getOuterHTML", map[string]any{
-		"objectId": callResp.Result.ObjectID,
-	})
-	if err != nil {
-		return ipc.ErrorResponse(fmt.Sprintf("failed to get outer HTML: %v", err))
-	}
-
-	var htmlResp struct {
-		OuterHTML string `json:"outerHTML"`
-	}
-	if err := json.Unmarshal(htmlResult, &htmlResp); err != nil {
-		return ipc.ErrorResponse(fmt.Sprintf("failed to parse HTML response: %v", err))
-	}
-
-	// Format HTML before searching to make minified HTML readable
-	formattedHTML, err := htmlformat.Format(htmlResp.OuterHTML)
-	if err != nil {
-		// If formatting fails, fall back to original HTML
-		d.debugf(false, "HTML formatting failed: %v", err)
-		formattedHTML = htmlResp.OuterHTML
-	}
-
-	// Search formatted HTML for matches
-	matches, err := d.searchHTML(formattedHTML, params)
-	if err != nil {
-		return ipc.ErrorResponse(err.Error())
-	}
-
-	return ipc.SuccessResponse(ipc.FindData{
-		Query:   params.Query,
-		Total:   len(matches),
-		Matches: matches,
-	})
-}
-
-// searchHTML searches HTML content for matches based on find parameters.
-func (d *Daemon) searchHTML(html string, params ipc.FindParams) ([]ipc.FindMatch, error) {
-	lines := strings.Split(html, "\n")
-	var matches []ipc.FindMatch
-	matchIndex := 1
-
-	for i, line := range lines {
-		var matched bool
-
-		if params.Regex {
-			// Regex search
-			re, err := regexp.Compile(params.Query)
-			if err != nil {
-				return nil, fmt.Errorf("invalid regex: %v", err)
-			}
-			matched = re.MatchString(line)
-		} else {
-			// Plain text search
-			if params.CaseSensitive {
-				matched = strings.Contains(line, params.Query)
-			} else {
-				matched = strings.Contains(strings.ToLower(line), strings.ToLower(params.Query))
-			}
-		}
-
-		if matched {
-			// Extract context lines
-			beforeLine := ""
-			if i > 0 {
-				beforeLine = lines[i-1]
-			}
-
-			afterLine := ""
-			if i < len(lines)-1 {
-				afterLine = lines[i+1]
-			}
-
-			// Generate selector and xpath for this line
-			selector, xpath := d.generateSelectorForLine(line)
-
-			matches = append(matches, ipc.FindMatch{
-				Index: matchIndex,
-				Context: ipc.FindContext{
-					Before: beforeLine,
-					Match:  line,
-					After:  afterLine,
-				},
-				Selector: selector,
-				XPath:    xpath,
-			})
-
-			matchIndex++
-
-			// Apply limit if specified
-			if params.Limit > 0 && len(matches) >= params.Limit {
-				break
-			}
-		}
-	}
-
-	return matches, nil
-}
-
-// generateSelectorForLine generates a CSS selector and XPath for a matched line.
-// This is a simplified implementation - more sophisticated selector generation
-// would require full HTML parsing and DOM tree traversal.
-func (d *Daemon) generateSelectorForLine(line string) (selector, xpath string) {
-	// Extract tag name from line (basic implementation)
-	// Look for opening tag: <tagname ...>
-	line = strings.TrimSpace(line)
-
-	// Try to extract tag and attributes
-	if strings.HasPrefix(line, "<") && strings.Contains(line, ">") {
-		// Remove < and everything after >
-		tagPart := line[1:]
-		if idx := strings.Index(tagPart, ">"); idx != -1 {
-			tagPart = tagPart[:idx]
-		}
-
-		// Split by space to get tag and attributes
-		parts := strings.Fields(tagPart)
-		if len(parts) > 0 {
-			tagName := parts[0]
-
-			// Check for id attribute
-			if idMatch := regexp.MustCompile(`id="([^"]+)"`).FindStringSubmatch(line); len(idMatch) > 1 {
-				selector = "#" + idMatch[1]
-				xpath = fmt.Sprintf("//*[@id='%s']", idMatch[1])
-				return
-			}
-
-			// Check for class attribute
-			if classMatch := regexp.MustCompile(`class="([^"]+)"`).FindStringSubmatch(line); len(classMatch) > 1 {
-				classes := strings.Fields(classMatch[1])
-				if len(classes) > 0 {
-					selector = "." + strings.Join(classes, ".")
-					xpath = fmt.Sprintf("//%s[@class='%s']", tagName, classMatch[1])
-					return
-				}
-			}
-
-			// Fallback: just the tag name
-			selector = tagName
-			xpath = "//" + tagName
-			return
-		}
-	}
-
-	// Couldn't parse - return generic selectors
-	selector = "body"
-	xpath = "//body"
-	return
+	return ipc.ErrorResponse("find command has been removed - use 'html --find <text>' instead (see DR-030)")
 }
 
 // handleCDP forwards a raw CDP command to the browser.
