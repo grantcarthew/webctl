@@ -47,22 +47,22 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-035 | Testing css Command | Completed | 2025-12-31 | 2026-01-13 |
 | p-036 | Testing console Command | Completed | 2025-12-31 | 2026-01-14 |
 | p-037 | Testing network Command | Completed | 2025-12-31 | 2026-01-15 |
-| p-038 | Testing cookies Command | In Progress | 2025-12-31 | |
-| p-039 | Testing screenshot Command | Proposed | | |
-| p-040 | Testing click Command | Proposed | | |
-| p-041 | Testing type Command | Proposed | | |
-| p-042 | Testing select Command | Proposed | | |
-| p-043 | Testing scroll Command | Proposed | | |
-| p-044 | Testing focus Command | Proposed | | |
-| p-045 | Testing key Command | Proposed | | |
-| p-046 | Testing eval Command | Proposed | | |
-| p-047 | Testing ready Command | Proposed | | |
-| p-048 | Testing clear Command | Proposed | | |
-| p-049 | Testing find Command | Proposed | | |
-| p-050 | Testing target Command | Proposed | | |
+| p-038 | Testing cookies Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-039 | Testing screenshot Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-040 | Testing click Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-041 | Testing type Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-042 | Testing select Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-043 | Testing scroll Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-044 | Testing focus Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-045 | Testing key Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-046 | Testing eval Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-047 | Testing ready Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-048 | Testing clear Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-049 | Testing find Command | Superseded | 2025-12-31 | 2026-01-24 |
+| p-050 | Testing target Command | Superseded | 2025-12-31 | 2026-01-24 |
 | p-051 | Observation Commands Output Refactor | Completed | 2026-01-08 | 2026-01-09 |
 | p-052 | CSS Command Redesign | Completed | 2026-01-12 | 2026-01-12 |
-| p-053 | CSS Element Identification | Proposed | | |
+| p-053 | CSS Element Identification | In Progress | 2026-01-24 | |
 | p-054 | Force Stop and Cleanup | Completed | 2026-01-15 | 2026-01-15 |
 | p-055 | Test Framework Bash Modules | Completed | 2026-01-15 | 2026-01-15 |
 | p-056 | Test Library | Completed | 2026-01-16 | 2026-01-16 |
@@ -71,7 +71,7 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-059 | CLI Start/Stop Tests | Completed | 2026-01-16 | 2026-01-16 |
 | p-060 | CLI Navigation Tests | Completed | 2026-01-16 | 2026-01-16 |
 | p-061 | CLI Observation Tests | Completed | 2026-01-17 | 2026-01-17 |
-| p-062 | CLI Interaction Tests | Pending | | |
+| p-062 | CLI Interaction Tests | Completed | 2026-01-21 | 2026-01-21 |
 
 Note: Completed projects are in `completed/`
 
@@ -82,6 +82,7 @@ Note: Completed projects are in `completed/`
 - **Proposed** - Project defined, not yet started
 - **In Progress** - Currently being worked on
 - **Completed** - All success criteria met, deliverables created (move to `completed/`)
+- **Superseded** - Made obsolete by another project or approach
 - **Blocked** - Waiting on external dependency or decision
 
 ---

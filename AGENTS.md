@@ -22,8 +22,8 @@ When completing a project and starting the next:
 
 Projects are stored in `.ai/projects/`.
 
-- Active Project: p-062 CLI Interaction Tests
-- Design Record: .ai/design/design-records/dr-032-test-framework-architecture.md
+- Active Project: p-053 CSS Element Identification
+- Design Record: None (enhancement to existing commands)
 
 ## Quick Reference
 
