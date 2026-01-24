@@ -106,7 +106,35 @@ func runHTMLDefault(cmd *cobra.Command, args []string) error {
 		return outputError("daemon not running. Start with: webctl start")
 	}
 
-	// Get HTML from daemon
+	// For JSON mode, get raw response data to access HTMLMulti
+	if JSONOutput {
+		html, data, err := getHTMLDataFromDaemon(cmd)
+		if err != nil {
+			if errors.Is(err, ErrNoMatches) {
+				return outputNotice("No matches found")
+			}
+			if errors.Is(err, ErrNoElements) {
+				return outputNotice("No elements found")
+			}
+			return outputError(err.Error())
+		}
+
+		result := map[string]any{
+			"ok": true,
+		}
+
+		// If HTMLMulti is present, use structured metadata for JSON
+		if len(data.HTMLMulti) > 0 {
+			result["elements"] = data.HTMLMulti
+		} else {
+			// Legacy single HTML field
+			result["html"] = html
+		}
+
+		return outputJSON(os.Stdout, result)
+	}
+
+	// Text mode - get formatted HTML
 	html, err := getHTMLFromDaemon(cmd)
 	if err != nil {
 		if errors.Is(err, ErrNoMatches) {
@@ -116,15 +144,6 @@ func runHTMLDefault(cmd *cobra.Command, args []string) error {
 			return outputNotice("No elements found")
 		}
 		return outputError(err.Error())
-	}
-
-	// JSON mode: output JSON
-	if JSONOutput {
-		result := map[string]any{
-			"ok":   true,
-			"html": html,
-		}
-		return outputJSON(os.Stdout, result)
 	}
 
 	// Output to stdout
@@ -219,9 +238,9 @@ func runHTMLSave(cmd *cobra.Command, args []string) error {
 	return format.FilePath(os.Stdout, outputPath)
 }
 
-// getHTMLFromDaemon fetches HTML from daemon, applying filters and formatting
-func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
-	// Try to get flags from command, falling back to parent for persistent flags
+// getHTMLDataFromDaemon fetches HTML from daemon and returns both formatted string and raw data
+func getHTMLDataFromDaemon(cmd *cobra.Command) (string, ipc.HTMLData, error) {
+	// Get flags
 	selector, _ := cmd.Flags().GetString("select")
 	if selector == "" && cmd.Parent() != nil {
 		selector, _ = cmd.Parent().PersistentFlags().GetString("select")
@@ -262,7 +281,7 @@ func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
 
 	exec, err := execFactory.NewExecutor()
 	if err != nil {
-		return "", err
+		return "", ipc.HTMLData{}, err
 	}
 	defer exec.Close()
 
@@ -271,7 +290,7 @@ func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
 		Selector: selector,
 	})
 	if err != nil {
-		return "", err
+		return "", ipc.HTMLData{}, err
 	}
 
 	debugRequest("html", fmt.Sprintf("selector=%q", selector))
@@ -286,32 +305,58 @@ func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
 	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
 
 	if err != nil {
-		return "", err
+		return "", ipc.HTMLData{}, err
 	}
 
 	if !resp.OK {
 		if isNoElementsError(resp.Error) {
-			return "", ErrNoElements
+			return "", ipc.HTMLData{}, ErrNoElements
 		}
-		return "", fmt.Errorf("%s", resp.Error)
+		return "", ipc.HTMLData{}, fmt.Errorf("%s", resp.Error)
 	}
 
 	// Parse HTML data
 	var data ipc.HTMLData
 	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return "", err
+		return "", ipc.HTMLData{}, err
 	}
 
-	html := data.HTML
+	var html string
 
-	// Format HTML unless --raw flag is set
-	if !raw {
-		formatted, err := htmlformat.Format(html)
-		if err != nil {
-			// If formatting fails, fall back to raw HTML
-			debugf("FORMAT", "HTML formatting failed: %v", err)
-		} else {
-			html = formatted
+	// If HTMLMulti is present (multi-element query with metadata), format with element identifiers
+	if len(data.HTMLMulti) > 0 {
+		var parts []string
+		for i, elem := range data.HTMLMulti {
+			if i > 0 {
+				parts = append(parts, ipc.MultiElementSeparator)
+			}
+			// Add element identifier
+			parts = append(parts, format.FormatElementIdentifier(elem.ElementMeta, i))
+			// Add HTML content (formatted unless --raw)
+			elemHTML := elem.HTML
+			if !raw {
+				formatted, err := htmlformat.Format(elemHTML)
+				if err != nil {
+					debugf("FORMAT", "HTML formatting failed for element %d: %v", i, err)
+				} else {
+					elemHTML = formatted
+				}
+			}
+			parts = append(parts, elemHTML)
+		}
+		html = strings.Join(parts, "\n")
+	} else {
+		// Legacy single HTML field (full page or old format)
+		html = data.HTML
+		// Format HTML unless --raw flag is set
+		if !raw {
+			formatted, err := htmlformat.Format(html)
+			if err != nil {
+				// If formatting fails, fall back to raw HTML
+				debugf("FORMAT", "HTML formatting failed: %v", err)
+			} else {
+				html = formatted
+			}
 		}
 	}
 
@@ -320,13 +365,19 @@ func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
 		beforeCount := strings.Count(html, "\n") + 1
 		html, err = filterHTMLByText(html, find, before, after)
 		if err != nil {
-			return "", err
+			return "", ipc.HTMLData{}, err
 		}
 		afterCount := strings.Count(html, "\n") + 1
 		debugFilter(fmt.Sprintf("--find %q", find), beforeCount, afterCount)
 	}
 
-	return html, nil
+	return html, data, nil
+}
+
+// getHTMLFromDaemon fetches HTML from daemon, applying filters and formatting
+func getHTMLFromDaemon(cmd *cobra.Command) (string, error) {
+	html, _, err := getHTMLDataFromDaemon(cmd)
+	return html, err
 }
 
 // filterHTMLByText filters HTML to only include lines containing the search text
@@ -353,7 +404,7 @@ func filterHTMLByText(html, searchText string, before, after int) (string, error
 		for i, idx := range matchIndices {
 			// Add separator if this match is not adjacent to the previous one
 			if i > 0 && idx > matchIndices[i-1]+1 {
-				result = append(result, "--")
+				result = append(result, ipc.MultiElementSeparator)
 			}
 			result = append(result, lines[idx])
 		}
@@ -388,7 +439,7 @@ func filterHTMLByText(html, searchText string, before, after int) (string, error
 	var result []string
 	for i, r := range ranges {
 		if i > 0 {
-			result = append(result, "--")
+			result = append(result, ipc.MultiElementSeparator)
 		}
 		for j := r.start; j <= r.end; j++ {
 			result = append(result, lines[j])

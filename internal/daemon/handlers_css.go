@@ -109,23 +109,43 @@ func (d *Daemon) handleCSSComputed(sessionID string, params ipc.CSSParams) ipc.R
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Get computed styles for all matching elements
+	// Get computed styles with element metadata for all matching elements
 	js := fmt.Sprintf(`(function() {
+		// Extract element metadata (tag, id, first class)
+		function getElementMeta(el) {
+			const id = (el.id || '').trim();
+			const classAttr = el.getAttribute('class');
+			const classes = (classAttr || '')
+				.split(/\s+/)
+				.map(c => c.trim())
+				.filter(c => c.length > 0);
+			const firstClass = classes.length > 0 ? classes[0] : null;
+
+			return {
+				tag: el.tagName.toLowerCase(),
+				id: id || null,
+				class: firstClass
+			};
+		}
+
 		const elements = document.querySelectorAll(%q);
 		if (elements.length === 0) {
 			return null;
 		}
-		const results = [];
-		for (const element of elements) {
-			const styles = window.getComputedStyle(element);
-			const result = {};
-			for (let i = 0; i < styles.length; i++) {
-				const prop = styles[i];
-				result[prop] = styles.getPropertyValue(prop);
+		return Array.from(elements).map((el) => {
+			// Get computed styles
+			const computedStyles = window.getComputedStyle(el);
+			const styles = {};
+			for (let i = 0; i < computedStyles.length; i++) {
+				const prop = computedStyles[i];
+				styles[prop] = computedStyles.getPropertyValue(prop);
 			}
-			results.push(result);
-		}
-		return results;
+
+			return {
+				...getElementMeta(el),
+				styles: styles
+			};
+		});
 	})()`, params.Selector)
 
 	result, err := d.sendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
@@ -138,8 +158,8 @@ func (d *Daemon) handleCSSComputed(sessionID string, params ipc.CSSParams) ipc.R
 
 	var evalResp struct {
 		Result struct {
-			Type  string              `json:"type"`
-			Value []map[string]string `json:"value"`
+			Type  string                  `json:"type"`
+			Value []ipc.ElementWithStyles `json:"value"`
 		} `json:"result"`
 		ExceptionDetails *struct {
 			Text string `json:"text"`
@@ -160,7 +180,7 @@ func (d *Daemon) handleCSSComputed(sessionID string, params ipc.CSSParams) ipc.R
 	// For backward compatibility, also set Styles if there's only one element
 	var styles map[string]string
 	if len(evalResp.Result.Value) == 1 {
-		styles = evalResp.Result.Value[0]
+		styles = evalResp.Result.Value[0].Styles
 	}
 
 	return ipc.SuccessResponse(ipc.CSSData{
@@ -261,18 +281,33 @@ func (d *Daemon) handleCSSInline(sessionID string, params ipc.CSSParams) ipc.Res
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Get inline style attributes for all matching elements
+	// Get inline style attributes with element metadata for all matching elements
 	js := fmt.Sprintf(`(function() {
+		// Extract element metadata (tag, id, first class)
+		function getElementMeta(el) {
+			const id = (el.id || '').trim();
+			const classAttr = el.getAttribute('class');
+			const classes = (classAttr || '')
+				.split(/\s+/)
+				.map(c => c.trim())
+				.filter(c => c.length > 0);
+			const firstClass = classes.length > 0 ? classes[0] : null;
+
+			return {
+				tag: el.tagName.toLowerCase(),
+				id: id || null,
+				class: firstClass
+			};
+		}
+
 		const elements = document.querySelectorAll(%q);
 		if (elements.length === 0) {
 			return null;
 		}
-		const styles = [];
-		for (const el of elements) {
-			const style = el.getAttribute('style') || '';
-			styles.push(style);
-		}
-		return styles;
+		return Array.from(elements).map((el) => ({
+			...getElementMeta(el),
+			inline: el.getAttribute('style') || ''
+		}));
 	})()`, params.Selector)
 
 	result, err := d.sendToSession(ctx, sessionID, "Runtime.evaluate", map[string]any{
@@ -285,8 +320,8 @@ func (d *Daemon) handleCSSInline(sessionID string, params ipc.CSSParams) ipc.Res
 
 	var evalResp struct {
 		Result struct {
-			Type  string   `json:"type"`
-			Value []string `json:"value"`
+			Type  string                  `json:"type"`
+			Value []ipc.ElementWithStyles `json:"value"`
 		} `json:"result"`
 		ExceptionDetails *struct {
 			Text string `json:"text"`
@@ -304,8 +339,15 @@ func (d *Daemon) handleCSSInline(sessionID string, params ipc.CSSParams) ipc.Res
 		return ipc.ErrorResponse(fmt.Sprintf("selector '%s' matched no elements", params.Selector))
 	}
 
+	// Build deprecated Inline field for backward compatibility
+	inlineStrings := make([]string, len(evalResp.Result.Value))
+	for i, elem := range evalResp.Result.Value {
+		inlineStrings[i] = elem.Inline
+	}
+
 	return ipc.SuccessResponse(ipc.CSSData{
-		Inline: evalResp.Result.Value,
+		InlineMulti: evalResp.Result.Value,
+		Inline:      inlineStrings,
 	})
 }
 

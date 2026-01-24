@@ -434,16 +434,16 @@ func runCSSComputed(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
-	// JSON mode: output JSON
+	// JSON mode: output JSON (use ComputedMulti which includes metadata)
 	if JSONOutput {
 		result := map[string]any{
-			"ok":     true,
-			"styles": data.ComputedMulti,
+			"ok":       true,
+			"elements": data.ComputedMulti,
 		}
 		return outputJSON(os.Stdout, result)
 	}
 
-	// Text mode: use multi-element formatter with -- separators
+	// Text mode: use multi-element formatter with element identifiers and -- separators
 	return format.ComputedStylesMulti(os.Stdout, data.ComputedMulti)
 }
 
@@ -549,18 +549,18 @@ func runCSSInline(cmd *cobra.Command, args []string) error {
 
 	// Check if all inline styles are empty
 	allEmpty := true
-	for _, style := range data.Inline {
-		if style != "" {
+	for _, elem := range data.InlineMulti {
+		if elem.Inline != "" {
 			allEmpty = false
 			break
 		}
 	}
 
-	// JSON mode: output JSON
+	// JSON mode: output JSON (use InlineMulti which includes metadata)
 	if JSONOutput {
 		result := map[string]any{
-			"ok":     true,
-			"inline": data.Inline,
+			"ok":       true,
+			"elements": data.InlineMulti,
 		}
 		return outputJSON(os.Stdout, result)
 	}
@@ -570,8 +570,8 @@ func runCSSInline(cmd *cobra.Command, args []string) error {
 		return outputNotice("No inline styles")
 	}
 
-	// Text mode: output inline styles with -- separators
-	return format.InlineStyles(os.Stdout, data.Inline)
+	// Text mode: output inline styles with element identifiers and -- separators
+	return format.InlineStyles(os.Stdout, data.InlineMulti)
 }
 
 func runCSSMatched(cmd *cobra.Command, args []string) error {
@@ -776,7 +776,7 @@ func filterCSSByText(css, searchText string, before, after int) (string, error) 
 		for i, idx := range matchIndices {
 			// Add separator if this match is not adjacent to the previous one
 			if i > 0 && idx > matchIndices[i-1]+1 {
-				result = append(result, "--")
+				result = append(result, ipc.MultiElementSeparator)
 			}
 			result = append(result, lines[idx])
 		}
@@ -811,7 +811,7 @@ func filterCSSByText(css, searchText string, before, after int) (string, error) 
 	var result []string
 	for i, r := range ranges {
 		if i > 0 {
-			result = append(result, "--")
+			result = append(result, ipc.MultiElementSeparator)
 		}
 		for j := r.start; j <= r.end; j++ {
 			result = append(result, lines[j])

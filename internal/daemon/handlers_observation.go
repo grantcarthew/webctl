@@ -306,6 +306,23 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 
 	// For selector queries, use JavaScript querySelectorAll with Promise-based wait
 	js := fmt.Sprintf(`(function() {
+		// Extract element metadata (tag, id, first class)
+		function getElementMeta(el) {
+			const id = (el.id || '').trim();
+			const classAttr = el.getAttribute('class');
+			const classes = (classAttr || '')
+				.split(/\s+/)
+				.map(c => c.trim())
+				.filter(c => c.length > 0);
+			const firstClass = classes.length > 0 ? classes[0] : null;
+
+			return {
+				tag: el.tagName.toLowerCase(),
+				id: id || null,
+				class: firstClass
+			};
+		}
+
 		return new Promise((resolve, reject) => {
 			const queryElements = () => {
 				const elements = document.querySelectorAll(%q);
@@ -313,14 +330,10 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 					resolve(null);
 					return;
 				}
-				const results = [];
-				elements.forEach((el, i) => {
-					if (i > 0) {
-						results.push('--');
-					}
-					results.push(el.outerHTML);
-				});
-				resolve(results.join('\n'));
+				resolve(Array.from(elements).map((el) => ({
+					...getElementMeta(el),
+					html: el.outerHTML
+				})));
 			};
 
 			if (document.readyState === 'complete') {
@@ -356,11 +369,11 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to query selector: %v", err))
 	}
 
-	// Parse result - null means no matches, string means success
+	// Parse result - null means no matches, array means success
 	var evalResp struct {
 		Result struct {
-			Type  string `json:"type"`
-			Value string `json:"value"`
+			Type  string                `json:"type"`
+			Value []ipc.ElementWithHTML `json:"value"`
 		} `json:"result"`
 		ExceptionDetails *struct {
 			Text string `json:"text"`
@@ -373,12 +386,23 @@ func (d *Daemon) handleHTML(req ipc.Request) ipc.Response {
 		return ipc.ErrorResponse(fmt.Sprintf("JavaScript error: %s", evalResp.ExceptionDetails.Text))
 	}
 	// null result means no elements matched
-	if evalResp.Result.Type == "object" && evalResp.Result.Value == "" {
+	if evalResp.Result.Type == "object" && evalResp.Result.Value == nil {
 		return ipc.ErrorResponse(fmt.Sprintf("selector '%s' matched no elements", params.Selector))
 	}
 
+	// Build legacy HTML field with -- separators for backward compatibility
+	// For N elements: N HTML strings + (N-1) separators = 2N-1 elements
+	htmlParts := make([]string, 0, len(evalResp.Result.Value)*2-1)
+	for i, elem := range evalResp.Result.Value {
+		if i > 0 {
+			htmlParts = append(htmlParts, ipc.MultiElementSeparator)
+		}
+		htmlParts = append(htmlParts, elem.HTML)
+	}
+
 	return ipc.SuccessResponse(ipc.HTMLData{
-		HTML: evalResp.Result.Value,
+		HTML:      strings.Join(htmlParts, "\n"),
+		HTMLMulti: evalResp.Result.Value,
 	})
 }
 

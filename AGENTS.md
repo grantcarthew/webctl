@@ -22,8 +22,8 @@ When completing a project and starting the next:
 
 Projects are stored in `.ai/projects/`.
 
-- Active Project: p-053 CSS Element Identification
-- Design Record: None (enhancement to existing commands)
+- Active Project: None
+- Design Record: None
 
 ## Quick Reference
 

@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+// MultiElementSeparator is the separator string used between multiple elements
+// in text output for observation commands (html, css inline, css computed).
+const MultiElementSeparator = "--"
+
 // CommandExecutor executes CLI commands with arguments.
 // Returns true if the command was recognized, false otherwise.
 // Used by the REPL to execute commands via Cobra.
@@ -134,9 +138,16 @@ type HTMLParams struct {
 	Selector string `json:"selector,omitempty"`
 }
 
+// ElementWithHTML combines element metadata with HTML
+type ElementWithHTML struct {
+	ElementMeta
+	HTML string `json:"html"`
+}
+
 // HTMLData is the response data for the "html" command.
 type HTMLData struct {
-	HTML string `json:"html"`
+	HTML      string            `json:"html,omitempty"`      // single result or legacy
+	HTMLMulti []ElementWithHTML `json:"htmlMulti,omitempty"` // multi-element with metadata
 }
 
 // NavigateParams represents parameters for the "navigate" command.
@@ -275,13 +286,37 @@ type CSSParams struct {
 	Property string `json:"property,omitempty"` // CSS property for get action
 }
 
+// ElementMeta contains element identification metadata extracted from DOM elements.
+// The identification follows CSS selector notation for developer familiarity.
+//
+// Identification Priority:
+//   1. ID attribute (if present) -> #id
+//   2. First class name (if present) -> .class:N
+//   3. Tag name (always present) -> tag:N
+//
+// Note: Only the first class is captured when an element has multiple classes.
+// Special characters in IDs/classes are sanitized to valid CSS identifier characters.
+type ElementMeta struct {
+	Tag   string `json:"tag"`              // lowercase tag name (div, span, svg, etc.)
+	ID    string `json:"id,omitempty"`     // id attribute value (sanitized, if present)
+	Class string `json:"class,omitempty"`  // first class name only (sanitized, if present)
+}
+
+// ElementWithStyles combines element metadata with styles
+type ElementWithStyles struct {
+	ElementMeta
+	Styles map[string]string `json:"styles,omitempty"` // for computed
+	Inline string            `json:"inline,omitempty"` // for inline
+}
+
 // CSSData is the response data for the "css" command.
 type CSSData struct {
 	CSS           string              `json:"css,omitempty"`           // For save/matched actions
 	Styles        map[string]string   `json:"styles,omitempty"`        // For computed action (single element, JSON format)
-	ComputedMulti []map[string]string `json:"computedMulti,omitempty"` // For computed action (multiple elements)
+	ComputedMulti []ElementWithStyles `json:"computedMulti,omitempty"` // For computed action (multiple elements with metadata)
 	Value         string              `json:"value,omitempty"`         // For get action
-	Inline        []string            `json:"inline,omitempty"`        // For inline action (style attributes)
+	InlineMulti   []ElementWithStyles `json:"inlineMulti,omitempty"`   // For inline action (with metadata)
+	Inline        []string            `json:"inline,omitempty"`        // Deprecated: For inline action (style attributes only)
 	Matched       []CSSMatchedRule    `json:"matched,omitempty"`       // For matched action
 }
 
