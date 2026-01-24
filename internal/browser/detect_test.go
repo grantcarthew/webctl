@@ -30,13 +30,13 @@ func TestFindChrome_RespectsEnvVar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+	_ = tmpFile.Close()
 
 	// Set env var
 	original := os.Getenv("WEBCTL_CHROME")
-	os.Setenv("WEBCTL_CHROME", tmpFile.Name())
-	defer os.Setenv("WEBCTL_CHROME", original)
+	_ = os.Setenv("WEBCTL_CHROME", tmpFile.Name())
+	defer func() { _ = os.Setenv("WEBCTL_CHROME", original) }()
 
 	path, err := FindChrome()
 	if err != nil {
@@ -50,8 +50,8 @@ func TestFindChrome_RespectsEnvVar(t *testing.T) {
 
 func TestFindChrome_EnvVarInvalidPath(t *testing.T) {
 	original := os.Getenv("WEBCTL_CHROME")
-	os.Setenv("WEBCTL_CHROME", "/nonexistent/path/to/chrome")
-	defer os.Setenv("WEBCTL_CHROME", original)
+	_ = os.Setenv("WEBCTL_CHROME", "/nonexistent/path/to/chrome")
+	defer func() { _ = os.Setenv("WEBCTL_CHROME", original) }()
 
 	_, err := FindChrome()
 	if !errors.Is(err, ErrChromeNotFound) {
@@ -62,8 +62,8 @@ func TestFindChrome_EnvVarInvalidPath(t *testing.T) {
 func TestFindChrome_SearchesPaths(t *testing.T) {
 	// Clear env var to test path search
 	original := os.Getenv("WEBCTL_CHROME")
-	os.Unsetenv("WEBCTL_CHROME")
-	defer os.Setenv("WEBCTL_CHROME", original)
+	_ = os.Unsetenv("WEBCTL_CHROME")
+	defer func() { _ = os.Setenv("WEBCTL_CHROME", original) }()
 
 	// This test may pass or fail depending on whether Chrome is installed
 	// We just verify it doesn't panic

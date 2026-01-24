@@ -127,7 +127,7 @@ func (s *Server) Start(ctx context.Context) error {
 	case ModeProxy:
 		handler, err = newProxyHandler(s.config.ProxyURL, s.debugLog)
 		if err != nil {
-			listener.Close()
+			_ = listener.Close()
 			return fmt.Errorf("failed to create proxy handler: %w", err)
 		}
 	}
@@ -149,13 +149,13 @@ func (s *Server) Start(ctx context.Context) error {
 			Debug:   s.config.Debug,
 		})
 		if err != nil {
-			listener.Close()
+			_ = listener.Close()
 			return fmt.Errorf("failed to create file watcher: %w", err)
 		}
 		s.watcher = watcher
 
 		if err := s.watcher.Start(); err != nil {
-			listener.Close()
+			_ = listener.Close()
 			return fmt.Errorf("failed to start file watcher: %w", err)
 		}
 		s.debugLog("File watcher started for paths: %v", s.config.WatchPaths)
@@ -280,7 +280,7 @@ func findAvailablePort(host string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	port := listener.Addr().(*net.TCPAddr).Port
 	return port, nil
@@ -293,6 +293,6 @@ func isPortAvailable(host string, port int) bool {
 	if err != nil {
 		return false
 	}
-	listener.Close()
+	_ = listener.Close()
 	return true
 }

@@ -43,7 +43,7 @@ func FetchTargets(ctx context.Context, host string, port int) ([]Target, error) 
 	if err != nil {
 		return nil, fmt.Errorf("fetch targets: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
@@ -77,7 +77,7 @@ func FetchVersion(ctx context.Context, host string, port int) (*VersionInfo, err
 	if err != nil {
 		return nil, fmt.Errorf("fetch version: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)

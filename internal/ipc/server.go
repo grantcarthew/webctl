@@ -48,7 +48,7 @@ func NewServer(socketPath string, handler Handler) (*Server, error) {
 
 	// Set socket permissions to owner-only
 	if err := os.Chmod(socketPath, 0600); err != nil {
-		listener.Close()
+		_ = listener.Close()
 		return nil, fmt.Errorf("failed to set socket permissions: %w", err)
 	}
 
@@ -65,7 +65,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	go func() {
 		select {
 		case <-ctx.Done():
-			s.Close()
+			_ = s.Close()
 		case <-s.closed:
 		}
 	}()
@@ -89,7 +89,7 @@ func (s *Server) Serve(ctx context.Context) error {
 // handleConn processes a single client connection.
 func (s *Server) handleConn(conn net.Conn) {
 	defer s.wg.Done()
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	reader := bufio.NewReader(conn)
 
@@ -146,7 +146,7 @@ func (s *Server) Close() error {
 		err = s.listener.Close()
 		s.wg.Wait()
 		// Clean up socket file
-		os.Remove(s.socketPath)
+		_ = os.Remove(s.socketPath)
 	})
 	return err
 }

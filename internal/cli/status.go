@@ -44,7 +44,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	debugRequest("status", "")
 	ipcStart := time.Now()

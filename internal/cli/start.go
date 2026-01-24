@@ -33,7 +33,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Check if daemon is already running
 	if execFactory.IsDaemonRunning() {
-		outputError("daemon is already running")
+		_ = outputError("daemon is already running")
 		outputHint("use 'webctl stop' to stop the daemon, or 'webctl stop --force' to force cleanup")
 		return printedError{err: fmt.Errorf("daemon is already running")}
 	}

@@ -27,7 +27,7 @@ func TestHTMLTiming_NetworkIdleBlocking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(tmpDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 	socketPath := filepath.Join(tmpDir, "webctl.sock")
 	pidPath := filepath.Join(tmpDir, "webctl.pid")
 
@@ -58,7 +58,7 @@ func TestHTMLTiming_NetworkIdleBlocking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to daemon: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Test 1: Navigate to example.com and immediately request HTML
 	// This should trigger the networkIdle blocking issue
@@ -189,7 +189,7 @@ func TestHTMLTiming_NetworkIdleBlocking(t *testing.T) {
 		}
 	})
 
-	client.Close()
+	_ = client.Close()
 	cancel()
 
 	select {
@@ -241,7 +241,7 @@ func BenchmarkHTMLExtraction(b *testing.B) {
 	if err != nil {
 		b.Fatalf("failed to connect: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Navigate once before benchmarking
 	navParams, _ := json.Marshal(ipc.NavigateParams{URL: "https://example.com"})

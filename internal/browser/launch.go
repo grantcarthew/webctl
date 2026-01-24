@@ -141,7 +141,7 @@ func spawnProcess(binPath string, opts LaunchOptions) (*exec.Cmd, string, error)
 	if err := cmd.Start(); err != nil {
 		// Clean up temp dir on failure
 		if createdTempDir && dataDir != "" {
-			os.RemoveAll(dataDir)
+			_ = os.RemoveAll(dataDir)
 		}
 		return nil, "", fmt.Errorf("start browser: %w", err)
 	}

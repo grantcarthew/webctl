@@ -331,7 +331,7 @@ func getNetworkFromDaemon(cmd *cobra.Command) ([]ipc.NetworkEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	debugRequest("network", "")
 	ipcStart := time.Now()

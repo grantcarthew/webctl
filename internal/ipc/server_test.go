@@ -46,7 +46,7 @@ func TestServer_ClientCommunication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect client: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Test ping command
 	resp, err := client.SendCmd("ping")
@@ -107,13 +107,13 @@ func TestServer_MultipleClients(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect client1: %v", err)
 	}
-	defer client1.Close()
+	defer func() { _ = client1.Close() }()
 
 	client2, err := DialPath(socketPath)
 	if err != nil {
 		t.Fatalf("failed to connect client2: %v", err)
 	}
-	defer client2.Close()
+	defer func() { _ = client2.Close() }()
 
 	// Both clients should be able to send commands
 	_, err = client1.SendCmd("inc")

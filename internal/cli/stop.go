@@ -76,7 +76,7 @@ func tryGracefulShutdown() bool {
 		debugf("STOP", "failed to create executor: %v", err)
 		return false
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	debugRequest("shutdown", "")
 	ipcStart := time.Now()
@@ -156,7 +156,7 @@ func forceCleanup() error {
 				"message": "nothing to clean up",
 			})
 		}
-		fmt.Fprintln(os.Stdout, "Nothing to clean up")
+		_, _ = fmt.Fprintln(os.Stdout, "Nothing to clean up")
 		return nil
 	}
 
@@ -169,7 +169,7 @@ func forceCleanup() error {
 
 	// Text mode: output each action
 	for _, action := range cleaned {
-		fmt.Fprintln(os.Stdout, action)
+		_, _ = fmt.Fprintln(os.Stdout, action)
 	}
 	return nil
 }

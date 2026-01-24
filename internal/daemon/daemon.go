@@ -215,7 +215,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to start browser: %w", err)
 	}
 	d.browser = b
-	defer d.browser.Close()
+	defer func() { _ = d.browser.Close() }()
 
 	// Stop dev server on shutdown if running
 	defer func() {
@@ -247,7 +247,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to connect to CDP: %w", err)
 	}
 	d.cdp = cdpClient
-	defer d.cdp.Close()
+	defer func() { _ = d.cdp.Close() }()
 	d.debugf(false, "CDP client connected successfully")
 
 	// Subscribe to events before enabling domains
@@ -277,7 +277,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to start IPC server: %w", err)
 	}
 	d.server = server
-	defer d.server.Close()
+	defer func() { _ = d.server.Close() }()
 
 	// Set up signal handling
 	sigCh := make(chan os.Signal, 1)
@@ -527,5 +527,5 @@ func (d *Daemon) writePIDFile() error {
 
 // removePIDFile removes the PID file.
 func (d *Daemon) removePIDFile() {
-	os.Remove(d.config.PIDPath)
+	_ = os.Remove(d.config.PIDPath)
 }

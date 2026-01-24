@@ -149,7 +149,7 @@ func runReady(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	params, err := json.Marshal(ipc.ReadyParams{
 		Timeout:     int(timeout.Seconds()),

@@ -25,7 +25,7 @@ func TestRunCookiesDefault_DaemonNotRunning(t *testing.T) {
 
 	err := runCookiesDefault(cookiesCmd, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = old
 
 	if err == nil {
@@ -94,7 +94,7 @@ func TestRunCookiesDefault_Success(t *testing.T) {
 
 	err := runCookiesDefault(cookiesCmd, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -141,7 +141,7 @@ func TestRunCookiesDefault_UnknownSubcommand(t *testing.T) {
 
 	err := runCookiesDefault(cookiesCmd, []string{"invalid"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = old
 
 	if err == nil {
@@ -197,7 +197,7 @@ func TestRunCookiesShow_Success(t *testing.T) {
 
 	err := runCookiesDefault(cookiesCmd, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -276,7 +276,7 @@ func TestRunCookiesSave_ToFile(t *testing.T) {
 
 	err := runCookiesSave(cookiesSaveCmd, []string{tmpFile})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -367,7 +367,7 @@ func TestRunCookiesSave_ToDirectory(t *testing.T) {
 	// Add trailing slash to indicate directory (new trailing slash convention)
 	err := runCookiesSave(cookiesSaveCmd, []string{tmpDir + "/"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -633,7 +633,7 @@ func TestRunCookiesSet_Success(t *testing.T) {
 
 	err := runCookiesSet(cookiesSetCmd, []string{"session", "abc123"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -692,7 +692,7 @@ func TestRunCookiesDelete_BasicSuccess(t *testing.T) {
 
 	err := runCookiesDelete(cookiesDeleteCmd, []string{"session"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {

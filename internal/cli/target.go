@@ -47,7 +47,7 @@ func runTarget(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	query := ""
 	if len(args) > 0 {
