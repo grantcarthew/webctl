@@ -3,7 +3,7 @@
 # Test: CLI Interaction Commands
 # --------------------------------
 # Tests for webctl interaction commands: click, type, select, scroll, focus,
-# key, eval, ready, clear, find, target.
+# key, eval, ready, and utility commands: clear, target.
 # Verifies browser interaction functionality across all interaction modes.
 #
 # External Dependencies:
@@ -882,121 +882,20 @@ assert_matches "(console|network|invalid|target)" "${TEST_STDERR}" \
   "Error message provides helpful context about valid targets"
 
 # =============================================================================
-# Find Command - Basic Functionality
+# Note: Find Command Removed per DR-030
 # =============================================================================
-
-test_section "Find Command - Basic"
-
-# Navigate to a page with content (fresh state)
-# Page title: "Navigation Test Page"
-# Page contains: "Navigation", "Test", "Page" and other text
-setup_navigate_to '/pages/navigation.html'
-
-# Test: Find text (case-insensitive by default)
-run_test "find text (case-insensitive)" "${WEBCTL_BINARY}" find "Navigation"
-assert_success "${TEST_EXIT_CODE}" "find returns success"
-assert_contains "${TEST_STDOUT}" "Navigation" "Output contains matched text"
-
-# Test: Find lowercase variant (should match due to case-insensitive default)
-run_test "find lowercase (case-insensitive)" "${WEBCTL_BINARY}" find "navigation"
-assert_success "${TEST_EXIT_CODE}" "find lowercase returns success"
-
-test_section "Find Command - Flags"
-
-# Test: Find with --case-sensitive (exact case match)
-# Page contains "Navigation Test Page" (title case)
-# Searching for "Navigation" (exact match) should find occurrences
-run_test "find --case-sensitive exact match" "${WEBCTL_BINARY}" find --case-sensitive --json "Navigation"
-assert_success "${TEST_EXIT_CODE}" "--case-sensitive with exact case returns success"
-assert_json_field "${TEST_STDOUT}" ".ok" "true" "JSON ok field is true"
-
-# Verify we found matches by checking total > 0
-run_test "verify case-sensitive match count" "${WEBCTL_BINARY}" find --case-sensitive --json "Navigation"
-assert_success "${TEST_EXIT_CODE}" "find completed"
-
-# Extract total from JSON output
-MATCH_TOTAL=$(echo "${TEST_STDOUT}" | jq -r '.total' 2>/dev/null || echo "0")
-
-# Validate extraction succeeded and value is numeric
-if [[ ! "${MATCH_TOTAL}" =~ ^[0-9]+$ ]]; then
-  log_failure "Failed to extract valid numeric match count from JSON"
-  increment_fail
-  MATCH_TOTAL=0
-fi
-
-assert_greater_than 0 "${MATCH_TOTAL}" "Found matches for case-sensitive 'Navigation'"
-
-# Test: Find with --case-sensitive (wrong case - no match expected)
-# Searching "navigation" (lowercase) when page has "Navigation" (title case)
-# Should find ZERO matches because case must match exactly
-run_test "find --case-sensitive wrong case (lowercase)" "${WEBCTL_BINARY}" find --case-sensitive --json "navigation"
-assert_success "${TEST_EXIT_CODE}" "--case-sensitive lowercase search completes"
-assert_json_field "${TEST_STDOUT}" ".total" "0" "Lowercase != Title case: 0 matches"
-
-# Test: Find with --case-sensitive (wrong case - no match expected)
-# Searching "NAVIGATION" (uppercase) when page has "Navigation" (title case)
-# Should find ZERO matches because case must match exactly
-run_test "find --case-sensitive wrong case (uppercase)" "${WEBCTL_BINARY}" find --case-sensitive --json "NAVIGATION"
-assert_success "${TEST_EXIT_CODE}" "--case-sensitive uppercase search completes"
-assert_json_field "${TEST_STDOUT}" ".total" "0" "Uppercase != Title case: 0 matches"
-
-# Test: Find with -c short flag
-run_test "find -c" "${WEBCTL_BINARY}" find -c "Navigation"
-assert_success "${TEST_EXIT_CODE}" "-c returns success"
-
-# Test: Find with --regex
-run_test "find --regex" "${WEBCTL_BINARY}" find --regex "Nav.*tion"
-assert_success "${TEST_EXIT_CODE}" "--regex returns success"
-
-# Test: Find with -E short flag
-run_test "find -E" "${WEBCTL_BINARY}" find -E "Nav[a-z]+"
-assert_success "${TEST_EXIT_CODE}" "-E returns success"
-
-# Test: Find with --limit
-run_test "find --limit 1" "${WEBCTL_BINARY}" find --limit 1 "the"
-assert_success "${TEST_EXIT_CODE}" "--limit returns success"
-
-# Test: Find with -l short flag
-run_test "find -l 2" "${WEBCTL_BINARY}" find -l 2 "the"
-assert_success "${TEST_EXIT_CODE}" "-l returns success"
-
-test_section "Find Command - JSON Output"
-
-# Test: Find with JSON output
-run_test "find --json" "${WEBCTL_BINARY}" find --json "Navigation"
-assert_success "${TEST_EXIT_CODE}" "--json returns success"
-assert_json_field "${TEST_STDOUT}" ".ok" "true" "JSON ok field is true"
-assert_contains "${TEST_STDOUT}" "matches" "JSON contains matches field"
-assert_contains "${TEST_STDOUT}" "total" "JSON contains total field"
-
-test_section "Find Command - No-Color Mode"
-
-# Test: Find with no-color
-run_test "find --no-color" "${WEBCTL_BINARY}" find --no-color "Navigation"
-assert_success "${TEST_EXIT_CODE}" "--no-color returns success"
-assert_no_ansi_codes "${TEST_STDOUT}" "No ANSI escape codes in output"
-
-test_section "Find Command - Error Cases"
-
-# Test: Find with no matches (command succeeds, just returns 0 matches)
-run_test "find no matches" "${WEBCTL_BINARY}" find "NONEXISTENT_TEXT_XYZ_12345"
-assert_success "${TEST_EXIT_CODE}" "No matches returns success (search worked)"
-
-# Test: Find with query too short
-run_test "find query too short" "${WEBCTL_BINARY}" find "ab"
-assert_failure "${TEST_EXIT_CODE}" "Short query returns failure"
-assert_matches "(minimum|least|characters|length)" "${TEST_STDERR}" \
-  "Error message mentions minimum length requirement"
-
-# Test: Find --case-sensitive with --regex (mutually exclusive)
-# Note: This tests a CLI design decision that these flags are mutually exclusive.
-# If the implementation changes to support both flags together, this test should be updated.
-run_test "find --case-sensitive --regex (error)" "${WEBCTL_BINARY}" find --case-sensitive --regex "test"
-assert_failure "${TEST_EXIT_CODE}" "Mutually exclusive flags return failure"
-
-# Test: Find with invalid regex
-run_test "find --regex invalid pattern" "${WEBCTL_BINARY}" find --regex "[invalid("
-assert_failure "${TEST_EXIT_CODE}" "Invalid regex returns failure"
+# The standalone 'find' command has been removed in favor of universal --find
+# flags on all observation commands (html, css, console, network, cookies).
+#
+# Find functionality is now tested as part of observation command tests:
+# - HTML search: test-observation.sh (html --find)
+# - CSS search: test-observation.sh (css --find)
+# - Console search: test-observation.sh (console --find)
+# - Network search: test-observation.sh (network --find)
+# - Cookies search: test-cookies.sh (cookies --find)
+#
+# See DR-030 for rationale on this design decision.
+# =============================================================================
 
 # =============================================================================
 # Target Command - Basic Functionality

@@ -1770,115 +1770,21 @@ func TestFind_Integration(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Test: Search for text in minified HTML
+	// REMOVED: Find command removed per DR-030 (use html --find instead)
 	t.Run("search_minified_html", func(t *testing.T) {
-		params, _ := json.Marshal(ipc.FindParams{
-			Query: "searchable text",
-		})
-		resp, err := client.Send(ipc.Request{
-			Cmd:    "find",
-			Params: params,
-		})
-		if err != nil {
-			t.Fatalf("find command failed: %v", err)
-		}
-		if !resp.OK {
-			t.Fatalf("find returned error: %s", resp.Error)
-		}
-
-		var data ipc.FindData
-		if err := json.Unmarshal(resp.Data, &data); err != nil {
-			t.Fatalf("failed to parse find data: %v", err)
-		}
-
-		if data.Total == 0 {
-			t.Fatal("expected at least one match")
-		}
-
-		match := data.Matches[0]
-
-		// Verify match line is readable (not thousands of characters)
-		if len(match.Context.Match) > 200 {
-			t.Errorf("match line too long (%d chars), HTML formatting may have failed", len(match.Context.Match))
-		}
-
-		// Verify match contains the search term
-		if !bytes.Contains([]byte(match.Context.Match), []byte("searchable text")) {
-			t.Errorf("match should contain search term, got: %s", match.Context.Match)
-		}
-
-		// Verify context lines are reasonable length
-		if len(match.Context.Before) > 200 {
-			t.Errorf("before context too long (%d chars)", len(match.Context.Before))
-		}
-		if len(match.Context.After) > 200 {
-			t.Errorf("after context too long (%d chars)", len(match.Context.After))
-		}
-
-		// Verify selector was generated
-		if match.Selector == "" {
-			t.Error("expected selector to be generated")
-		}
-
-		t.Logf("Found match in formatted HTML:")
-		t.Logf("  Before: %s", match.Context.Before)
-		t.Logf("  Match:  %s", match.Context.Match)
-		t.Logf("  After:  %s", match.Context.After)
-		t.Logf("  Selector: %s", match.Selector)
+		t.Skip("find command removed per DR-030 - use html --find instead")
 	})
 
 	// Test: Regex search in minified HTML
+	// REMOVED: Find command removed per DR-030 (use html --find instead)
 	t.Run("regex_search", func(t *testing.T) {
-		params, _ := json.Marshal(ipc.FindParams{
-			Query: "Article.*Title",
-			Regex: true,
-		})
-		resp, err := client.Send(ipc.Request{
-			Cmd:    "find",
-			Params: params,
-		})
-		if err != nil {
-			t.Fatalf("find command failed: %v", err)
-		}
-		if !resp.OK {
-			t.Fatalf("find returned error: %s", resp.Error)
-		}
-
-		var data ipc.FindData
-		if err := json.Unmarshal(resp.Data, &data); err != nil {
-			t.Fatalf("failed to parse find data: %v", err)
-		}
-
-		if data.Total == 0 {
-			t.Fatal("expected at least one regex match")
-		}
-
-		t.Logf("Regex matched %d results", data.Total)
+		t.Skip("find command removed per DR-030 - use html --find instead")
 	})
 
 	// Test: No matches
+	// REMOVED: Find command removed per DR-030 (use html --find instead)
 	t.Run("no_matches", func(t *testing.T) {
-		params, _ := json.Marshal(ipc.FindParams{
-			Query: "nonexistent-text-xyz",
-		})
-		resp, err := client.Send(ipc.Request{
-			Cmd:    "find",
-			Params: params,
-		})
-		if err != nil {
-			t.Fatalf("find command failed: %v", err)
-		}
-		if !resp.OK {
-			t.Fatalf("find returned error: %s", resp.Error)
-		}
-
-		var data ipc.FindData
-		if err := json.Unmarshal(resp.Data, &data); err != nil {
-			t.Fatalf("failed to parse find data: %v", err)
-		}
-
-		if data.Total != 0 {
-			t.Errorf("expected 0 matches, got %d", data.Total)
-		}
+		t.Skip("find command removed per DR-030 - use html --find instead")
 	})
 
 	client.Close()

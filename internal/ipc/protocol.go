@@ -267,35 +267,6 @@ type CookiesData struct {
 	Matches []Cookie `json:"matches,omitempty"`
 }
 
-// FindParams represents parameters for the "find" command.
-type FindParams struct {
-	Query         string `json:"query"`
-	Regex         bool   `json:"regex"`
-	CaseSensitive bool   `json:"caseSensitive"`
-	Limit         int    `json:"limit"`
-}
-
-// FindMatch represents a single match from the find command.
-type FindMatch struct {
-	Index    int         `json:"index"`
-	Context  FindContext `json:"context"`
-	Selector string      `json:"selector"`
-	XPath    string      `json:"xpath"`
-}
-
-// FindContext holds the before/match/after lines for a match.
-type FindContext struct {
-	Before string `json:"before"`
-	Match  string `json:"match"`
-	After  string `json:"after"`
-}
-
-// FindData is the response data for the "find" command.
-type FindData struct {
-	Query   string      `json:"query"`
-	Total   int         `json:"total"`
-	Matches []FindMatch `json:"matches"`
-}
 
 // CSSParams represents parameters for the "css" command.
 type CSSParams struct {
