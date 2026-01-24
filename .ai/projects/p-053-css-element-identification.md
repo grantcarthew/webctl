@@ -61,6 +61,63 @@ Out of Scope:
 - Updated command help text if output format changes
 - Updated tests to verify element identification
 
+## Current State
+
+### Existing Implementation
+
+IPC Protocol (internal/ipc/protocol.go:137-140):
+- HTMLData has single HTML field (string) - no metadata support
+- CSSData has ComputedMulti ([]map[string]string) - styles only, no metadata
+- CSSData has Inline ([]string) - style attributes only, no metadata
+- No ElementMeta or element identification structures exist
+
+Daemon Handlers:
+- handlers_css.go:104-169 handleCSSComputed returns []map[string]string
+- handlers_css.go:256-310 handleCSSInline returns []string
+- handlers_observation.go:307-382 handleHTML returns joined HTML with "--" separators
+
+CLI Formatters (internal/cli/format/css.go):
+- ComputedStylesMulti (line 23-37) outputs with "--" separators, no element IDs
+- InlineStyles (line 46-64) outputs with "--" separators, no element IDs
+
+CLI Commands:
+- css.go:394-448 runCSSComputed calls ComputedStylesMulti formatter
+- css.go:510-575 runCSSInline calls InlineStyles formatter
+- html.go handles multi-element output with "--" separators from daemon
+
+Tests:
+- scripts/test/cli/test-observation.sh has tests for multi-element queries
+- Tests verify presence of content but not element identification
+- Tests at lines 54, 60, 140, 150 check multi-element CSS/HTML output
+
+### Work Required
+
+1. Protocol Changes (internal/ipc/protocol.go):
+   - Add ElementMeta struct with Tag, ID, Class fields
+   - Add ElementWithStyles struct combining ElementMeta + styles
+   - Add ElementWithHTML struct combining ElementMeta + HTML
+   - Update CSSData to include InlineMulti and ComputedMulti with metadata
+   - Update HTMLData to include HTMLMulti with metadata
+
+2. Daemon Handler Changes (internal/daemon/):
+   - handlers_css.go handleCSSInline: Update JavaScript to extract tag/id/class, return ElementWithStyles array
+   - handlers_css.go handleCSSComputed: Update JavaScript to extract tag/id/class, return ElementWithStyles array
+   - handlers_observation.go handleHTML: Update JavaScript to extract tag/id/class, return ElementWithHTML array
+
+3. CLI Formatter Changes (internal/cli/format/css.go):
+   - Add formatElementIdentifier function (#id, .class:N, tag:N format)
+   - Update ComputedStylesMulti to accept ElementWithStyles and output identifiers
+   - Update InlineStyles to accept ElementWithStyles and output identifiers
+
+4. CLI Command Changes:
+   - css.go runCSSComputed: Use new ElementWithStyles from protocol
+   - css.go runCSSInline: Use new ElementWithStyles from protocol
+   - html.go: Add formatting for ElementWithHTML with identifiers
+
+5. Test Updates:
+   - Update test-observation.sh to verify element identification format
+   - Add tests for edge cases (empty attrs, multiple classes, special chars)
+
 ## Technical Approach
 
 Element identification format (token-optimized):
@@ -101,7 +158,8 @@ Format rationale:
 - JSON output: Structured metadata fields only (not formatted strings)
 - Multiple classes: Use first class only (token-efficient)
 - Empty/whitespace attributes: Treat as missing, fall back to tag name
-- Special characters: Use CSS.escape() for safe output
+- SVG className handling: Use el.getAttribute('class') for all elements (consistent across HTML/SVG)
+- Special characters in id/class: Strip invalid characters, fall back to tag name if empty after stripping
 - Backward compatibility: Breaking IPC protocol changes acceptable (pre-1.0)
 - Implementation approach: Implement first, then update tests
 
@@ -118,9 +176,9 @@ Empty attributes:
 - Fall back to tag name: `tag:N`
 
 Special characters in id/class:
-- Use JavaScript `CSS.escape()` to safely escape special characters
-- Example: `id="my:weird-id"` → `#my\:weird-id` (but rare in practice)
-- Alternative: Strip invalid characters and fall back to tag if empty
+- Strip invalid characters (keep only alphanumeric, hyphens, underscores)
+- Fall back to tag name if result is empty after stripping
+- Token-efficient and handles edge cases gracefully
 
 ### JavaScript Changes
 
@@ -131,9 +189,10 @@ return Array.from(elements).map((el, idx) => {
   // Get id (trim and check for non-empty)
   const id = (el.id || '').trim();
 
-  // Get first class (split, filter empty, take first)
-  const classes = (el.className || '')
-    .split(' ')
+  // Get first class using getAttribute (works for HTML and SVG)
+  const classAttr = el.getAttribute('class');
+  const classes = (classAttr || '')
+    .split(/\s+/)
     .map(c => c.trim())
     .filter(c => c.length > 0);
   const firstClass = classes.length > 0 ? classes[0] : null;
@@ -152,8 +211,11 @@ HTML handler:
 const elements = document.querySelectorAll(selector);
 return Array.from(elements).map((el, idx) => {
   const id = (el.id || '').trim();
-  const classes = (el.className || '')
-    .split(' ')
+
+  // Use getAttribute for consistent handling across HTML and SVG
+  const classAttr = el.getAttribute('class');
+  const classes = (classAttr || '')
+    .split(/\s+/)
     .map(c => c.trim())
     .filter(c => c.length > 0);
   const firstClass = classes.length > 0 ? classes[0] : null;
@@ -219,12 +281,34 @@ Text output format:
 ```go
 func formatElementIdentifier(meta ElementMeta, index int) string {
     if meta.ID != "" {
-        return "#" + meta.ID
+        // Sanitize ID: strip invalid CSS identifier characters
+        sanitized := sanitizeIdentifier(meta.ID)
+        if sanitized != "" {
+            return "#" + sanitized
+        }
     }
     if meta.Class != "" {
-        return fmt.Sprintf(".%s:%d", meta.Class, index+1)
+        // Sanitize class: strip invalid CSS identifier characters
+        sanitized := sanitizeIdentifier(meta.Class)
+        if sanitized != "" {
+            return fmt.Sprintf(".%s:%d", sanitized, index+1)
+        }
     }
     return fmt.Sprintf("%s:%d", meta.Tag, index+1)
+}
+
+// sanitizeIdentifier removes invalid CSS identifier characters.
+// Keeps alphanumeric, hyphens, and underscores. Returns empty string if nothing remains.
+func sanitizeIdentifier(s string) string {
+    // Remove characters not valid in CSS identifiers
+    var result strings.Builder
+    for _, r := range s {
+        if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+           (r >= '0' && r <= '9') || r == '-' || r == '_' {
+            result.WriteRune(r)
+        }
+    }
+    return result.String()
 }
 ```
 
