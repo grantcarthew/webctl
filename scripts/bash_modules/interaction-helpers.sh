@@ -53,6 +53,32 @@ readonly DAEMON_HEALTH_CHECK_TIMEOUT="10s"
 # JavaScript Evaluation Helpers
 # -----------------------------------------------------------------------------
 
+function js_escape() {
+  # js_escape string
+  # Escapes a string for safe inclusion in JavaScript single-quoted string literals
+  #
+  # Args:
+  #   string: String to escape
+  #
+  # Returns: Escaped string safe for use in JavaScript 'string' literals
+  #
+  # Security: Prevents JavaScript injection by escaping special characters
+  # Order matters: backslash must be escaped first to avoid double-escaping
+
+  local str="${1}"
+  # Escape backslashes first (must be first to avoid double-escaping)
+  str="${str//\\/\\\\}"
+  # Escape single quotes
+  str="${str//\'/\\\'}"
+  # Escape newlines
+  str="${str//$'\n'/\\n}"
+  # Escape carriage returns
+  str="${str//$'\r'/\\r}"
+  # Escape tabs
+  str="${str//$'\t'/\\t}"
+  echo "${str}"
+}
+
 function eval_element_visible_in_viewport() {
   # eval_element_visible_in_viewport selector
   # Returns JavaScript expression that evaluates to true if element is visible
@@ -64,7 +90,8 @@ function eval_element_visible_in_viewport() {
   # Usage:
   #   "${WEBCTL_BINARY}" ready --eval "$(eval_element_visible_in_viewport '#marker')"
 
-  local selector="${1}"
+  local selector
+  selector="$(js_escape "${1}")"
   cat <<EOF
 (() => {
   const el = document.querySelector('${selector}');
@@ -104,9 +131,10 @@ function eval_element_has_attribute() {
   #   attribute: Attribute name (e.g., 'data-clicked', 'value')
   #   expected_value: Expected attribute value
 
-  local selector="${1}"
-  local attribute="${2}"
-  local expected_value="${3}"
+  local selector attribute expected_value
+  selector="$(js_escape "${1}")"
+  attribute="$(js_escape "${2}")"
+  expected_value="$(js_escape "${3}")"
   cat <<EOF
 document.querySelector('${selector}').getAttribute('${attribute}') === '${expected_value}'
 EOF
@@ -119,8 +147,12 @@ function eval_element_property() {
   # Args:
   #   selector: CSS selector
   #   property: Property name (e.g., 'value', 'checked', 'classList')
+  #
+  # Note: property is used as a JavaScript identifier, not a string,
+  # so it's not escaped (e.g., 'value', 'checked' are direct property access)
 
-  local selector="${1}"
+  local selector
+  selector="$(js_escape "${1}")"
   local property="${2}"
   echo "document.querySelector('${selector}').${property}"
 }
@@ -139,7 +171,8 @@ function eval_url_contains() {
   # Args:
   #   pattern: String to search for in window.location.href
 
-  local pattern="${1}"
+  local pattern
+  pattern="$(js_escape "${1}")"
   echo "window.location.href.includes('${pattern}')"
 }
 
@@ -153,8 +186,10 @@ function clear_input_value() {
   # Args:
   #   selector: CSS selector for input element
 
-  local selector="${1}"
-  run_test "clear ${selector}" "${WEBCTL_BINARY}" eval "document.querySelector('${selector}').value = ''; 'cleared'"
+  local selector escaped_selector
+  selector="${1}"
+  escaped_selector="$(js_escape "${selector}")"
+  run_test "clear ${selector}" "${WEBCTL_BINARY}" eval "document.querySelector('${escaped_selector}').value = ''; 'cleared'"
 }
 
 function get_input_value() {
@@ -166,8 +201,10 @@ function get_input_value() {
   #
   # Returns: The input value in TEST_STDOUT
 
-  local selector="${1}"
-  run_test "get value of ${selector}" "${WEBCTL_BINARY}" eval "document.querySelector('${selector}').value"
+  local selector escaped_selector
+  selector="${1}"
+  escaped_selector="$(js_escape "${selector}")"
+  run_test "get value of ${selector}" "${WEBCTL_BINARY}" eval "document.querySelector('${escaped_selector}').value"
 }
 
 # Verification Helpers
@@ -201,12 +238,16 @@ function verify_element_attribute() {
   #   expected: Expected value
   #   message: Optional assertion message
 
-  local selector="${1}"
-  local attribute="${2}"
+  local selector attribute escaped_selector escaped_attribute
+  selector="${1}"
+  attribute="${2}"
   local expected="${3}"
   local message="${4:-Attribute value matches expected}"
 
-  run_test "get ${attribute} of ${selector}" "${WEBCTL_BINARY}" eval "document.querySelector('${selector}').getAttribute('${attribute}')"
+  escaped_selector="$(js_escape "${selector}")"
+  escaped_attribute="$(js_escape "${attribute}")"
+
+  run_test "get ${attribute} of ${selector}" "${WEBCTL_BINARY}" eval "document.querySelector('${escaped_selector}').getAttribute('${escaped_attribute}')"
   assert_success "${TEST_EXIT_CODE}" "get attribute succeeded"
   assert_contains "${TEST_STDOUT}" "${expected}" "${message}"
 }
@@ -216,8 +257,12 @@ function verify_focused_element() {
   # Verifies that the currently focused element has the expected ID
   #
   # Args:
-  #   expected_id: Expected element ID
+  #   expected_id: Expected element ID (without '#' prefix)
+  #               For example: "text-input" not "#text-input"
+  #               This is compared against document.activeElement.id
   #   message: Optional assertion message
+  #
+  # Note: Unlike other helpers, this takes a plain ID string, not a CSS selector
 
   local expected_id="${1}"
   local message="${2:-Correct element is focused}"

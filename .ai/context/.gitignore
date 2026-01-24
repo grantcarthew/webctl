@@ -1,0 +1,5 @@
+# Ignore subdirectories (cloned repos)
+*/
+
+# Include specific files (like research documents)
+!*.md

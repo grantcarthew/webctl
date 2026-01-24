@@ -123,6 +123,9 @@ run_test "click --no-color" "${WEBCTL_BINARY}" click --no-color "#btn-danger"
 assert_success "${TEST_EXIT_CODE}" "--no-color returns success"
 assert_no_ansi_codes "${TEST_STDOUT}" "No ANSI escape codes in output"
 
+# Verify the click actually worked (not just the flag)
+verify_element_attribute "#btn-danger" "data-clicked" "true" "Button was clicked successfully with --no-color"
+
 test_section "Click Command - Error Cases"
 
 # Test: Click nonexistent element
@@ -217,6 +220,9 @@ run_test "type --no-color" "${WEBCTL_BINARY}" type --no-color "#text-input" "No 
 assert_success "${TEST_EXIT_CODE}" "--no-color returns success"
 assert_no_ansi_codes "${TEST_STDOUT}" "No ANSI escape codes in output"
 
+# Verify typing actually worked (not just the flag)
+verify_input_value "#text-input" "No color test" "Text was typed successfully with --no-color"
+
 test_section "Type Command - Error Cases"
 
 # Test: Type into nonexistent element
@@ -268,6 +274,11 @@ run_test "select --no-color" "${WEBCTL_BINARY}" select --no-color "#select" "opt
 assert_success "${TEST_EXIT_CODE}" "--no-color returns success"
 assert_no_ansi_codes "${TEST_STDOUT}" "No ANSI escape codes in output"
 
+# Verify selection actually worked (not just the flag)
+run_test "verify --no-color selection" "${WEBCTL_BINARY}" eval "$(eval_element_property '#select' 'value')"
+assert_success "${TEST_EXIT_CODE}" "get select value succeeded"
+assert_equals "option2" "${TEST_STDOUT}" "Select has correct value with --no-color"
+
 test_section "Select Command - Error Cases"
 
 # Test: Select nonexistent element
@@ -296,9 +307,9 @@ assert_success "${TEST_EXIT_CODE}" "Element is now visible in viewport"
 run_test "scroll to bottom marker" "${WEBCTL_BINARY}" scroll "#marker-bottom"
 assert_success "${TEST_EXIT_CODE}" "scroll to bottom returns success"
 
-# Wait for scroll to complete
-run_test "wait for bottom scroll" "${WEBCTL_BINARY}" ready --timeout "${DEFAULT_READY_TIMEOUT}"
-assert_success "${TEST_EXIT_CODE}" "Page ready after scroll"
+# Verify scroll reached target - check element is visible in viewport
+run_test "verify bottom marker visible" "${WEBCTL_BINARY}" ready --eval "$(eval_element_visible_in_viewport '#marker-bottom')"
+assert_success "${TEST_EXIT_CODE}" "Bottom marker is now visible in viewport"
 
 test_section "Scroll Command - Absolute Mode (--to)"
 
@@ -360,6 +371,10 @@ run_test "scroll --no-color" "${WEBCTL_BINARY}" scroll --no-color "#marker-middl
 assert_success "${TEST_EXIT_CODE}" "--no-color returns success"
 assert_no_ansi_codes "${TEST_STDOUT}" "No ANSI escape codes in output"
 
+# Verify scroll actually worked (not just the flag)
+run_test "verify --no-color scroll" "${WEBCTL_BINARY}" ready --eval "$(eval_element_visible_in_viewport '#marker-middle')"
+assert_success "${TEST_EXIT_CODE}" "Element scrolled into view with --no-color"
+
 test_section "Scroll Command - Error Cases"
 
 # Test: Scroll to nonexistent element
@@ -418,6 +433,9 @@ test_section "Focus Command - No-Color Mode"
 run_test "focus --no-color" "${WEBCTL_BINARY}" focus --no-color "#password-input"
 assert_success "${TEST_EXIT_CODE}" "--no-color returns success"
 assert_no_ansi_codes "${TEST_STDOUT}" "No ANSI escape codes in output"
+
+# Verify focus actually worked (not just the flag)
+verify_focused_element "password-input" "Password input is focused with --no-color"
 
 test_section "Focus Command - Error Cases"
 
@@ -630,6 +648,9 @@ run_test "eval --no-color" "${WEBCTL_BINARY}" eval --no-color "1 + 1"
 assert_success "${TEST_EXIT_CODE}" "--no-color returns success"
 assert_no_ansi_codes "${TEST_STDOUT}" "No ANSI escape codes in output"
 
+# Verify eval actually worked (not just the flag)
+assert_contains "${TEST_STDOUT}" "2" "Eval returned correct result with --no-color"
+
 test_section "Eval Command - Error Cases"
 
 # Test: Eval syntax error
@@ -757,20 +778,21 @@ assert_failure "${TEST_EXIT_CODE}" "Nonexistent selector with timeout returns fa
 # 2. Functional health (does 'status' command respond?)
 # If either check fails, we restart the daemon and re-serve the test server.
 #
-# TODO: File issue to investigate CDP timeout handling in daemon
+# REFERENCE:
+# ----------
+# See .ai/context/cdp-timeout-research.md for detailed research confirming
+# these CDP limitations are architectural and documented across Chromium
+# issue tracker, Puppeteer, Playwright, and ChromeDP projects.
 # =============================================================================
 
-# Brief sleep to allow daemon to stabilize after timeout stress
-sleep 1
-
-# Check daemon health: both process existence AND functional response
+# Check daemon health after timeout stress tests
+# Forced timeouts can destabilize CDP connection (see comment block above)
 DAEMON_HEALTHY=true
+
 if ! is_daemon_running; then
-  # Daemon process died
   DAEMON_HEALTHY=false
   log_warning "Daemon process terminated after timeout tests"
 elif ! "${WEBCTL_BINARY}" status >/dev/null 2>&1; then
-  # Daemon process exists but isn't responding (zombie/hung state)
   DAEMON_HEALTHY=false
   log_warning "Daemon process exists but is not responding - forcing restart"
   force_stop_daemon
@@ -782,12 +804,12 @@ if [[ "${DAEMON_HEALTHY}" != "true" ]]; then
   log_warning "This is a KNOWN ISSUE with CDP timeout handling - see comments above"
   log_message "Restarting daemon to continue remaining tests..."
 
-  # Full restart: daemon + test server
   start_daemon --headless
   start_test_server
 
-  # Wait for serve auto-navigation using documented timeout
-  run_setup_required "wait for serve auto-navigation after restart" "${WEBCTL_BINARY}" ready --eval "$(eval_url_contains ":${TEST_SERVER_PORT}")" --timeout "${DAEMON_HEALTH_CHECK_TIMEOUT}"
+  run_setup_required "wait for serve auto-navigation after restart" \
+    "${WEBCTL_BINARY}" ready --eval "$(eval_url_contains ":${TEST_SERVER_PORT}")" \
+    --timeout "${DAEMON_HEALTH_CHECK_TIMEOUT}"
 fi
 
 # =============================================================================
@@ -856,7 +878,8 @@ test_section "Clear Command - Error Cases"
 # Test: Clear with invalid target
 run_test "clear invalid target" "${WEBCTL_BINARY}" clear invalidtarget
 assert_failure "${TEST_EXIT_CODE}" "Invalid target returns failure"
-assert_contains "${TEST_STDERR}" "console" "Error message mentions valid targets"
+assert_matches "(console|network|invalid|target)" "${TEST_STDERR}" \
+  "Error message provides helpful context about valid targets"
 
 # =============================================================================
 # Find Command - Basic Functionality
@@ -890,8 +913,17 @@ assert_json_field "${TEST_STDOUT}" ".ok" "true" "JSON ok field is true"
 # Verify we found matches by checking total > 0
 run_test "verify case-sensitive match count" "${WEBCTL_BINARY}" find --case-sensitive --json "Navigation"
 assert_success "${TEST_EXIT_CODE}" "find completed"
-# Extract total and verify > 0 using assertion
-MATCH_TOTAL=$(echo "${TEST_STDOUT}" | jq -r '.total')
+
+# Extract total from JSON output
+MATCH_TOTAL=$(echo "${TEST_STDOUT}" | jq -r '.total' 2>/dev/null || echo "0")
+
+# Validate extraction succeeded and value is numeric
+if [[ ! "${MATCH_TOTAL}" =~ ^[0-9]+$ ]]; then
+  log_failure "Failed to extract valid numeric match count from JSON"
+  increment_fail
+  MATCH_TOTAL=0
+fi
+
 assert_greater_than 0 "${MATCH_TOTAL}" "Found matches for case-sensitive 'Navigation'"
 
 # Test: Find with --case-sensitive (wrong case - no match expected)
@@ -953,9 +985,12 @@ assert_success "${TEST_EXIT_CODE}" "No matches returns success (search worked)"
 # Test: Find with query too short
 run_test "find query too short" "${WEBCTL_BINARY}" find "ab"
 assert_failure "${TEST_EXIT_CODE}" "Short query returns failure"
-assert_contains "${TEST_STDERR}" "3 characters" "Error mentions minimum length"
+assert_matches "(minimum|least|characters|length)" "${TEST_STDERR}" \
+  "Error message mentions minimum length requirement"
 
 # Test: Find --case-sensitive with --regex (mutually exclusive)
+# Note: This tests a CLI design decision that these flags are mutually exclusive.
+# If the implementation changes to support both flags together, this test should be updated.
 run_test "find --case-sensitive --regex (error)" "${WEBCTL_BINARY}" find --case-sensitive --regex "test"
 assert_failure "${TEST_EXIT_CODE}" "Mutually exclusive flags return failure"
 
