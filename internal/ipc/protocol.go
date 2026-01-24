@@ -278,7 +278,6 @@ type CookiesData struct {
 	Matches []Cookie `json:"matches,omitempty"`
 }
 
-
 // CSSParams represents parameters for the "css" command.
 type CSSParams struct {
 	Action   string `json:"action"`             // "save", "computed", "get", "inline", or "matched"
@@ -290,16 +289,16 @@ type CSSParams struct {
 // The identification follows CSS selector notation for developer familiarity.
 //
 // Identification Priority:
-//   1. ID attribute (if present) -> #id
-//   2. First class name (if present) -> .class:N
-//   3. Tag name (always present) -> tag:N
+//  1. ID attribute (if present) -> #id
+//  2. First class name (if present) -> .class:N
+//  3. Tag name (always present) -> tag:N
 //
 // Note: Only the first class is captured when an element has multiple classes.
 // Special characters in IDs/classes are sanitized to valid CSS identifier characters.
 type ElementMeta struct {
-	Tag   string `json:"tag"`              // lowercase tag name (div, span, svg, etc.)
-	ID    string `json:"id,omitempty"`     // id attribute value (sanitized, if present)
-	Class string `json:"class,omitempty"`  // first class name only (sanitized, if present)
+	Tag   string `json:"tag"`             // lowercase tag name (div, span, svg, etc.)
+	ID    string `json:"id,omitempty"`    // id attribute value (sanitized, if present)
+	Class string `json:"class,omitempty"` // first class name only (sanitized, if present)
 }
 
 // ElementWithStyles combines element metadata with styles

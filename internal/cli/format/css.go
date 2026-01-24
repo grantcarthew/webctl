@@ -24,12 +24,13 @@ func ComputedStyles(w io.Writer, styles map[string]string) error {
 // printed on a separate line before its styles. Multiple elements are separated by "--".
 //
 // Format:
-//   #header
-//   color: blue
-//   font-size: 16px
-//   --
-//   .panel:2
-//   background: white
+//
+//	#header
+//	color: blue
+//	font-size: 16px
+//	--
+//	.panel:2
+//	background: white
 //
 // Elements are identified by priority: ID > first class > tag name.
 // Index numbers are 1-based for user readability.
@@ -67,11 +68,12 @@ func PropertyValue(w io.Writer, value string) error {
 // Empty inline styles are displayed as "(empty)".
 //
 // Format:
-//   #main
-//   color: red; margin: 10px;
-//   --
-//   .item:1
-//   (empty)
+//
+//	#main
+//	color: red; margin: 10px;
+//	--
+//	.item:1
+//	(empty)
 //
 // Elements are identified by priority: ID > first class > tag name.
 // Index numbers are 1-based for user readability.

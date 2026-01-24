@@ -307,7 +307,6 @@ func TestTarget(t *testing.T) {
 	}
 }
 
-
 func TestComputedStyles(t *testing.T) {
 	styles := map[string]string{
 		"color":      "red",
