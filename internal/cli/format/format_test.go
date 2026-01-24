@@ -346,32 +346,68 @@ func TestPropertyValue(t *testing.T) {
 func TestInlineStyles(t *testing.T) {
 	tests := []struct {
 		name     string
-		styles   []string
+		elements []ipc.ElementWithStyles
 		expected string
 	}{
 		{
-			name:     "single style",
-			styles:   []string{"color: red; font-size: 16px;"},
-			expected: "color: red; font-size: 16px;\n",
+			name: "single element with id",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", ID: "header"},
+					Inline:      "color: red; font-size: 16px;",
+				},
+			},
+			expected: "#header\ncolor: red; font-size: 16px;\n",
 		},
 		{
-			name:     "multiple styles",
-			styles:   []string{"color: red;", "background: blue;", "margin: 10px;"},
-			expected: "color: red;\n--\nbackground: blue;\n--\nmargin: 10px;\n",
+			name: "multiple elements with different identifiers",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", ID: "header"},
+					Inline:      "color: red;",
+				},
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "panel"},
+					Inline:      "background: blue;",
+				},
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "span"},
+					Inline:      "margin: 10px;",
+				},
+			},
+			expected: "#header\ncolor: red;\n--\n.panel:2\nbackground: blue;\n--\nspan:3\nmargin: 10px;\n",
 		},
 		{
-			name:     "empty style",
-			styles:   []string{""},
-			expected: "(empty)\n",
+			name: "empty inline style",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", ID: "empty"},
+					Inline:      "",
+				},
+			},
+			expected: "#empty\n(empty)\n",
 		},
 		{
-			name:     "mixed empty and non-empty",
-			styles:   []string{"color: red;", "", "margin: 10px;"},
-			expected: "color: red;\n--\n(empty)\n--\nmargin: 10px;\n",
+			name: "mixed empty and non-empty",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "one"},
+					Inline:      "color: red;",
+				},
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "two"},
+					Inline:      "",
+				},
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div"},
+					Inline:      "margin: 10px;",
+				},
+			},
+			expected: ".one:1\ncolor: red;\n--\n.two:2\n(empty)\n--\ndiv:3\nmargin: 10px;\n",
 		},
 		{
-			name:     "no styles",
-			styles:   []string{},
+			name:     "no elements",
+			elements: []ipc.ElementWithStyles{},
 			expected: "",
 		},
 	}
@@ -379,7 +415,7 @@ func TestInlineStyles(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			err := InlineStyles(&buf, tt.styles)
+			err := InlineStyles(&buf, tt.elements)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -394,36 +430,68 @@ func TestInlineStyles(t *testing.T) {
 
 func TestComputedStylesMulti(t *testing.T) {
 	tests := []struct {
-		name       string
-		stylesList []map[string]string
-		wantSep    bool
+		name     string
+		elements []ipc.ElementWithStyles
+		wantSep  bool
+		expected string
 	}{
 		{
-			name:       "empty list",
-			stylesList: []map[string]string{},
-			wantSep:    false,
+			name:     "empty list",
+			elements: []ipc.ElementWithStyles{},
+			wantSep:  false,
+			expected: "",
 		},
 		{
-			name: "single element",
-			stylesList: []map[string]string{
-				{"color": "red"},
+			name: "single element with id",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", ID: "header"},
+					Styles:      map[string]string{"color": "red"},
+				},
 			},
-			wantSep: false,
+			wantSep:  false,
+			expected: "#header\ncolor: red\n",
 		},
 		{
-			name: "multiple elements",
-			stylesList: []map[string]string{
-				{"color": "red"},
-				{"color": "blue"},
+			name: "multiple elements with different identifiers",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", ID: "header"},
+					Styles:      map[string]string{"color": "red"},
+				},
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "panel"},
+					Styles:      map[string]string{"color": "blue"},
+				},
 			},
-			wantSep: true,
+			wantSep:  true,
+			expected: "#header\ncolor: red\n--\n.panel:2\ncolor: blue\n",
+		},
+		{
+			name: "multiple elements same class",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "item"},
+					Styles:      map[string]string{"margin": "10px"},
+				},
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "item"},
+					Styles:      map[string]string{"margin": "20px"},
+				},
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "item"},
+					Styles:      map[string]string{"margin": "30px"},
+				},
+			},
+			wantSep:  true,
+			expected: ".item:1\nmargin: 10px\n--\n.item:2\nmargin: 20px\n--\n.item:3\nmargin: 30px\n",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			err := ComputedStylesMulti(&buf, tt.stylesList)
+			err := ComputedStylesMulti(&buf, tt.elements)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -432,6 +500,10 @@ func TestComputedStylesMulti(t *testing.T) {
 			hasSep := strings.Contains(got, "--")
 			if hasSep != tt.wantSep {
 				t.Errorf("separator present = %v, want %v, output: %q", hasSep, tt.wantSep, got)
+			}
+
+			if tt.expected != "" && got != tt.expected {
+				t.Errorf("got:\n%q\nwant:\n%q", got, tt.expected)
 			}
 		})
 	}
@@ -515,4 +587,386 @@ func TestMatchedRules(t *testing.T) {
 			t.Errorf("output should contain separator, got: %s", output)
 		}
 	})
+}
+
+// Tests for element identification feature
+
+func TestSanitizeIdentifier(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "alphanumeric",
+			input:    "header123",
+			expected: "header123",
+		},
+		{
+			name:     "with hyphens",
+			input:    "my-header",
+			expected: "my-header",
+		},
+		{
+			name:     "with underscores",
+			input:    "my_header",
+			expected: "my_header",
+		},
+		{
+			name:     "mixed valid chars",
+			input:    "my-header_123",
+			expected: "my-header_123",
+		},
+		{
+			name:     "with spaces",
+			input:    "my header",
+			expected: "myheader",
+		},
+		{
+			name:     "with special chars",
+			input:    "header@#$%",
+			expected: "header",
+		},
+		{
+			name:     "with dots",
+			input:    "my.header.class",
+			expected: "myheaderclass",
+		},
+		{
+			name:     "with brackets",
+			input:    "header[data]",
+			expected: "headerdata",
+		},
+		{
+			name:     "only special chars",
+			input:    "@#$%",
+			expected: "",
+		},
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "unicode chars",
+			input:    "header™©",
+			expected: "header",
+		},
+		{
+			name:     "mixed case",
+			input:    "MyHeader",
+			expected: "MyHeader",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SanitizeIdentifier(tt.input)
+			if got != tt.expected {
+				t.Errorf("sanitizeIdentifier(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestFormatElementIdentifier(t *testing.T) {
+	tests := []struct {
+		name     string
+		meta     ipc.ElementMeta
+		index    int
+		expected string
+	}{
+		{
+			name:     "element with id",
+			meta:     ipc.ElementMeta{Tag: "div", ID: "header"},
+			index:    0,
+			expected: "#header",
+		},
+		{
+			name:     "element with id (ignores class)",
+			meta:     ipc.ElementMeta{Tag: "div", ID: "header", Class: "panel"},
+			index:    0,
+			expected: "#header",
+		},
+		{
+			name:     "element with class only",
+			meta:     ipc.ElementMeta{Tag: "div", Class: "panel"},
+			index:    0,
+			expected: ".panel:1",
+		},
+		{
+			name:     "element with class at index 2",
+			meta:     ipc.ElementMeta{Tag: "div", Class: "panel"},
+			index:    2,
+			expected: ".panel:3",
+		},
+		{
+			name:     "element with tag only",
+			meta:     ipc.ElementMeta{Tag: "div"},
+			index:    0,
+			expected: "div:1",
+		},
+		{
+			name:     "element with tag at index 5",
+			meta:     ipc.ElementMeta{Tag: "span"},
+			index:    5,
+			expected: "span:6",
+		},
+		{
+			name:     "id with special chars",
+			meta:     ipc.ElementMeta{Tag: "div", ID: "header@#$"},
+			index:    0,
+			expected: "#header",
+		},
+		{
+			name:     "id with only special chars (falls back to class)",
+			meta:     ipc.ElementMeta{Tag: "div", ID: "@#$", Class: "panel"},
+			index:    0,
+			expected: ".panel:1",
+		},
+		{
+			name:     "id with only special chars (falls back to tag)",
+			meta:     ipc.ElementMeta{Tag: "div", ID: "@#$"},
+			index:    0,
+			expected: "div:1",
+		},
+		{
+			name:     "class with special chars",
+			meta:     ipc.ElementMeta{Tag: "div", Class: "panel@#$"},
+			index:    0,
+			expected: ".panel:1",
+		},
+		{
+			name:     "class with only special chars (falls back to tag)",
+			meta:     ipc.ElementMeta{Tag: "div", Class: "@#$"},
+			index:    0,
+			expected: "div:1",
+		},
+		{
+			name:     "empty id (uses class)",
+			meta:     ipc.ElementMeta{Tag: "div", ID: "", Class: "panel"},
+			index:    0,
+			expected: ".panel:1",
+		},
+		{
+			name:     "empty class (uses tag)",
+			meta:     ipc.ElementMeta{Tag: "div", ID: "", Class: ""},
+			index:    0,
+			expected: "div:1",
+		},
+		{
+			name:     "id with spaces",
+			meta:     ipc.ElementMeta{Tag: "div", ID: "my header"},
+			index:    0,
+			expected: "#myheader",
+		},
+		{
+			name:     "class with hyphens",
+			meta:     ipc.ElementMeta{Tag: "div", Class: "my-panel"},
+			index:    0,
+			expected: ".my-panel:1",
+		},
+		{
+			name:     "class with underscores",
+			meta:     ipc.ElementMeta{Tag: "div", Class: "my_panel"},
+			index:    0,
+			expected: ".my_panel:1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FormatElementIdentifier(tt.meta, tt.index)
+			if got != tt.expected {
+				t.Errorf("formatElementIdentifier(%+v, %d) = %q, want %q", tt.meta, tt.index, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestInlineStylesWithElementIdentification(t *testing.T) {
+	tests := []struct {
+		name     string
+		elements []ipc.ElementWithStyles
+		wantID   string
+		wantCSS  string
+	}{
+		{
+			name: "id-based identification",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", ID: "header"},
+					Inline:      "color: blue;",
+				},
+			},
+			wantID:  "#header",
+			wantCSS: "color: blue;",
+		},
+		{
+			name: "class-based identification",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "panel"},
+					Inline:      "margin: 10px;",
+				},
+			},
+			wantID:  ".panel:1",
+			wantCSS: "margin: 10px;",
+		},
+		{
+			name: "tag-based identification",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "span"},
+					Inline:      "font-size: 14px;",
+				},
+			},
+			wantID:  "span:1",
+			wantCSS: "font-size: 14px;",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := InlineStyles(&buf, tt.elements)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			output := buf.String()
+			if !strings.Contains(output, tt.wantID) {
+				t.Errorf("output should contain identifier %q, got: %s", tt.wantID, output)
+			}
+			if !strings.Contains(output, tt.wantCSS) {
+				t.Errorf("output should contain CSS %q, got: %s", tt.wantCSS, output)
+			}
+		})
+	}
+}
+
+func TestComputedStylesMultiWithElementIdentification(t *testing.T) {
+	tests := []struct {
+		name     string
+		elements []ipc.ElementWithStyles
+		wantIDs  []string
+	}{
+		{
+			name: "multiple elements with unique identifiers",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", ID: "header"},
+					Styles:      map[string]string{"color": "red"},
+				},
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "panel"},
+					Styles:      map[string]string{"background": "blue"},
+				},
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "span"},
+					Styles:      map[string]string{"margin": "5px"},
+				},
+			},
+			wantIDs: []string{"#header", ".panel:2", "span:3"},
+		},
+		{
+			name: "multiple elements same class",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "item"},
+					Styles:      map[string]string{"padding": "10px"},
+				},
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "item"},
+					Styles:      map[string]string{"padding": "20px"},
+				},
+			},
+			wantIDs: []string{".item:1", ".item:2"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := ComputedStylesMulti(&buf, tt.elements)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			output := buf.String()
+			for _, wantID := range tt.wantIDs {
+				if !strings.Contains(output, wantID) {
+					t.Errorf("output should contain identifier %q, got: %s", wantID, output)
+				}
+			}
+		})
+	}
+}
+
+func TestElementIdentificationEdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		elements []ipc.ElementWithStyles
+		expected string
+	}{
+		{
+			name: "empty inline style shows (empty)",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", ID: "empty"},
+					Inline:      "",
+				},
+			},
+			expected: "#empty\n(empty)\n",
+		},
+		{
+			name: "id with whitespace",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", ID: "   "},
+					Inline:      "color: red;",
+				},
+			},
+			expected: "div:1\ncolor: red;\n",
+		},
+		{
+			name: "class with whitespace",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", Class: "   "},
+					Inline:      "color: red;",
+				},
+			},
+			expected: "div:1\ncolor: red;\n",
+		},
+		{
+			name: "separator between elements",
+			elements: []ipc.ElementWithStyles{
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", ID: "first"},
+					Inline:      "color: red;",
+				},
+				{
+					ElementMeta: ipc.ElementMeta{Tag: "div", ID: "second"},
+					Inline:      "color: blue;",
+				},
+			},
+			expected: "#first\ncolor: red;\n--\n#second\ncolor: blue;\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			err := InlineStyles(&buf, tt.elements)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := buf.String()
+			if got != tt.expected {
+				t.Errorf("got:\n%q\nwant:\n%q", got, tt.expected)
+			}
+		})
+	}
 }
