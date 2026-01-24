@@ -339,7 +339,7 @@ func runCSSSave(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return outputError(err.Error())
 		}
-		defer exec.Close()
+		defer func() { _ = exec.Close() }()
 
 		outputPath, err = generateCSSPath(exec, selector)
 		if err != nil {
@@ -356,7 +356,7 @@ func runCSSSave(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return outputError(err.Error())
 			}
-			defer exec.Close()
+			defer func() { _ = exec.Close() }()
 
 			filename, err := generateCSSFilename(exec, selector)
 			if err != nil {
@@ -403,7 +403,7 @@ func runCSSComputed(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	params, err := json.Marshal(ipc.CSSParams{
 		Action:   "computed",
@@ -456,7 +456,7 @@ func runCSSGet(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	params, err := json.Marshal(ipc.CSSParams{
 		Action:   "get",
@@ -516,7 +516,7 @@ func runCSSInline(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	params, err := json.Marshal(ipc.CSSParams{
 		Action:   "inline",
@@ -583,7 +583,7 @@ func runCSSMatched(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	params, err := json.Marshal(ipc.CSSParams{
 		Action:   "matched",
@@ -677,7 +677,7 @@ func getCSSFromDaemon(cmd *cobra.Command) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	// Build request with selector
 	params, err := json.Marshal(ipc.CSSParams{

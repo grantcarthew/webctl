@@ -286,7 +286,7 @@ func getConsoleFromDaemon(cmd *cobra.Command) ([]ipc.ConsoleEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	debugRequest("console", "")
 	ipcStart := time.Now()

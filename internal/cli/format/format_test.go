@@ -49,8 +49,8 @@ func TestNewOutputOptions(t *testing.T) {
 			// Set NO_COLOR environment variable
 			if tt.noColorEnv != "" {
 				old := os.Getenv("NO_COLOR")
-				os.Setenv("NO_COLOR", tt.noColorEnv)
-				defer os.Setenv("NO_COLOR", old)
+				_ = os.Setenv("NO_COLOR", tt.noColorEnv)
+				defer func() { _ = os.Setenv("NO_COLOR", old) }()
 			}
 
 			opts := NewOutputOptions(tt.jsonOutput, tt.noColorFlag)

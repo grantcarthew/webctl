@@ -29,7 +29,7 @@ func runClear(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	target := ""
 	if len(args) > 0 {

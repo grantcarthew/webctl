@@ -530,7 +530,7 @@ func TestDaemon_handleLoadingFinished_UsesSessionID(t *testing.T) {
 		t.Error("Network.getResponseBody was not called")
 	}
 
-	d.cdp.Close()
+	_ = d.cdp.Close()
 }
 
 // sessionCapturingMockConn is a mock CDP connection that captures all requests

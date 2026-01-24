@@ -141,7 +141,7 @@ func runServeWithDaemon(mode, directory, proxyURL string) error {
 	if err != nil {
 		return outputError(fmt.Sprintf("failed to create executor: %v", err))
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	// Build serve parameters
 	params, err := json.Marshal(ipc.ServeParams{
@@ -254,7 +254,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	// Build serve parameters
 	params, err := json.Marshal(ipc.ServeParams{

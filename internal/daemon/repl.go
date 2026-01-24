@@ -78,7 +78,7 @@ func (r *REPL) Run() error {
 		return err
 	}
 	r.readline = rl
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	// Set up signal handler AFTER readline is created
 	// This ensures we catch SIGINT even though readline intercepts it
@@ -94,7 +94,7 @@ func (r *REPL) Run() error {
 			r.shutdown()
 		}
 		// Also close readline to unblock Readline() call
-		r.Close()
+		_ = r.Close()
 	}()
 
 	for {
@@ -373,10 +373,10 @@ func outputJSON(data any) {
 // Individual commands respect the --json flag separately.
 func outputError(msg string) {
 	if shouldUseREPLColor() {
-		color.New(color.FgRed).Fprint(os.Stderr, "Error:")
-		fmt.Fprintf(os.Stderr, " %s\n", msg)
+		_, _ = color.New(color.FgRed).Fprint(os.Stderr, "Error:")
+		_, _ = fmt.Fprintf(os.Stderr, " %s\n", msg)
 	} else {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
+		_, _ = fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
 	}
 }
 
@@ -457,7 +457,7 @@ func (r *REPL) displayExternalCommand(summary string) {
 	fmt.Print("\r\033[K")
 	if shouldUseREPLColor() {
 		dim := color.New(color.Faint)
-		dim.Printf("< %s\n", summary)
+		_, _ = dim.Printf("< %s\n", summary)
 	} else {
 		fmt.Printf("< %s\n", summary)
 	}

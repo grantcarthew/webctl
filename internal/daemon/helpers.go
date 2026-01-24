@@ -159,7 +159,7 @@ func clearBodiesDir() error {
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
-			os.Remove(filepath.Join(bodiesDir, entry.Name()))
+			_ = os.Remove(filepath.Join(bodiesDir, entry.Name()))
 		}
 	}
 	return nil

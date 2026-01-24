@@ -54,7 +54,7 @@ func TestDaemon_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to daemon: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Test status command
 	t.Run("status", func(t *testing.T) {
@@ -318,7 +318,7 @@ func TestDaemon_Integration(t *testing.T) {
 
 	// Close client before shutting down daemon to avoid deadlock
 	// (server.Close waits for all connections to finish)
-	client.Close()
+	_ = client.Close()
 
 	// Shutdown
 	cancel()
@@ -401,7 +401,7 @@ func TestNetwork_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to daemon: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Test: Network entries populated after navigating to a real page
 	// Note: Cross-origin navigation from about:blank creates a new session.
@@ -728,7 +728,7 @@ func TestNetwork_Integration(t *testing.T) {
 	})
 
 	// Cleanup
-	client.Close()
+	_ = client.Close()
 	cancel()
 
 	select {
@@ -777,7 +777,7 @@ func TestScreenshot_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to daemon: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Navigate to a test page first
 	params, _ := json.Marshal(map[string]any{
@@ -940,7 +940,7 @@ func TestScreenshot_Integration(t *testing.T) {
 		}
 	})
 
-	client.Close()
+	_ = client.Close()
 	cancel()
 
 	select {
@@ -989,7 +989,7 @@ func TestHTML_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to daemon: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Navigate to a test page first
 	testHTML := `<html><head><title>HTML Test</title></head><body><h1>Test Page</h1><div class="content">Content 1</div><div class="content">Content 2</div><p id="unique">Unique element</p></body></html>`
@@ -1160,7 +1160,7 @@ func TestHTML_Integration(t *testing.T) {
 		}
 	})
 
-	client.Close()
+	_ = client.Close()
 	cancel()
 
 	select {
@@ -1209,7 +1209,7 @@ func TestDaemon_EvalCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to daemon: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Navigate to a test page
 	params, _ := json.Marshal(map[string]any{
@@ -1419,7 +1419,7 @@ func TestDaemon_EvalCommand(t *testing.T) {
 		}
 	})
 
-	client.Close()
+	_ = client.Close()
 	cancel()
 
 	select {
@@ -1468,7 +1468,7 @@ func TestDaemon_CookiesCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to daemon: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Navigate to a test page - use http://localhost for cookie support
 	params, _ := json.Marshal(map[string]any{
@@ -1697,7 +1697,7 @@ func TestDaemon_CookiesCommand(t *testing.T) {
 		}
 	})
 
-	client.Close()
+	_ = client.Close()
 	cancel()
 
 	select {
@@ -1747,7 +1747,7 @@ func TestFind_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to daemon: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Navigate to a test page with minified HTML
 	// This simulates modern frameworks that output single-line HTML
@@ -1787,7 +1787,7 @@ func TestFind_Integration(t *testing.T) {
 		t.Skip("find command removed per DR-030 - use html --find instead")
 	})
 
-	client.Close()
+	_ = client.Close()
 	cancel()
 
 	select {

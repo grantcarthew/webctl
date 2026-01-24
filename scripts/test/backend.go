@@ -24,7 +24,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprintf(w, `<!DOCTYPE html>
+		_, _ = fmt.Fprintf(w, `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -116,7 +116,7 @@ func main() {
 	// API endpoints
 	mux.HandleFunc("/api/hello", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"message": "Hello from test backend!",
 		})
 	})
@@ -128,7 +128,7 @@ func main() {
 			{"id": 2, "name": "Bob", "email": "bob@example.com"},
 			{"id": 3, "name": "Charlie", "email": "charlie@example.com"},
 		}
-		json.NewEncoder(w).Encode(users)
+		_ = json.NewEncoder(w).Encode(users)
 	})
 
 	mux.HandleFunc("/api/echo", func(w http.ResponseWriter, r *http.Request) {
@@ -139,38 +139,38 @@ func main() {
 			"query":   r.URL.Query(),
 			"headers": r.Header,
 		}
-		json.NewEncoder(w).Encode(data)
+		_ = json.NewEncoder(w).Encode(data)
 	})
 
 	// Status code endpoints
 	mux.HandleFunc("/status/200", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "OK"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "OK"})
 	})
 
 	mux.HandleFunc("/status/400", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Bad Request"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Bad Request"})
 	})
 
 	mux.HandleFunc("/status/404", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Not Found"})
 	})
 
 	mux.HandleFunc("/status/500", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Internal Server Error"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "Internal Server Error"})
 	})
 
 	// Delay endpoint for testing
 	mux.HandleFunc("/delay", func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"message": "Delayed response"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Delayed response"})
 	})
 
 	// CORS headers for all endpoints

@@ -84,7 +84,7 @@ func TestClient_Send_CorrelatesResponseByID(t *testing.T) {
 	conn := newEchoMockConnWithResult(`{"frameId":"ABC123"}`)
 
 	client := NewClient(conn)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	result, err := client.Send("Page.navigate", map[string]string{"url": "https://example.com"})
 	if err != nil {
@@ -122,7 +122,7 @@ func TestClient_Send_ReturnsErrorOnCDPError(t *testing.T) {
 	conn := newEchoMockConnWithError(-32000, "Target closed")
 
 	client := NewClient(conn)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	_, err := client.Send("Page.navigate", nil)
 	if err == nil {
@@ -149,7 +149,7 @@ func TestClient_SendContext_TimeoutWaitingForResponse(t *testing.T) {
 	conn := newMockConn()
 
 	client := NewClient(conn)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -180,7 +180,7 @@ func TestClient_Subscribe_DispatchesToHandler(t *testing.T) {
 	conn := newMockConn(evtData)
 
 	client := NewClient(conn)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	received := make(chan Event, 1)
 	client.Subscribe("Page.loadEventFired", func(e Event) {
@@ -213,7 +213,7 @@ func TestClient_Subscribe_MultipleHandlers(t *testing.T) {
 	conn := newMockConn(evtData)
 
 	client := NewClient(conn)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -286,7 +286,7 @@ func TestClient_ConcurrentSends(t *testing.T) {
 	conn := newEchoMockConn()
 
 	client := NewClient(conn)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	var wg sync.WaitGroup
 	errCh := make(chan error, numRequests)
@@ -464,7 +464,7 @@ func TestClient_Send_ConnectionClosedMidRequest(t *testing.T) {
 	// Close the connection after a short delay
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		client.Close()
+		_ = client.Close()
 	}()
 
 	_, err := client.Send("Page.navigate", nil)
@@ -480,7 +480,7 @@ func TestClient_ReadLoop_HandlesUnknownMessageID(t *testing.T) {
 	conn := newUnknownIDMockConn()
 
 	client := NewClient(conn)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Should still work despite unknown message being sent first
 	result, err := client.Send("Test.method", nil)

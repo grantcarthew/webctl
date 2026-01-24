@@ -14,16 +14,12 @@ import (
 )
 
 // Color helper functions that respect color.NoColor flag
-func colorize(c color.Attribute, s string) string {
-	return color.New(c).Sprint(s)
-}
-
 func colorFprint(w io.Writer, c color.Attribute, s string) {
-	color.New(c).Fprint(w, s)
+	_, _ = color.New(c).Fprint(w, s)
 }
 
 func colorFprintf(w io.Writer, c color.Attribute, format string, args ...interface{}) {
-	color.New(c).Fprintf(w, format, args...)
+	_, _ = color.New(c).Fprintf(w, format, args...)
 }
 
 // OutputOptions controls text formatting behavior.
@@ -73,18 +69,18 @@ func ActionSuccess(w io.Writer) error {
 func ActionError(w io.Writer, msg string, opts OutputOptions) error {
 	if opts.UseColor {
 		colorFprint(w, color.FgRed, "Error:")
-		fmt.Fprintf(w, " %s\n", msg)
-	} else {
-		fmt.Fprintf(w, "Error: %s\n", msg)
+		_, err := fmt.Fprintf(w, " %s\n", msg)
+		return err
 	}
-	return nil
+	_, err := fmt.Fprintf(w, "Error: %s\n", msg)
+	return err
 }
 
 // formatHTTPStatus outputs an HTTP status code with appropriate coloring.
 // Format: " (status)" - e.g., " (200)", " (404)"
 func formatHTTPStatus(w io.Writer, status int, opts OutputOptions) {
 	if opts.UseColor {
-		fmt.Fprint(w, " (")
+		_, _ = fmt.Fprint(w, " (")
 		switch {
 		case status >= 200 && status < 300:
 			colorFprintf(w, color.FgGreen, "%d", status)
@@ -95,11 +91,11 @@ func formatHTTPStatus(w io.Writer, status int, opts OutputOptions) {
 		case status >= 500:
 			colorFprintf(w, color.FgRed, "%d", status)
 		default:
-			fmt.Fprintf(w, "%d", status)
+			_, _ = fmt.Fprintf(w, "%d", status)
 		}
-		fmt.Fprint(w, ")")
+		_, _ = fmt.Fprint(w, ")")
 	} else {
-		fmt.Fprintf(w, " (%d)", status)
+		_, _ = fmt.Fprintf(w, " (%d)", status)
 	}
 }
 
@@ -110,7 +106,7 @@ func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 		if opts.UseColor {
 			colorFprint(w, color.FgYellow, "Not running (start with: webctl start)\n")
 		} else {
-			fmt.Fprintln(w, "Not running (start with: webctl start)")
+			_, _ = fmt.Fprintln(w, "Not running (start with: webctl start)")
 		}
 		return nil
 	}
@@ -120,10 +116,10 @@ func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 		if opts.UseColor {
 			colorFprint(w, color.FgYellow, "No browser\n")
 		} else {
-			fmt.Fprintln(w, "No browser")
+			_, _ = fmt.Fprintln(w, "No browser")
 		}
 		if data.PID > 0 {
-			fmt.Fprintf(w, "pid: %d\n", data.PID)
+			_, _ = fmt.Fprintf(w, "pid: %d\n", data.PID)
 		}
 		return nil
 	}
@@ -133,10 +129,10 @@ func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 		if opts.UseColor {
 			colorFprint(w, color.FgYellow, "No session\n")
 		} else {
-			fmt.Fprintln(w, "No session")
+			_, _ = fmt.Fprintln(w, "No session")
 		}
 		if data.PID > 0 {
-			fmt.Fprintf(w, "pid: %d\n", data.PID)
+			_, _ = fmt.Fprintf(w, "pid: %d\n", data.PID)
 		}
 		return nil
 	}
@@ -145,32 +141,32 @@ func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 	if opts.UseColor {
 		colorFprint(w, color.FgGreen, "OK\n")
 	} else {
-		fmt.Fprintln(w, "OK")
+		_, _ = fmt.Fprintln(w, "OK")
 	}
 	if data.PID > 0 {
-		fmt.Fprintf(w, "pid: %d\n", data.PID)
+		_, _ = fmt.Fprintf(w, "pid: %d\n", data.PID)
 	}
 
 	// Show sessions
 	if len(data.Sessions) > 0 {
-		fmt.Fprintln(w, "sessions:")
+		_, _ = fmt.Fprintln(w, "sessions:")
 		for _, session := range data.Sessions {
 			if session.Active {
 				if opts.UseColor {
-					fmt.Fprint(w, "  ")
+					_, _ = fmt.Fprint(w, "  ")
 					colorFprint(w, color.FgCyan, "* ")
-					fmt.Fprint(w, session.URL)
+					_, _ = fmt.Fprint(w, session.URL)
 				} else {
-					fmt.Fprintf(w, "  * %s", session.URL)
+					_, _ = fmt.Fprintf(w, "  * %s", session.URL)
 				}
 			} else {
-				fmt.Fprintf(w, "    %s", session.URL)
+				_, _ = fmt.Fprintf(w, "    %s", session.URL)
 			}
 			// Append HTTP status if available
 			if session.Status > 0 {
 				formatHTTPStatus(w, session.Status, opts)
 			}
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 		}
 	}
 
@@ -186,9 +182,9 @@ func Console(w io.Writer, entries []ipc.ConsoleEntry, opts OutputOptions) error 
 
 		// Format: [HH:MM:SS] LEVEL Message
 		if opts.UseColor {
-			fmt.Fprint(w, "[")
+			_, _ = fmt.Fprint(w, "[")
 			colorFprint(w, color.Faint, timestamp)
-			fmt.Fprint(w, "] ")
+			_, _ = fmt.Fprint(w, "] ")
 
 			// Color the level based on type
 			switch ipc.NormalizeConsoleType(e.Type) {
@@ -199,19 +195,19 @@ func Console(w io.Writer, entries []ipc.ConsoleEntry, opts OutputOptions) error 
 			case ipc.ConsoleTypeInfo:
 				colorFprint(w, color.FgCyan, level)
 			default:
-				fmt.Fprint(w, level)
+				_, _ = fmt.Fprint(w, level)
 			}
-			fmt.Fprintf(w, " %s\n", e.Text)
+			_, _ = fmt.Fprintf(w, " %s\n", e.Text)
 		} else {
-			fmt.Fprintf(w, "[%s] %s %s\n", timestamp, level, e.Text)
+			_, _ = fmt.Fprintf(w, "[%s] %s %s\n", timestamp, level, e.Text)
 		}
 
 		// Source URL and line number indented below
 		if e.URL != "" {
 			if e.Line > 0 {
-				fmt.Fprintf(w, "  %s:%d\n", e.URL, e.Line)
+				_, _ = fmt.Fprintf(w, "  %s:%d\n", e.URL, e.Line)
 			} else {
-				fmt.Fprintf(w, "  %s\n", e.URL)
+				_, _ = fmt.Fprintf(w, "  %s\n", e.URL)
 			}
 		}
 	}
@@ -237,10 +233,10 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 			case "DELETE":
 				colorFprint(w, color.FgRed, e.Method)
 			default:
-				fmt.Fprint(w, e.Method)
+				_, _ = fmt.Fprint(w, e.Method)
 			}
 
-			fmt.Fprintf(w, " %s ", e.URL)
+			_, _ = fmt.Fprintf(w, " %s ", e.URL)
 
 			// Color the status code by category
 			if e.Status >= 200 && e.Status < 300 {
@@ -252,12 +248,12 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 			} else if e.Status >= 500 {
 				colorFprintf(w, color.FgRed, "%d", e.Status)
 			} else {
-				fmt.Fprintf(w, "%d", e.Status)
+				_, _ = fmt.Fprintf(w, "%d", e.Status)
 			}
 
-			fmt.Fprintf(w, " %dms\n", durationMs)
+			_, _ = fmt.Fprintf(w, " %dms\n", durationMs)
 		} else {
-			fmt.Fprintf(w, "%s %s %d %dms\n", e.Method, e.URL, e.Status, durationMs)
+			_, _ = fmt.Fprintf(w, "%s %s %d %dms\n", e.Method, e.URL, e.Status, durationMs)
 		}
 
 		// Request body (if present and non-empty)
@@ -266,7 +262,7 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 			// For now, just show bodies indented
 			bodyLines := strings.Split(strings.TrimSpace(e.Body), "\n")
 			for _, line := range bodyLines {
-				fmt.Fprintf(w, "  %s\n", line)
+				_, _ = fmt.Fprintf(w, "  %s\n", line)
 			}
 		}
 	}
@@ -279,37 +275,37 @@ func Cookies(w io.Writer, cookies []ipc.Cookie, opts OutputOptions) error {
 		if opts.UseColor {
 			// Cookie name in cyan
 			colorFprint(w, color.FgCyan, c.Name)
-			fmt.Fprint(w, "=")
+			_, _ = fmt.Fprint(w, "=")
 			// Cookie value in default color
-			fmt.Fprint(w, c.Value)
+			_, _ = fmt.Fprint(w, c.Value)
 
 			// Attributes in dim gray
 			if c.Domain != "" {
-				fmt.Fprint(w, "; ")
+				_, _ = fmt.Fprint(w, "; ")
 				colorFprintf(w, color.Faint, "domain=%s", c.Domain)
 			}
 			if c.Path != "" {
-				fmt.Fprint(w, "; ")
+				_, _ = fmt.Fprint(w, "; ")
 				colorFprintf(w, color.Faint, "path=%s", c.Path)
 			}
 			if c.Secure {
-				fmt.Fprint(w, "; ")
+				_, _ = fmt.Fprint(w, "; ")
 				colorFprint(w, color.Faint, "secure")
 			}
 			if c.HTTPOnly {
-				fmt.Fprint(w, "; ")
+				_, _ = fmt.Fprint(w, "; ")
 				colorFprint(w, color.Faint, "httponly")
 			}
 			if !c.Session && c.Expires > 0 {
 				expiresTime := time.Unix(int64(c.Expires), 0)
-				fmt.Fprint(w, "; ")
+				_, _ = fmt.Fprint(w, "; ")
 				colorFprintf(w, color.Faint, "expires=%s", expiresTime.Format("2006-01-02"))
 			}
 			if c.SameSite != "" {
-				fmt.Fprint(w, "; ")
+				_, _ = fmt.Fprint(w, "; ")
 				colorFprintf(w, color.Faint, "samesite=%s", c.SameSite)
 			}
-			fmt.Fprintln(w)
+			_, _ = fmt.Fprintln(w)
 		} else {
 			// No color - original behavior
 			parts := []string{
@@ -336,7 +332,7 @@ func Cookies(w io.Writer, cookies []ipc.Cookie, opts OutputOptions) error {
 				parts = append(parts, fmt.Sprintf("samesite=%s", c.SameSite))
 			}
 
-			fmt.Fprintln(w, strings.Join(parts, "; "))
+			_, _ = fmt.Fprintln(w, strings.Join(parts, "; "))
 		}
 	}
 	return nil
@@ -399,17 +395,17 @@ func Target(w io.Writer, data ipc.TargetData, opts OutputOptions) error {
 			if isActive {
 				colorFprint(w, color.FgCyan, "* ")
 			} else {
-				fmt.Fprint(w, "  ")
+				_, _ = fmt.Fprint(w, "  ")
 			}
-			fmt.Fprintf(w, "%s - %s [", session.URL, title)
+			_, _ = fmt.Fprintf(w, "%s - %s [", session.URL, title)
 			colorFprint(w, color.FgCyan, displayID)
-			fmt.Fprintln(w, "]")
+			_, _ = fmt.Fprintln(w, "]")
 		} else {
 			prefix := "  "
 			if isActive {
 				prefix = "* "
 			}
-			fmt.Fprintf(w, "%s%s - %s [%s]\n", prefix, session.URL, title, displayID)
+			_, _ = fmt.Fprintf(w, "%s%s - %s [%s]\n", prefix, session.URL, title, displayID)
 		}
 	}
 	return nil
@@ -419,32 +415,32 @@ func Target(w io.Writer, data ipc.TargetData, opts OutputOptions) error {
 func TargetError(w io.Writer, errorMsg string, sessions []ipc.PageSession, matches []ipc.PageSession, opts OutputOptions) error {
 	if opts.UseColor {
 		colorFprint(w, color.FgRed, "Error:")
-		fmt.Fprintf(w, " %s\n", errorMsg)
+		_, _ = fmt.Fprintf(w, " %s\n", errorMsg)
 	} else {
-		fmt.Fprintf(w, "Error: %s\n", errorMsg)
+		_, _ = fmt.Fprintf(w, "Error: %s\n", errorMsg)
 	}
 
 	if len(sessions) > 0 {
-		fmt.Fprintln(w, "Available sessions:")
+		_, _ = fmt.Fprintln(w, "Available sessions:")
 		for _, session := range sessions {
 			// Truncate ID to 8 chars
 			displayID := session.ID
 			if len(displayID) > 8 {
 				displayID = displayID[:8]
 			}
-			fmt.Fprintf(w, "  %s - %s\n", displayID, session.Title)
+			_, _ = fmt.Fprintf(w, "  %s - %s\n", displayID, session.Title)
 		}
 	}
 
 	if len(matches) > 0 {
-		fmt.Fprintln(w, "Matching sessions:")
+		_, _ = fmt.Fprintln(w, "Matching sessions:")
 		for _, session := range matches {
 			// Truncate ID to 8 chars
 			displayID := session.ID
 			if len(displayID) > 8 {
 				displayID = displayID[:8]
 			}
-			fmt.Fprintf(w, "  %s - %s\n", displayID, session.Title)
+			_, _ = fmt.Fprintf(w, "  %s - %s\n", displayID, session.Title)
 		}
 	}
 

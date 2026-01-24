@@ -178,7 +178,7 @@ func TestCreateTempDataDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 
 	if dir == "" {
 		t.Error("expected non-empty dir")

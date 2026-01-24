@@ -110,7 +110,7 @@ func runNavigate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	// Send navigate request
 	params, err := json.Marshal(ipc.NavigateParams{

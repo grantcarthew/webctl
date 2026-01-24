@@ -291,9 +291,9 @@ func outputSuccess(data any) error {
 	// Text mode: just "OK" for action commands (no data)
 	if data == nil {
 		if shouldUseColor() {
-			color.New(color.FgGreen).Fprintln(os.Stdout, "OK")
+			_, _ = color.New(color.FgGreen).Fprintln(os.Stdout, "OK")
 		} else {
-			fmt.Fprintln(os.Stdout, "OK")
+			_, _ = fmt.Fprintln(os.Stdout, "OK")
 		}
 		return nil
 	}
@@ -317,10 +317,10 @@ func outputError(msg string) error {
 	} else {
 		// Apply color to error prefix if colors are enabled
 		if shouldUseColor() {
-			color.New(color.FgRed).Fprint(os.Stderr, "Error:")
-			fmt.Fprintf(os.Stderr, " %s\n", msg)
+			_, _ = color.New(color.FgRed).Fprint(os.Stderr, "Error:")
+			_, _ = fmt.Fprintf(os.Stderr, " %s\n", msg)
 		} else {
-			fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
+			_, _ = fmt.Fprintf(os.Stderr, "Error: %s\n", msg)
 		}
 	}
 	return printedError{err: fmt.Errorf("%s", msg)}
@@ -351,7 +351,7 @@ func outputHint(msg string) {
 	}
 	fmt.Fprintf(os.Stderr, "Hint: %s\n", msg)
 	// Ensure the hint is flushed to stderr before returning
-	os.Stderr.Sync()
+	_ = os.Stderr.Sync()
 }
 
 // shouldUseColor determines if color output should be used based on flags and environment.

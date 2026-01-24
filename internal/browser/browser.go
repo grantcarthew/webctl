@@ -37,7 +37,7 @@ func isPortAvailable(port int) bool {
 	if err != nil {
 		return false
 	}
-	listener.Close()
+	_ = listener.Close()
 	return true
 }
 
@@ -106,7 +106,7 @@ func StartWithBinary(binPath string, opts LaunchOptions) (*Browser, error) {
 	defer cancel()
 
 	if err := b.waitForCDP(ctx); err != nil {
-		b.Close()
+		_ = b.Close()
 		return nil, err
 	}
 
@@ -203,7 +203,7 @@ func (b *Browser) Close() error {
 
 	// Clean up temp data directory
 	if b.ownsData && b.dataDir != "" {
-		os.RemoveAll(b.dataDir)
+		_ = os.RemoveAll(b.dataDir)
 	}
 
 	b.cmd = nil

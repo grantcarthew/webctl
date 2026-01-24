@@ -95,7 +95,7 @@ func TestOutputSuccess(t *testing.T) {
 	data := map[string]string{"message": "test"}
 	err := outputSuccess(data)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -134,7 +134,7 @@ func TestOutputError(t *testing.T) {
 
 	err := outputError("something went wrong")
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = old
 
 	if err == nil {
@@ -179,7 +179,7 @@ func TestRunStatus_DaemonNotRunning(t *testing.T) {
 
 	err := runStatus(nil, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -243,7 +243,7 @@ func TestRunStatus_DaemonRunning(t *testing.T) {
 
 	err := runStatus(nil, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -304,7 +304,7 @@ func TestRunStop_Success(t *testing.T) {
 
 	err := runStop(nil, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -343,7 +343,7 @@ func TestRunStop_NewExecutorError(t *testing.T) {
 
 	err := runStop(nil, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = old
 
 	if err == nil {
@@ -391,7 +391,7 @@ func TestRunClear_AllBuffers(t *testing.T) {
 
 	err := runClear(nil, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -437,7 +437,7 @@ func TestRunClear_ConsoleOnly(t *testing.T) {
 
 	err := runClear(nil, []string{"console"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -476,7 +476,7 @@ func TestRunClear_InvalidTarget(t *testing.T) {
 
 	err := runClear(nil, []string{"invalid"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = old
 
 	if err == nil {
@@ -501,7 +501,7 @@ func TestRunStart_DaemonAlreadyRunning(t *testing.T) {
 
 	err := runStart(nil, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = old
 
 	if err == nil {
@@ -526,7 +526,7 @@ func TestRunConsole_DaemonNotRunning(t *testing.T) {
 
 	err := runConsoleDefault(nil, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = old
 
 	if err == nil {
@@ -572,7 +572,7 @@ func TestRunConsole_Success(t *testing.T) {
 
 	err := runConsoleDefault(consoleCmd, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -637,7 +637,7 @@ func TestRunConsole_EmptyBuffer(t *testing.T) {
 
 	err := runConsoleDefault(consoleCmd, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -814,7 +814,7 @@ func TestRunConsoleDefault_Success(t *testing.T) {
 
 	err := runConsoleDefault(consoleCmd, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -898,8 +898,8 @@ func TestRunConsoleSave_CustomFilePath(t *testing.T) {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
 	tmpPath := tmpFile.Name()
-	tmpFile.Close()
-	defer os.Remove(tmpPath)
+	_ = tmpFile.Close()
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	// Capture stdout
 	old := os.Stdout
@@ -908,7 +908,7 @@ func TestRunConsoleSave_CustomFilePath(t *testing.T) {
 
 	err = runConsoleSave(consoleSaveCmd, []string{tmpPath})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -988,7 +988,7 @@ func TestRunConsoleSave_DirectoryPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Capture stdout
 	old := os.Stdout
@@ -998,7 +998,7 @@ func TestRunConsoleSave_DirectoryPath(t *testing.T) {
 	// Add trailing slash to indicate directory (new trailing slash convention)
 	err = runConsoleSave(consoleSaveCmd, []string{tmpDir + "/"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -1076,7 +1076,7 @@ func TestRunConsoleShow_RawFlag(t *testing.T) {
 
 	err := runConsoleDefault(consoleCmd, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -1155,7 +1155,7 @@ func TestRunConsoleShow_CombinedFilters(t *testing.T) {
 
 	err := runConsoleDefault(consoleCmd, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -1262,7 +1262,7 @@ func TestRunConsoleShow_TextOutput(t *testing.T) {
 
 	err := runConsoleDefault(consoleCmd, nil)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -1328,7 +1328,7 @@ func TestExecuteArgs_recognizedCommand(t *testing.T) {
 
 	recognized, err := ExecuteArgs([]string{"status"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if !recognized {
@@ -1467,8 +1467,8 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 		t.Fatalf("ExecuteArgs returned error: %v", err)
 	}
 
-	wOut1.Close()
-	wErr1.Close()
+	_ = wOut1.Close()
+	_ = wErr1.Close()
 	os.Stdout = oldStdout
 	os.Stderr = oldStderr
 
@@ -1507,8 +1507,8 @@ func TestExecuteArgs_resetsFlagsBetweenCalls(t *testing.T) {
 		t.Fatalf("second ExecuteArgs returned error: %v", err)
 	}
 
-	wOut2.Close()
-	wErr2.Close()
+	_ = wOut2.Close()
+	_ = wErr2.Close()
 	os.Stdout = oldStdout
 	os.Stderr = oldStderr
 
@@ -1674,7 +1674,7 @@ func TestRunNetwork_DaemonNotRunning(t *testing.T) {
 
 	err := runNetworkDefault(networkCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -1744,7 +1744,7 @@ func TestRunNetwork_Success(t *testing.T) {
 
 	err := runNetworkDefault(networkCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -1793,7 +1793,7 @@ func TestRunTarget_DaemonNotRunning(t *testing.T) {
 
 	err := runTarget(targetCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -1848,7 +1848,7 @@ func TestRunTarget_ListSessions(t *testing.T) {
 
 	err := runTarget(targetCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -1911,7 +1911,7 @@ func TestRunTarget_SwitchSession(t *testing.T) {
 
 	err := runTarget(targetCmd, []string{"test"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -1967,7 +1967,7 @@ func TestRunTarget_AmbiguousMatch(t *testing.T) {
 
 	_ = runTarget(targetCmd, []string{"test"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
@@ -2103,7 +2103,7 @@ func TestRunScreenshot_DaemonNotRunning(t *testing.T) {
 
 	err := runScreenshotDefault(screenshotCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -2175,7 +2175,7 @@ func TestRunScreenshot_Success(t *testing.T) {
 
 	err := runScreenshotSave(screenshotSaveCmd, []string{customPath})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -2242,7 +2242,7 @@ func TestRunScreenshot_CustomOutput(t *testing.T) {
 
 	err := runScreenshotSave(screenshotSaveCmd, []string{customPath})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -2302,7 +2302,7 @@ func TestRunScreenshot_FullPage(t *testing.T) {
 
 	_ = runScreenshotSave(screenshotSaveCmd, []string{tmpDir + "/test.png"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if !capturedFullPage {
@@ -2323,7 +2323,7 @@ func TestRunHTML_DaemonNotRunning(t *testing.T) {
 
 	err := runHTMLDefault(htmlCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -2386,7 +2386,7 @@ func TestRunHTML_FullPage(t *testing.T) {
 
 	err := runHTMLSave(htmlSaveCmd, []string{tmpDir + "/test.html"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -2473,7 +2473,7 @@ func TestRunHTML_WithSelector(t *testing.T) {
 
 	_ = runHTMLSave(htmlSaveCmd, []string{tmpDir + "/test.html"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedSelector != ".content" {
@@ -2511,7 +2511,7 @@ func TestRunHTML_CustomOutput(t *testing.T) {
 
 	err := runHTMLSave(htmlSaveCmd, []string{customPath})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -2548,7 +2548,7 @@ func TestRunEval_DaemonNotRunning(t *testing.T) {
 
 	err := runEval(evalCmd, []string{"1+1"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = old
 
 	if err == nil {
@@ -2590,7 +2590,7 @@ func TestRunEval_BasicExpression(t *testing.T) {
 
 	err := runEval(evalCmd, []string{"1+1"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -2638,7 +2638,7 @@ func TestRunEval_Undefined(t *testing.T) {
 
 	err := runEval(evalCmd, []string{"undefined"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -2692,7 +2692,7 @@ func TestRunEval_MultipleArgs(t *testing.T) {
 
 	_ = runEval(evalCmd, []string{"'Hello'", "+", "'World'"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	expected := "'Hello' + 'World'"
@@ -2724,7 +2724,7 @@ func TestRunEval_Error(t *testing.T) {
 
 	err := runEval(evalCmd, []string{"foo"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = old
 
 	if err == nil {
@@ -2774,7 +2774,7 @@ func TestRunEval_Timeout(t *testing.T) {
 
 	_ = runEval(evalCmd, []string{"42"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedTimeout != 5 {
@@ -2795,7 +2795,7 @@ func TestRunCookiesList_DaemonNotRunning(t *testing.T) {
 
 	err := runCookiesDefault(cookiesCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = old
 
 	if err == nil {
@@ -2841,7 +2841,7 @@ func TestRunCookiesList_Success(t *testing.T) {
 
 	err := runCookiesDefault(cookiesCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -2889,7 +2889,7 @@ func TestRunCookiesSet_Basic(t *testing.T) {
 
 	_ = runCookiesSet(cookiesSetCmd, []string{"session", "xyz789"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.Action != "set" {
@@ -2944,7 +2944,7 @@ func TestRunCookiesSet_WithFlags(t *testing.T) {
 
 	_ = runCookiesSet(cookiesSetCmd, []string{"auth", "token123"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.Domain != "example.com" {
@@ -2994,7 +2994,7 @@ func TestRunCookiesDelete_Success(t *testing.T) {
 
 	err := runCookiesDelete(cookiesDeleteCmd, []string{"session"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -3058,10 +3058,10 @@ func TestRunCookiesDelete_AmbiguousError(t *testing.T) {
 
 	err := runCookiesDelete(cookiesDeleteCmd, []string{"session"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
-	we.Close()
+	_ = we.Close()
 	os.Stderr = oldErr
 
 	if err == nil {
@@ -3117,7 +3117,7 @@ func TestRunCookiesDelete_WithDomain(t *testing.T) {
 
 	_ = runCookiesDelete(cookiesDeleteCmd, []string{"session"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.Domain != "api.example.com" {
@@ -3178,7 +3178,7 @@ func TestRunNavigate_DaemonNotRunning(t *testing.T) {
 
 	err := runNavigate(navigateCmd, []string{"example.com"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -3230,7 +3230,7 @@ func TestRunNavigate_Success(t *testing.T) {
 
 	err := runNavigate(navigateCmd, []string{"example.com"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -3290,7 +3290,7 @@ func TestRunNavigate_WithWaitFlag(t *testing.T) {
 
 	_ = runNavigate(navigateCmd, []string{"example.com"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if !capturedParams.Wait {
@@ -3326,7 +3326,7 @@ func TestRunNavigate_LocalhostUsesHTTP(t *testing.T) {
 
 	_ = runNavigate(navigateCmd, []string{"localhost:3000"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.URL != "http://localhost:3000" {
@@ -3354,7 +3354,7 @@ func TestRunNavigate_Error(t *testing.T) {
 
 	err := runNavigate(navigateCmd, []string{"invalid.invalid"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -3388,7 +3388,7 @@ func TestRunReload_DaemonNotRunning(t *testing.T) {
 
 	err := runReload(reloadCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -3436,7 +3436,7 @@ func TestRunReload_Success(t *testing.T) {
 
 	err := runReload(reloadCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -3493,7 +3493,7 @@ func TestRunReload_WithWaitFlag(t *testing.T) {
 
 	_ = runReload(reloadCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if !capturedParams.Wait {
@@ -3515,7 +3515,7 @@ func TestRunBack_DaemonNotRunning(t *testing.T) {
 
 	err := runBack(backCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -3561,7 +3561,7 @@ func TestRunBack_Success(t *testing.T) {
 
 	err := runBack(backCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -3604,7 +3604,7 @@ func TestRunBack_NoHistory(t *testing.T) {
 
 	err := runBack(backCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -3659,7 +3659,7 @@ func TestRunBack_WithWaitFlag(t *testing.T) {
 
 	_ = runBack(backCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if !capturedParams.Wait {
@@ -3681,7 +3681,7 @@ func TestRunForward_DaemonNotRunning(t *testing.T) {
 
 	err := runForward(forwardCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -3727,7 +3727,7 @@ func TestRunForward_Success(t *testing.T) {
 
 	err := runForward(forwardCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -3770,7 +3770,7 @@ func TestRunForward_NoHistory(t *testing.T) {
 
 	err := runForward(forwardCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -3825,7 +3825,7 @@ func TestRunForward_WithWaitFlag(t *testing.T) {
 
 	_ = runForward(forwardCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if !capturedParams.Wait {
@@ -3849,7 +3849,7 @@ func TestRunClick_DaemonNotRunning(t *testing.T) {
 
 	err := runClick(clickCmd, []string{"#button"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -3897,7 +3897,7 @@ func TestRunClick_Success(t *testing.T) {
 
 	err := runClick(clickCmd, []string{"#submit-btn"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -3941,7 +3941,7 @@ func TestRunClick_WithWarning(t *testing.T) {
 
 	err := runClick(clickCmd, []string{"#hidden-btn"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -3984,7 +3984,7 @@ func TestRunClick_ElementNotFound(t *testing.T) {
 
 	err := runClick(clickCmd, []string{"#missing"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -4020,7 +4020,7 @@ func TestRunFocus_DaemonNotRunning(t *testing.T) {
 
 	err := runFocus(focusCmd, []string{"#input"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -4068,7 +4068,7 @@ func TestRunFocus_Success(t *testing.T) {
 
 	err := runFocus(focusCmd, []string{"#email-input"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -4108,7 +4108,7 @@ func TestRunFocus_ElementNotFound(t *testing.T) {
 
 	err := runFocus(focusCmd, []string{"#missing"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -4141,7 +4141,7 @@ func TestRunType_DaemonNotRunning(t *testing.T) {
 
 	err := runType(typeCmd, []string{"hello"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -4186,7 +4186,7 @@ func TestRunType_TextOnly(t *testing.T) {
 
 	err := runType(typeCmd, []string{"hello world"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -4236,7 +4236,7 @@ func TestRunType_WithSelector(t *testing.T) {
 
 	_ = runType(typeCmd, []string{"#input", "test text"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.Selector != "#input" {
@@ -4272,7 +4272,7 @@ func TestRunType_WithKeyFlag(t *testing.T) {
 
 	_ = runType(typeCmd, []string{"#search", "query"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.Key != "Enter" {
@@ -4305,7 +4305,7 @@ func TestRunType_WithClearFlag(t *testing.T) {
 
 	_ = runType(typeCmd, []string{"#input", "new value"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if !capturedParams.Clear {
@@ -4342,7 +4342,7 @@ func TestRunType_AllFlags(t *testing.T) {
 
 	_ = runType(typeCmd, []string{"#form-field", "updated"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.Selector != "#form-field" {
@@ -4372,7 +4372,7 @@ func TestRunKey_DaemonNotRunning(t *testing.T) {
 
 	err := runKey(keyCmd, []string{"Enter"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -4417,7 +4417,7 @@ func TestRunKey_Success(t *testing.T) {
 
 	err := runKey(keyCmd, []string{"Enter"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -4466,7 +4466,7 @@ func TestRunKey_WithCtrlModifier(t *testing.T) {
 
 	_ = runKey(keyCmd, []string{"a"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.Key != "a" {
@@ -4502,7 +4502,7 @@ func TestRunKey_WithMetaModifier(t *testing.T) {
 
 	_ = runKey(keyCmd, []string{"c"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.Key != "c" {
@@ -4546,7 +4546,7 @@ func TestRunKey_AllModifiers(t *testing.T) {
 
 	_ = runKey(keyCmd, []string{"Delete"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.Key != "Delete" {
@@ -4579,7 +4579,7 @@ func TestRunSelect_DaemonNotRunning(t *testing.T) {
 
 	err := runSelect(selectCmd_, []string{"#dropdown", "value1"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -4624,7 +4624,7 @@ func TestRunSelect_Success(t *testing.T) {
 
 	err := runSelect(selectCmd_, []string{"#country", "AU"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -4671,7 +4671,7 @@ func TestRunSelect_ElementNotFound(t *testing.T) {
 
 	err := runSelect(selectCmd_, []string{"#missing", "value"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -4714,7 +4714,7 @@ func TestRunSelect_NotASelectElement(t *testing.T) {
 
 	err := runSelect(selectCmd_, []string{"#div", "value"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -4791,7 +4791,7 @@ func TestRunScroll_DaemonNotRunning(t *testing.T) {
 
 	err := runScroll(scrollCmd, []string{"#element"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -4836,7 +4836,7 @@ func TestRunScroll_ElementMode(t *testing.T) {
 
 	err := runScroll(scrollCmd, []string{"#footer"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -4888,7 +4888,7 @@ func TestRunScroll_ToMode(t *testing.T) {
 
 	_ = runScroll(scrollCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.Mode != "to" {
@@ -4927,7 +4927,7 @@ func TestRunScroll_ByMode(t *testing.T) {
 
 	_ = runScroll(scrollCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if capturedParams.Mode != "by" {
@@ -4964,7 +4964,7 @@ func TestRunScroll_InvalidToCoords(t *testing.T) {
 
 	err := runScroll(scrollCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -5004,7 +5004,7 @@ func TestRunScroll_NoModeSpecified(t *testing.T) {
 
 	err := runScroll(scrollCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -5047,7 +5047,7 @@ func TestRunScroll_ElementNotFound(t *testing.T) {
 
 	err := runScroll(scrollCmd, []string{"#missing"})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -5083,7 +5083,7 @@ func TestRunReady_DaemonNotRunning(t *testing.T) {
 
 	err := runReady(readyCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -5128,7 +5128,7 @@ func TestRunReady_Success(t *testing.T) {
 
 	err := runReady(readyCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	if err != nil {
@@ -5178,7 +5178,7 @@ func TestRunReady_WithCustomTimeout(t *testing.T) {
 
 	_ = runReady(readyCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	// 10 seconds
@@ -5207,7 +5207,7 @@ func TestRunReady_Timeout(t *testing.T) {
 
 	err := runReady(readyCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {
@@ -5250,7 +5250,7 @@ func TestRunReady_NoActiveSession(t *testing.T) {
 
 	err := runReady(readyCmd, []string{})
 
-	w.Close()
+	_ = w.Close()
 	os.Stderr = oldStderr
 
 	if err == nil {

@@ -158,7 +158,7 @@ func captureAndSaveScreenshot(cmd *cobra.Command, path string) error {
 	if err != nil {
 		return outputError(err.Error())
 	}
-	defer exec.Close()
+	defer func() { _ = exec.Close() }()
 
 	// Send screenshot request with fullPage parameter
 	params, err := json.Marshal(ipc.ScreenshotParams{
