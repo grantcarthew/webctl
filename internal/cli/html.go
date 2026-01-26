@@ -186,7 +186,7 @@ func runHTMLSave(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return outputError(err.Error())
 		}
-	defer func() { _ = exec.Close() }()
+		defer func() { _ = exec.Close() }()
 
 		outputPath, err = generateHTMLPath(exec, selector)
 		if err != nil {
@@ -203,7 +203,7 @@ func runHTMLSave(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return outputError(err.Error())
 			}
-	defer func() { _ = exec.Close() }()
+			defer func() { _ = exec.Close() }()
 
 			filename, err := generateHTMLFilename(exec, selector)
 			if err != nil {
