@@ -120,3 +120,7 @@ All topics combined (use when you need complete reference):
 webctl help agents all
 ```
 
+## webctl Bug Fix
+
+If you find a bug in webctl: clone the repository which is available under webctl --version, find the bug, raise a detailed issue on GitHub.
+
