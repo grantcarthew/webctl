@@ -70,8 +70,10 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-058 | Test Pages | Completed | 2026-01-16 | 2026-01-16 |
 | p-059 | CLI Start/Stop Tests | Completed | 2026-01-16 | 2026-01-16 |
 | p-060 | CLI Navigation Tests | Completed | 2026-01-16 | 2026-01-16 |
-| p-061 | CLI Observation Tests | Completed | 2026-01-17 | 2026-01-17 |
+| p-061 | Agent Help System | Completed | 2026-01-25 | 2026-01-26 |
 | p-062 | CLI Interaction Tests | Completed | 2026-01-21 | 2026-01-21 |
+| p-063 | New Tab Command | Proposed | - | - |
+| p-064 | Start Attach Mode | Proposed | - | - |
 
 Note: Completed projects are in `completed/`
 
