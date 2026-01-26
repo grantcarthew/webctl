@@ -27,10 +27,10 @@ Extend the `ready` command to support four synchronization modes:
 
 | Mode | Syntax | Description |
 |------|--------|-------------|
-| Page load | `ready [--timeout 30s]` | Wait for page load (existing, default) |
-| Selector | `ready <selector> [--timeout 30s]` | Wait for element to appear |
-| Network idle | `ready --network-idle [--timeout 30s]` | Wait for no pending requests (500ms quiet) |
-| JS condition | `ready --eval "expr" [--timeout 30s]` | Wait for JS expression to be truthy |
+| Page load | `ready [--timeout 60s]` | Wait for page load (existing, default) |
+| Selector | `ready <selector> [--timeout 60s]` | Wait for element to appear |
+| Network idle | `ready --network-idle [--timeout 60s]` | Wait for no pending requests (500ms quiet) |
+| JS condition | `ready --eval "expr" [--timeout 60s]` | Wait for JS expression to be truthy |
 
 Mode detection logic (in order):
 
@@ -46,7 +46,7 @@ if networkIdle {
 }
 ```
 
-All modes support the `--timeout` flag (default: 30s).
+All modes support the `--timeout` flag (default: 60s).
 
 ## Why
 
@@ -378,7 +378,7 @@ Eval mode:
   Most flexible option for application-specific ready states.
 
 Timeout:
-  --timeout duration    Maximum time to wait (default 30s)
+  --timeout duration    Maximum time to wait (default 60s)
                         Accepts Go duration format: 10s, 1m, 500ms
 
 Examples:
@@ -393,7 +393,7 @@ Examples:
   ready "button.submit:enabled"        # Wait for enabled button
 
   # Network idle mode - wait for requests to complete
-  ready --network-idle                 # Default 30s timeout
+  ready --network-idle                 # Default 60s timeout
   ready --network-idle --timeout 60s   # Longer timeout for slow APIs
 
   # Eval mode - wait for custom condition

@@ -22,14 +22,14 @@ When completing a project and starting the next:
 
 Projects are stored in `.ai/projects/`.
 
-- Active Project: None
-- Design Record: None
+- Active Project: None (select from proposed projects)
+- Next Projects Available: P-063 (New Tab Command), P-064 (Start Attach Mode)
+- Recent Completion: P-061 Agent Help System (2026-01-26)
 
 ## Quick Reference
 
 ```bash
-webctl browser [--headless] [--port 9222]
-webctl start [--headless] [--attach :9222] [--listen :9444]
+webctl start [--headless] [--port 9222]
 webctl stop
 webctl status
 

@@ -21,8 +21,6 @@ pid: 42976
 webctl> start
 Error: daemon is already running
 
-webctl> browser
-Error: unknown command: browser
 # User is stuck - must exit and restart entire daemon
 ```
 

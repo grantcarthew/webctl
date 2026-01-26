@@ -168,3 +168,12 @@ When launching browser (via `webctl browser` or `webctl start` without `--attach
 3. If not found, error with detailed message listing searched paths
 
 No auto-download of browser binaries. User must have Chrome/Chromium installed.
+
+## Updates
+
+- 2026-01-25: Implementation note - The full design described above was not implemented. Current implementation (as of v0.1):
+  - `webctl browser` command does not exist
+  - `webctl start` only has `--headless` and `--port` flags
+  - No `--attach` or `--listen` flags implemented
+  - Simple use case only: start launches both daemon and browser locally
+  - Remote access and attach scenarios remain unimplemented (future enhancement)

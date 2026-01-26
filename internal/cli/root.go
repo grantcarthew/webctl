@@ -75,9 +75,11 @@ var JSONOutput bool
 var NoColor bool
 
 var rootCmd = &cobra.Command{
-	Use:           "webctl",
-	Short:         "Browser automation CLI for AI agents",
-	Long:          "webctl captures DevTools data (console logs, network requests, JS errors) via a persistent daemon that buffers CDP events.",
+	Use:   "webctl",
+	Short: "Browser automation CLI for AI agents",
+	Long: `webctl captures DevTools data (console logs, network requests, JS errors) via a persistent daemon that buffers CDP events.
+
+For AI agents, see: webctl help agents`,
 	Version:       Version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -91,6 +93,14 @@ func init() {
 Repository: https://github.com/grantcarthew/webctl
 Report issues: https://github.com/grantcarthew/webctl/issues/new
 `)
+
+	// Add agents subcommand to help
+	// This makes "webctl help agents" work properly
+	rootCmd.InitDefaultHelpCmd()
+	helpCmd, _, _ := rootCmd.Find([]string{"help"})
+	if helpCmd != nil {
+		helpCmd.AddCommand(helpAgentsCmd)
+	}
 }
 
 // debugf logs a debug message if debug mode is enabled.
