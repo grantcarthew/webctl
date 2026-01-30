@@ -60,6 +60,14 @@ webctl stop
 - Design Records: `docs/design/design-records/`
 - Projects: `docs/projects/`
 
+## Companion Packages
+
+The following software packages and systems work well when used side by side with webctl:
+
+- [Snag](https://github.com/grantcarthew/snag): Snag web pages via Chromium/Chrome to markdown
+- [Kagi](https://github.com/grantcarthew/kagi): CLI access to the Kagi FastGPT internet search
+- [agentation](https://agentation.dev/): Point at problems, not code
+
 ## License
 
 MPL-2.0
