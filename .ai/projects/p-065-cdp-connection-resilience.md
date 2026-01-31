@@ -62,18 +62,36 @@ Out of Scope:
 
 The daemon currently:
 
-- Uses `coder/websocket` for CDP communication
-- Detects connection errors via `isConnectionError()` checking error strings
-- On disconnect: clears sessions, sets `browserLost` flag, shuts down
+- Uses `coder/websocket v1.8.14` for CDP communication
+- Detects connection errors via `isConnectionError()` checking error strings (daemon.go:133-142)
+- On disconnect: clears sessions, sets `browserLost` flag, shuts down (daemon.go:144-160)
 - No heartbeat or proactive health monitoring
-- No reconnection attempt - just exits with error message
+- No reconnection attempt - exits with error message
 
-Key files:
+Key files and locations:
 
-- `internal/cdp/client.go` - CDP client, request/response, events
-- `internal/cdp/conn.go` - WebSocket connection interface
-- `internal/daemon/daemon.go` - Daemon lifecycle, shutdown handling
-- `internal/daemon/session.go` - Session state tracking
+- `internal/cdp/client.go`
+  - CDP client with read loop (readLoop:154-183)
+  - closedCh channel signals client closure (line 30)
+  - closeErr stores error that caused closure (line 31)
+  - Err() method returns close error (line 147-152)
+- `internal/cdp/conn.go`
+  - Conn interface: Read, Write, Close only (line 12-22)
+  - Ping method not exposed (needs adding for heartbeat)
+- `internal/daemon/daemon.go`
+  - browserConnected() checks session count (line 103-110)
+  - requireBrowser() triggers shutdown if disconnected (line 115-131)
+  - sendToSession() wraps CDP calls with error detection (line 144-160)
+  - shutdownOnce ensures single shutdown (line 62)
+- `internal/ipc/protocol.go`
+  - StatusData struct needs health fields added (line 34-39)
+
+WebSocket library capabilities (coder/websocket):
+
+- `Ping(ctx) error` - sends ping, waits for pong (for heartbeat)
+- `CloseError{Code, Reason}` - structured close info
+- `CloseStatus(err) StatusCode` - extract code from error
+- Status codes: 1000=Normal, 1001=GoingAway, 1006=Abnormal, 1011=InternalError
 
 ## Technical Approach
 
