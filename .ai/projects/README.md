@@ -74,6 +74,7 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-062 | CLI Interaction Tests | Completed | 2026-01-21 | 2026-01-21 |
 | p-063 | New Tab Command | Proposed | - | - |
 | p-064 | Start Attach Mode | Proposed | - | - |
+| p-065 | CDP Connection Resilience | Active | 2026-01-31 | - |
 
 Note: Completed projects are in `completed/`
 
