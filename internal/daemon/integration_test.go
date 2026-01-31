@@ -1799,3 +1799,188 @@ func TestFind_Integration(t *testing.T) {
 		t.Error("daemon did not shut down in time")
 	}
 }
+
+// TestType_Integration tests type and key commands trigger correct DOM events.
+// Verifies that Enter key triggers keydown, keypress, and keyup events.
+// Run with: go test -run Integration ./...
+func TestType_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "webctl.sock")
+	pidPath := filepath.Join(tmpDir, "webctl.pid")
+
+	cfg := Config{
+		Headless:   true,
+		Port:       0,
+		SocketPath: socketPath,
+		PIDPath:    pidPath,
+		BufferSize: 100,
+	}
+
+	d := New(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- d.Run(ctx)
+	}()
+
+	if !waitForSocket(socketPath, 30*time.Second) {
+		t.Fatal("daemon did not start in time")
+	}
+
+	client, err := ipc.DialPath(socketPath)
+	if err != nil {
+		t.Fatalf("failed to connect to daemon: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	// Navigate to a test page with an input field
+	testHTML := `<!DOCTYPE html><html><body>
+		<input type="text" id="input">
+		<script>
+			window._events = [];
+			const input = document.getElementById('input');
+			['keydown', 'keypress', 'keyup'].forEach(type => {
+				input.addEventListener(type, e => {
+					if (e.key === 'Enter') window._events.push(type);
+				});
+			});
+		</script>
+	</body></html>`
+	params, _ := json.Marshal(map[string]any{
+		"url": "data:text/html," + testHTML,
+	})
+	resp, err := client.Send(ipc.Request{
+		Cmd:    "cdp",
+		Target: "Page.navigate",
+		Params: params,
+	})
+	if err != nil {
+		t.Fatalf("navigate failed: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("navigate returned error: %s", resp.Error)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Test: Type with Enter key triggers all three DOM events
+	t.Run("enter_triggers_all_events", func(t *testing.T) {
+		// Type text with Enter key
+		typeParams, _ := json.Marshal(ipc.TypeParams{
+			Selector: "#input",
+			Text:     "test",
+			Key:      "Enter",
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "type",
+			Params: typeParams,
+		})
+		if err != nil {
+			t.Fatalf("type command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("type returned error: %s", resp.Error)
+		}
+
+		// Check which events were triggered
+		evalParams, _ := json.Marshal(ipc.EvalParams{
+			Expression: "JSON.stringify(window._events)",
+		})
+		resp, err = client.Send(ipc.Request{
+			Cmd:    "eval",
+			Params: evalParams,
+		})
+		if err != nil {
+			t.Fatalf("eval command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("eval returned error: %s", resp.Error)
+		}
+
+		var evalData ipc.EvalData
+		if err := json.Unmarshal(resp.Data, &evalData); err != nil {
+			t.Fatalf("failed to parse eval data: %v", err)
+		}
+
+		eventsJSON, ok := evalData.Value.(string)
+		if !ok {
+			t.Fatalf("expected string, got %T", evalData.Value)
+		}
+
+		var events []string
+		if err := json.Unmarshal([]byte(eventsJSON), &events); err != nil {
+			t.Fatalf("failed to parse events: %v", err)
+		}
+
+		// Verify all three events were triggered
+		expected := []string{"keydown", "keypress", "keyup"}
+		if len(events) != len(expected) {
+			t.Errorf("expected %d events, got %d: %v", len(expected), len(events), events)
+		}
+		for i, exp := range expected {
+			if i >= len(events) || events[i] != exp {
+				t.Errorf("event[%d] = %q, want %q", i, events[i], exp)
+			}
+		}
+	})
+
+	// Test: Text is inserted into input
+	t.Run("text_inserted", func(t *testing.T) {
+		// Clear and type new text
+		typeParams, _ := json.Marshal(ipc.TypeParams{
+			Selector: "#input",
+			Text:     "hello",
+			Clear:    true,
+		})
+		resp, err := client.Send(ipc.Request{
+			Cmd:    "type",
+			Params: typeParams,
+		})
+		if err != nil {
+			t.Fatalf("type command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("type returned error: %s", resp.Error)
+		}
+
+		// Verify input value
+		evalParams, _ := json.Marshal(ipc.EvalParams{
+			Expression: "document.getElementById('input').value",
+		})
+		resp, err = client.Send(ipc.Request{
+			Cmd:    "eval",
+			Params: evalParams,
+		})
+		if err != nil {
+			t.Fatalf("eval command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("eval returned error: %s", resp.Error)
+		}
+
+		var evalData ipc.EvalData
+		_ = json.Unmarshal(resp.Data, &evalData)
+
+		if evalData.Value != "hello" {
+			t.Errorf("input value = %q, want %q", evalData.Value, "hello")
+		}
+	})
+
+	_ = client.Close()
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != context.Canceled {
+			t.Errorf("daemon exited with error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("daemon did not shut down in time")
+	}
+}

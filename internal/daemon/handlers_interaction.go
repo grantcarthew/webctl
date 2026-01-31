@@ -320,6 +320,22 @@ func (d *Daemon) handleKey(req ipc.Request) ipc.Response {
 		return ipc.ErrorResponse(fmt.Sprintf("failed to send key: %v", err))
 	}
 
+	// For Enter key, send a char event to trigger keypress DOM event
+	// Some web apps listen for keypress instead of keydown
+	if keyInfo.text != "" {
+		_, err = d.sendToSession(ctx, activeID, "Input.dispatchKeyEvent", map[string]any{
+			"type":                  "char",
+			"key":                   keyInfo.key,
+			"code":                  keyInfo.code,
+			"windowsVirtualKeyCode": keyInfo.keyCode,
+			"text":                  keyInfo.text,
+			"modifiers":             modifiers,
+		})
+		if err != nil {
+			return ipc.ErrorResponse(fmt.Sprintf("failed to send key: %v", err))
+		}
+	}
+
 	// keyUp
 	_, err = d.sendToSession(ctx, activeID, "Input.dispatchKeyEvent", map[string]any{
 		"type":                  "keyUp",
@@ -340,6 +356,7 @@ type keyInfo struct {
 	key     string
 	code    string
 	keyCode int
+	text    string // text for char event (triggers keypress), empty if not applicable
 }
 
 // getKeyInfo returns CDP key parameters for a key name.
@@ -347,7 +364,7 @@ func getKeyInfo(key string) keyInfo {
 	// Common key mappings
 	switch key {
 	case "Enter":
-		return keyInfo{key: "Enter", code: "Enter", keyCode: 13}
+		return keyInfo{key: "Enter", code: "Enter", keyCode: 13, text: "\r"}
 	case "Tab":
 		return keyInfo{key: "Tab", code: "Tab", keyCode: 9}
 	case "Escape":
