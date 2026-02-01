@@ -52,6 +52,7 @@ type Daemon struct {
 	config          Config
 	browser         *browser.Browser
 	cdp             *cdp.Client
+	cdpMu           sync.RWMutex // Protects cdp field from concurrent access
 	sessions        *SessionManager
 	consoleBuf      *RingBuffer[ipc.ConsoleEntry]
 	networkBuf      *RingBuffer[ipc.NetworkEntry]
@@ -66,6 +67,13 @@ type Daemon struct {
 	terminalState   *term.State // Saved terminal state for restoration
 	terminalStateMu sync.Mutex
 	repl            *REPL // REPL instance for external command notifications
+
+	// Connection management
+	connMgr           *connectionManager // Tracks connection state and health
+	lastURL           string             // Last URL for session recovery after reconnection
+	heartbeatCancel   context.CancelFunc // Cancels the current heartbeat goroutine
+	heartbeatCancelMu sync.Mutex         // Protects heartbeatCancel
+	reconnectingFlag  int32              // Atomic flag: 1 when reconnecting, 0 otherwise
 
 	// Navigation event waiting
 	navWaiters  sync.Map // map[string]chan *frameNavigatedInfo for sessionID -> waiter
@@ -100,9 +108,36 @@ func (d *Daemon) debugf(reqDebug bool, format string, args ...any) {
 	}
 }
 
+// getCDP safely retrieves the CDP client with read lock.
+//
+// Note: The returned pointer could be replaced or closed by another goroutine
+// before the caller uses it (TOCTOU race). This is acceptable because:
+//   - CDP client replacement only occurs during controlled reconnection
+//   - The reconnecting flag prevents most concurrent operations during swaps
+//   - Callers check for nil and handle connection errors gracefully
+//   - Full protection would require holding locks during operations (deadlock risk)
+func (d *Daemon) getCDP() *cdp.Client {
+	d.cdpMu.RLock()
+	defer d.cdpMu.RUnlock()
+	return d.cdp
+}
+
+// setCDP safely sets the CDP client with write lock.
+func (d *Daemon) setCDP(client *cdp.Client) {
+	d.cdpMu.Lock()
+	defer d.cdpMu.Unlock()
+	d.cdp = client
+}
+
 // browserConnected checks if the browser is currently running and connected.
 func (d *Daemon) browserConnected() bool {
-	if d.browser == nil || d.cdp == nil {
+	if d.browser == nil {
+		return false
+	}
+	d.cdpMu.RLock()
+	cdpConnected := d.cdp != nil
+	d.cdpMu.RUnlock()
+	if !cdpConnected {
 		return false
 	}
 	// Check if we have any active sessions
@@ -144,7 +179,12 @@ func (d *Daemon) isConnectionError(err error) bool {
 // sendToSession wraps cdp.SendToSession with connection error detection.
 // If a connection error is detected, it triggers daemon shutdown.
 func (d *Daemon) sendToSession(ctx context.Context, sessionID, method string, params any) (json.RawMessage, error) {
-	result, err := d.cdp.SendToSession(ctx, sessionID, method, params)
+	cdpClient := d.getCDP()
+	if cdpClient == nil {
+		return nil, fmt.Errorf("CDP client not initialized")
+	}
+
+	result, err := cdpClient.SendToSession(ctx, sessionID, method, params)
 	if err != nil && d.isConnectionError(err) {
 		d.debugf(false, "Connection error detected in %s: %v - shutting down daemon", method, err)
 		d.sessions.Clear()
@@ -172,6 +212,7 @@ func New(cfg Config) *Daemon {
 		networkBuf: NewRingBuffer[ipc.NetworkEntry](cfg.BufferSize),
 		shutdown:   make(chan struct{}),
 		debug:      cfg.Debug,
+		connMgr:    newConnectionManager(),
 	}
 }
 
@@ -246,8 +287,12 @@ func (d *Daemon) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to CDP: %w", err)
 	}
-	d.cdp = cdpClient
-	defer func() { _ = d.cdp.Close() }()
+	d.setCDP(cdpClient)
+	defer func() {
+		if client := d.getCDP(); client != nil {
+			_ = client.Close()
+		}
+	}()
 	d.debugf(false, "CDP client connected successfully")
 
 	// Subscribe to events before enabling domains
@@ -261,6 +306,10 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to enable auto-attach: %w", err)
 	}
 	d.debugf(false, "Target discovery and attachment enabled")
+
+	// Start heartbeat goroutine to monitor connection health
+	d.debugf(false, "Starting heartbeat monitor")
+	disconnectCh := d.startHeartbeat(ctx)
 
 	// Start IPC server with wrapper handler for external command notifications
 	ipcHandler := func(req ipc.Request) ipc.Response {
@@ -323,34 +372,51 @@ func (d *Daemon) Run(ctx context.Context) error {
 	// When stdin is not a TTY, replDone remains open - daemon waits for
 	// context cancellation, signal, shutdown command, or server error.
 
-	// Wait for shutdown
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-sigCh:
-		return nil
-	case <-d.shutdown:
-		d.browserLostMu.Lock()
-		lost := d.browserLost
-		d.browserLostMu.Unlock()
-		if lost {
-			fmt.Fprintln(os.Stderr, "Error: browser connection lost - daemon shutting down")
+	// Wait for shutdown - loop to handle reconnection
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-sigCh:
+			return nil
+		case <-d.shutdown:
+			d.browserLostMu.Lock()
+			lost := d.browserLost
+			d.browserLostMu.Unlock()
+			if lost {
+				fmt.Fprintln(os.Stderr, "Error: browser connection lost - daemon shutting down")
+			}
+			return nil
+		case err := <-errCh:
+			return err
+		case <-replDone:
+			// REPL exited (EOF or error)
+			return nil
+		case disconnectErr := <-disconnectCh:
+			// Heartbeat detected disconnect - attempt recovery
+			recovered := d.handleDisconnectAndRecover(ctx, disconnectErr)
+			if !recovered {
+				// Recovery failed or graceful shutdown - exit
+				<-d.shutdown
+				return nil
+			}
+			// Recovery succeeded - restart heartbeat and continue loop
+			disconnectCh = d.startHeartbeat(ctx)
 		}
-		return nil
-	case err := <-errCh:
-		return err
-	case <-replDone:
-		// REPL exited (EOF or error)
-		return nil
 	}
 }
 
 // enableAutoAttach enables Target.setDiscoverTargets for target discovery.
 // We use manual Target.attachToTarget with flatten:true for each discovered target.
 func (d *Daemon) enableAutoAttach() error {
+	cdpClient := d.getCDP()
+	if cdpClient == nil {
+		return fmt.Errorf("CDP client not initialized")
+	}
+
 	d.debugf(false, "Calling Target.setDiscoverTargets...")
 	// Enable target discovery to receive targetCreated/targetInfoChanged/targetDestroyed events
-	_, err := d.cdp.Send("Target.setDiscoverTargets", map[string]any{
+	_, err := cdpClient.Send("Target.setDiscoverTargets", map[string]any{
 		"discover": true,
 	})
 	if err != nil {
@@ -364,7 +430,7 @@ func (d *Daemon) enableAutoAttach() error {
 
 	// Attach to any existing targets that were created before we enabled discovery
 	d.debugf(false, "Calling Target.getTargets to find existing targets...")
-	result, err := d.cdp.Send("Target.getTargets", nil)
+	result, err := cdpClient.Send("Target.getTargets", nil)
 	if err != nil {
 		return fmt.Errorf("failed to get existing targets: %w", err)
 	}
@@ -396,7 +462,13 @@ func (d *Daemon) enableAutoAttach() error {
 			targetID := targetInfo.TargetID // capture for goroutine
 			go func() {
 				d.debugf(false, "  Attaching to existing page target: targetID=%q", targetID)
-				_, err := d.cdp.Send("Target.attachToTarget", map[string]any{
+				cdpClient := d.getCDP()
+				if cdpClient == nil {
+					d.debugf(false, "  CDP client not available for attachment")
+					d.attachedTargets.Delete(targetID)
+					return
+				}
+				_, err := cdpClient.Send("Target.attachToTarget", map[string]any{
 					"targetId": targetID,
 					"flatten":  true,
 				})
@@ -416,6 +488,11 @@ func (d *Daemon) enableAutoAttach() error {
 
 // enableDomainsForSession enables CDP domains for a specific session.
 func (d *Daemon) enableDomainsForSession(sessionID string) error {
+	cdpClient := d.getCDP()
+	if cdpClient == nil {
+		return fmt.Errorf("CDP client not initialized")
+	}
+
 	// Enable all domains needed for observation and interaction.
 	// Network is enabled at startup to capture all network events from the beginning.
 	// NOTE: Previously Network was enabled lazily due to concerns about Runtime.evaluate
@@ -423,7 +500,7 @@ func (d *Daemon) enableDomainsForSession(sessionID string) error {
 	// (manual Target.attachToTarget with flatten:true, no waitForDebuggerOnStart).
 	domains := []string{"Runtime.enable", "Page.enable", "DOM.enable", "Network.enable"}
 	for _, method := range domains {
-		if _, err := d.cdp.SendToSession(context.Background(), sessionID, method, nil); err != nil {
+		if _, err := cdpClient.SendToSession(context.Background(), sessionID, method, nil); err != nil {
 			return fmt.Errorf("failed to enable %s: %w", method, err)
 		}
 	}
@@ -432,7 +509,7 @@ func (d *Daemon) enableDomainsForSession(sessionID string) error {
 	d.networkEnabled.Store(sessionID, true)
 
 	// Enable lifecycle events (required to receive Page.lifecycleEvent)
-	if _, err := d.cdp.SendToSession(context.Background(), sessionID, "Page.setLifecycleEventsEnabled", map[string]any{"enabled": true}); err != nil {
+	if _, err := cdpClient.SendToSession(context.Background(), sessionID, "Page.setLifecycleEventsEnabled", map[string]any{"enabled": true}); err != nil {
 		return fmt.Errorf("failed to enable lifecycle events: %w", err)
 	}
 
@@ -493,6 +570,8 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 		return d.handleCSS(req)
 	case "serve":
 		return d.handleServe(req)
+	case "reconnect":
+		return d.handleReconnect()
 	case "shutdown":
 		return d.handleShutdown()
 	default:

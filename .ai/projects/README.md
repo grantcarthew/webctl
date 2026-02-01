@@ -72,9 +72,9 @@ See [p-writing-guide.md](./p-writing-guide.md) for guidelines on creating and ma
 | p-060 | CLI Navigation Tests | Completed | 2026-01-16 | 2026-01-16 |
 | p-061 | Agent Help System | Completed | 2026-01-25 | 2026-01-26 |
 | p-062 | CLI Interaction Tests | Completed | 2026-01-21 | 2026-01-21 |
-| p-063 | New Tab Command | Proposed | - | - |
+| p-063 | New Tab Command | Active | 2026-02-01 | - |
 | p-064 | Start Attach Mode | Proposed | - | - |
-| p-065 | CDP Connection Resilience | Active | 2026-01-31 | - |
+| p-065 | CDP Connection Resilience | Completed | 2026-01-31 | 2026-02-01 |
 
 Note: Completed projects are in `completed/`
 

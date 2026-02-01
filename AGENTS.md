@@ -22,9 +22,9 @@ When completing a project and starting the next:
 
 Projects are stored in `.ai/projects/`.
 
-- Active Project: P-065 CDP Connection Resilience
-- Next Projects Available: P-063 (New Tab Command), P-064 (Start Attach Mode)
-- Recent Completion: P-061 Agent Help System (2026-01-26)
+- Active Project: P-063 New Tab Command
+- Next Projects Available: P-064 (Start Attach Mode)
+- Recent Completion: P-065 CDP Connection Resilience (2026-02-01)
 
 ## Quick Reference
 
@@ -32,6 +32,7 @@ Projects are stored in `.ai/projects/`.
 webctl start [--headless] [--port 9222]
 webctl stop
 webctl status
+webctl reconnect                    # Reconnect to browser after disconnect
 
 webctl serve <directory>                # Static file server
 webctl serve --proxy <url>              # Reverse proxy server

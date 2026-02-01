@@ -14,32 +14,38 @@ import (
 
 // subscribeEvents subscribes to CDP events and buffers them.
 func (d *Daemon) subscribeEvents() {
+	cdpClient := d.getCDP()
+	if cdpClient == nil {
+		d.debugf(false, "CDP client not available for event subscriptions")
+		return
+	}
+
 	// Target events (browser-level, no sessionId)
-	d.cdp.Subscribe("Target.targetCreated", func(evt cdp.Event) {
+	cdpClient.Subscribe("Target.targetCreated", func(evt cdp.Event) {
 		d.handleTargetCreated(evt)
 	})
 
-	d.cdp.Subscribe("Target.attachedToTarget", func(evt cdp.Event) {
+	cdpClient.Subscribe("Target.attachedToTarget", func(evt cdp.Event) {
 		d.handleTargetAttached(evt)
 	})
 
-	d.cdp.Subscribe("Target.detachedFromTarget", func(evt cdp.Event) {
+	cdpClient.Subscribe("Target.detachedFromTarget", func(evt cdp.Event) {
 		d.handleTargetDetached(evt)
 	})
 
-	d.cdp.Subscribe("Target.targetInfoChanged", func(evt cdp.Event) {
+	cdpClient.Subscribe("Target.targetInfoChanged", func(evt cdp.Event) {
 		d.handleTargetInfoChanged(evt)
 	})
 
 	// Console events (include sessionId)
-	d.cdp.Subscribe("Runtime.consoleAPICalled", func(evt cdp.Event) {
+	cdpClient.Subscribe("Runtime.consoleAPICalled", func(evt cdp.Event) {
 		if entry, ok := d.parseConsoleEvent(evt); ok {
 			entry.SessionID = evt.SessionID
 			d.consoleBuf.Push(entry)
 		}
 	})
 
-	d.cdp.Subscribe("Runtime.exceptionThrown", func(evt cdp.Event) {
+	cdpClient.Subscribe("Runtime.exceptionThrown", func(evt cdp.Event) {
 		if entry, ok := d.parseExceptionEvent(evt); ok {
 			entry.SessionID = evt.SessionID
 			d.consoleBuf.Push(entry)
@@ -47,7 +53,7 @@ func (d *Daemon) subscribeEvents() {
 	})
 
 	// Network events (include sessionId)
-	d.cdp.Subscribe("Network.requestWillBeSent", func(evt cdp.Event) {
+	cdpClient.Subscribe("Network.requestWillBeSent", func(evt cdp.Event) {
 		if entry, ok := d.parseRequestEvent(evt); ok {
 			entry.SessionID = evt.SessionID
 			d.networkBuf.Push(entry)
@@ -55,7 +61,7 @@ func (d *Daemon) subscribeEvents() {
 		}
 	})
 
-	d.cdp.Subscribe("Network.responseReceived", func(evt cdp.Event) {
+	cdpClient.Subscribe("Network.responseReceived", func(evt cdp.Event) {
 		d.updateResponseEvent(evt)
 		var params struct {
 			RequestID string `json:"requestId"`
@@ -66,7 +72,7 @@ func (d *Daemon) subscribeEvents() {
 		}
 	})
 
-	d.cdp.Subscribe("Network.loadingFinished", func(evt cdp.Event) {
+	cdpClient.Subscribe("Network.loadingFinished", func(evt cdp.Event) {
 		d.handleLoadingFinished(evt)
 		var params struct {
 			RequestID string `json:"requestId"`
@@ -76,7 +82,7 @@ func (d *Daemon) subscribeEvents() {
 		}
 	})
 
-	d.cdp.Subscribe("Network.loadingFailed", func(evt cdp.Event) {
+	cdpClient.Subscribe("Network.loadingFailed", func(evt cdp.Event) {
 		d.handleLoadingFailed(evt)
 		var params struct {
 			RequestID string `json:"requestId"`
@@ -87,28 +93,28 @@ func (d *Daemon) subscribeEvents() {
 	})
 
 	// Page navigation events for navigation commands
-	d.cdp.Subscribe("Page.frameNavigated", func(evt cdp.Event) {
+	cdpClient.Subscribe("Page.frameNavigated", func(evt cdp.Event) {
 		d.handleFrameNavigated(evt)
 	})
 
-	d.cdp.Subscribe("Page.loadEventFired", func(evt cdp.Event) {
+	cdpClient.Subscribe("Page.loadEventFired", func(evt cdp.Event) {
 		d.handleLoadEventFired(evt)
 	})
 
-	d.cdp.Subscribe("Page.domContentEventFired", func(evt cdp.Event) {
+	cdpClient.Subscribe("Page.domContentEventFired", func(evt cdp.Event) {
 		d.handleDOMContentEventFired(evt)
 	})
 
 	// Debug: Additional Page events
-	d.cdp.Subscribe("Page.frameStartedLoading", func(evt cdp.Event) {
+	cdpClient.Subscribe("Page.frameStartedLoading", func(evt cdp.Event) {
 		d.debugf(false, "Page.frameStartedLoading: sessionID=%s", evt.SessionID)
 	})
 
-	d.cdp.Subscribe("Page.frameStoppedLoading", func(evt cdp.Event) {
+	cdpClient.Subscribe("Page.frameStoppedLoading", func(evt cdp.Event) {
 		d.debugf(false, "Page.frameStoppedLoading: sessionID=%s", evt.SessionID)
 	})
 
-	d.cdp.Subscribe("Page.lifecycleEvent", func(evt cdp.Event) {
+	cdpClient.Subscribe("Page.lifecycleEvent", func(evt cdp.Event) {
 		var params struct {
 			Name string `json:"name"`
 		}
@@ -118,7 +124,7 @@ func (d *Daemon) subscribeEvents() {
 	})
 
 	// Debug: Runtime execution context events
-	d.cdp.Subscribe("Runtime.executionContextCreated", func(evt cdp.Event) {
+	cdpClient.Subscribe("Runtime.executionContextCreated", func(evt cdp.Event) {
 		var params struct {
 			Context struct {
 				ID   int    `json:"id"`
@@ -130,7 +136,7 @@ func (d *Daemon) subscribeEvents() {
 		}
 	})
 
-	d.cdp.Subscribe("Runtime.executionContextDestroyed", func(evt cdp.Event) {
+	cdpClient.Subscribe("Runtime.executionContextDestroyed", func(evt cdp.Event) {
 		var params struct {
 			ExecutionContextID int `json:"executionContextId"`
 		}
@@ -139,12 +145,12 @@ func (d *Daemon) subscribeEvents() {
 		}
 	})
 
-	d.cdp.Subscribe("Runtime.executionContextsCleared", func(evt cdp.Event) {
+	cdpClient.Subscribe("Runtime.executionContextsCleared", func(evt cdp.Event) {
 		d.debugf(false, "Runtime.executionContextsCleared")
 	})
 
 	// Debug: DOM events
-	d.cdp.Subscribe("DOM.documentUpdated", func(evt cdp.Event) {
+	cdpClient.Subscribe("DOM.documentUpdated", func(evt cdp.Event) {
 		d.debugf(false, "DOM.documentUpdated: sessionID=%s", evt.SessionID)
 	})
 }
@@ -333,7 +339,12 @@ func (d *Daemon) handleLoadingFinished(evt cdp.Event) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		result, err := d.cdp.SendToSession(ctx, evt.SessionID, "Network.getResponseBody", map[string]any{
+		cdpClient := d.getCDP()
+		if cdpClient == nil {
+			return
+		}
+
+		result, err := cdpClient.SendToSession(ctx, evt.SessionID, "Network.getResponseBody", map[string]any{
 			"requestId": params.RequestID,
 		})
 		if err != nil {
@@ -432,6 +443,12 @@ func (d *Daemon) handleTargetCreated(evt cdp.Event) {
 	d.debugf(false, "Target.targetCreated: targetID=%q, type=%q, url=%q",
 		params.TargetInfo.TargetID, params.TargetInfo.Type, params.TargetInfo.URL)
 
+	// Skip if reconnection is in progress (maps are being cleared)
+	if d.isReconnecting() {
+		d.debugf(false, "Target.targetCreated: reconnection in progress, skipping targetID=%q", params.TargetInfo.TargetID)
+		return
+	}
+
 	// Check if we've already attached to this target (prevent double-attach)
 	if _, alreadyAttached := d.attachedTargets.LoadOrStore(params.TargetInfo.TargetID, true); alreadyAttached {
 		d.debugf(false, "Target.targetCreated: already attached to targetID=%q, skipping", params.TargetInfo.TargetID)
@@ -441,9 +458,16 @@ func (d *Daemon) handleTargetCreated(evt cdp.Event) {
 	// Attach asynchronously to avoid blocking the event loop
 	// (Critical: targetCreated events can fire while waiting for setDiscoverTargets response)
 	go func() {
+		cdpClient := d.getCDP()
+		if cdpClient == nil {
+			d.debugf(false, "CDP client not available for target attachment")
+			d.attachedTargets.Delete(params.TargetInfo.TargetID)
+			return
+		}
+
 		// Manually attach to the target with flatten:true.
 		// This is critical - without flatten:true, CDP responses may be queued until networkIdle.
-		result, err := d.cdp.Send("Target.attachToTarget", map[string]any{
+		result, err := cdpClient.Send("Target.attachToTarget", map[string]any{
 			"targetId": params.TargetInfo.TargetID,
 			"flatten":  true,
 		})

@@ -34,6 +34,17 @@ func (d *Daemon) handleStatus() ipc.Response {
 		}
 	}
 
+	// Add connection health information
+	if d.connMgr != nil {
+		info := d.connMgr.Info()
+		status.Connection = &ipc.ConnectionHealth{
+			State:          info.StateString,
+			LastHeartbeat:  info.LastHeartbeat.Unix(),
+			ReconnectCount: info.ReconnectCount,
+			LastError:      info.LastError,
+		}
+	}
+
 	return ipc.SuccessResponse(status)
 }
 
@@ -708,7 +719,11 @@ func (d *Daemon) handleCDP(req ipc.Request) ipc.Response {
 	var err error
 
 	if strings.HasPrefix(req.Target, "Target.") {
-		result, err = d.cdp.SendContext(ctx, req.Target, params)
+		cdpClient := d.getCDP()
+		if cdpClient == nil {
+			return ipc.ErrorResponse("CDP client not initialized")
+		}
+		result, err = cdpClient.SendContext(ctx, req.Target, params)
 	} else {
 		activeID := d.sessions.ActiveID()
 		if activeID == "" {

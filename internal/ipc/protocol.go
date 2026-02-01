@@ -36,6 +36,15 @@ type StatusData struct {
 	PID           int           `json:"pid,omitempty"`
 	ActiveSession *PageSession  `json:"activeSession,omitempty"`
 	Sessions      []PageSession `json:"sessions,omitempty"`
+	Connection    *ConnectionHealth `json:"connection,omitempty"`
+}
+
+// ConnectionHealth represents CDP connection health information.
+type ConnectionHealth struct {
+	State          string `json:"state"`
+	LastHeartbeat  int64  `json:"lastHeartbeat,omitempty"`  // Unix timestamp
+	ReconnectCount int    `json:"reconnectCount,omitempty"`
+	LastError      string `json:"lastError,omitempty"`
 }
 
 // ConsoleEntry represents a console log entry.

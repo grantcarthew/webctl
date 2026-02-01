@@ -121,6 +121,70 @@ func TestStatus(t *testing.T) {
 			},
 			expected: "OK\npid: 1234\nsessions:\n  * https://example.com\n",
 		},
+		{
+			name: "reconnecting state shows status",
+			data: ipc.StatusData{
+				Running: true,
+				PID:     1234,
+				Sessions: []ipc.PageSession{},
+				Connection: &ipc.ConnectionHealth{
+					State:          "reconnecting",
+					ReconnectCount: 2,
+					LastError:      "connection lost",
+				},
+			},
+			expected: "Reconnecting (attempt 2)\npid: 1234\nerror: connection lost\n",
+		},
+		{
+			name: "reconnecting state without error",
+			data: ipc.StatusData{
+				Running: true,
+				PID:     1234,
+				Sessions: []ipc.PageSession{},
+				Connection: &ipc.ConnectionHealth{
+					State:          "reconnecting",
+					ReconnectCount: 1,
+				},
+			},
+			expected: "Reconnecting (attempt 1)\npid: 1234\n",
+		},
+		{
+			name: "connected state with sessions shows reconnecting info",
+			data: ipc.StatusData{
+				Running: true,
+				PID:     1234,
+				ActiveSession: &ipc.PageSession{
+					ID:  "session1",
+					URL: "https://example.com",
+				},
+				Sessions: []ipc.PageSession{
+					{ID: "session1", URL: "https://example.com", Active: true},
+				},
+				Connection: &ipc.ConnectionHealth{
+					State:          "reconnecting",
+					ReconnectCount: 3,
+				},
+			},
+			expected: "OK\npid: 1234\nconnection: reconnecting (attempt 3)\nsessions:\n  * https://example.com\n",
+		},
+		{
+			name: "connected state does not show connection info",
+			data: ipc.StatusData{
+				Running: true,
+				PID:     1234,
+				ActiveSession: &ipc.PageSession{
+					ID:  "session1",
+					URL: "https://example.com",
+				},
+				Sessions: []ipc.PageSession{
+					{ID: "session1", URL: "https://example.com", Active: true},
+				},
+				Connection: &ipc.ConnectionHealth{
+					State: "connected",
+				},
+			},
+			expected: "OK\npid: 1234\nsessions:\n  * https://example.com\n",
+		},
 	}
 
 	opts := OutputOptions{UseColor: false}

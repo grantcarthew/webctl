@@ -111,15 +111,31 @@ func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 		return nil
 	}
 
-	// Running but no browser
+	// Running but no browser (or reconnecting)
 	if data.ActiveSession == nil && len(data.Sessions) == 0 {
-		if opts.UseColor {
-			colorFprint(w, color.FgYellow, "No browser\n")
+		// Check if we're reconnecting
+		if data.Connection != nil && data.Connection.State == "reconnecting" {
+			if opts.UseColor {
+				colorFprint(w, color.FgYellow, "Reconnecting")
+			} else {
+				_, _ = fmt.Fprint(w, "Reconnecting")
+			}
+			if data.Connection.ReconnectCount > 0 {
+				_, _ = fmt.Fprintf(w, " (attempt %d)", data.Connection.ReconnectCount)
+			}
+			_, _ = fmt.Fprintln(w)
 		} else {
-			_, _ = fmt.Fprintln(w, "No browser")
+			if opts.UseColor {
+				colorFprint(w, color.FgYellow, "No browser\n")
+			} else {
+				_, _ = fmt.Fprintln(w, "No browser")
+			}
 		}
 		if data.PID > 0 {
 			_, _ = fmt.Fprintf(w, "pid: %d\n", data.PID)
+		}
+		if data.Connection != nil && data.Connection.LastError != "" {
+			_, _ = fmt.Fprintf(w, "error: %s\n", data.Connection.LastError)
 		}
 		return nil
 	}
@@ -145,6 +161,18 @@ func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 	}
 	if data.PID > 0 {
 		_, _ = fmt.Fprintf(w, "pid: %d\n", data.PID)
+	}
+
+	// Show connection health if reconnecting or had recent issues
+	if data.Connection != nil && data.Connection.State != "connected" {
+		_, _ = fmt.Fprintf(w, "connection: %s", data.Connection.State)
+		if data.Connection.ReconnectCount > 0 {
+			_, _ = fmt.Fprintf(w, " (attempt %d)", data.Connection.ReconnectCount)
+		}
+		_, _ = fmt.Fprintln(w)
+		if data.Connection.LastError != "" {
+			_, _ = fmt.Fprintf(w, "error: %s\n", data.Connection.LastError)
+		}
 	}
 
 	// Show sessions

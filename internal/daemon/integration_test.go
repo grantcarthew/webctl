@@ -346,6 +346,129 @@ func TestDaemon_Integration(t *testing.T) {
 	})
 }
 
+// TestConnection_Integration tests connection health reporting.
+// Verifies that status command includes connection health information.
+func TestConnection_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "webctl.sock")
+	pidPath := filepath.Join(tmpDir, "webctl.pid")
+
+	cfg := Config{
+		Headless:   true,
+		Port:       0,
+		SocketPath: socketPath,
+		PIDPath:    pidPath,
+		BufferSize: 100,
+	}
+
+	d := New(cfg)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- d.Run(ctx)
+	}()
+
+	if !waitForSocket(socketPath, 30*time.Second) {
+		t.Fatal("daemon did not start in time")
+	}
+
+	client, err := ipc.DialPath(socketPath)
+	if err != nil {
+		t.Fatalf("failed to connect to daemon: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	// Test: Status includes connection health
+	t.Run("status_includes_connection_health", func(t *testing.T) {
+		resp, err := client.SendCmd("status")
+		if err != nil {
+			t.Fatalf("status command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("status returned error: %s", resp.Error)
+		}
+
+		var status ipc.StatusData
+		if err := json.Unmarshal(resp.Data, &status); err != nil {
+			t.Fatalf("failed to parse status: %v", err)
+		}
+
+		// Connection health should be present
+		if status.Connection == nil {
+			t.Fatal("expected connection health in status")
+		}
+
+		// State should be "connected"
+		if status.Connection.State != "connected" {
+			t.Errorf("expected state 'connected', got %q", status.Connection.State)
+		}
+
+		// LastHeartbeat should be recent (within last 10 seconds)
+		now := time.Now().Unix()
+		if status.Connection.LastHeartbeat == 0 {
+			t.Error("expected LastHeartbeat to be set")
+		} else if now-status.Connection.LastHeartbeat > 10 {
+			t.Errorf("LastHeartbeat too old: %d seconds ago", now-status.Connection.LastHeartbeat)
+		}
+
+		// ReconnectCount should be 0
+		if status.Connection.ReconnectCount != 0 {
+			t.Errorf("expected ReconnectCount 0, got %d", status.Connection.ReconnectCount)
+		}
+
+		// No error expected
+		if status.Connection.LastError != "" {
+			t.Errorf("expected no LastError, got %q", status.Connection.LastError)
+		}
+	})
+
+	// Test: Reconnect command when already connected
+	t.Run("reconnect_when_connected", func(t *testing.T) {
+		resp, err := client.SendCmd("reconnect")
+		if err != nil {
+			t.Fatalf("reconnect command failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("reconnect returned error: %s", resp.Error)
+		}
+
+		// Parse response
+		var result struct {
+			Message string `json:"message"`
+			State   string `json:"state"`
+		}
+		if err := json.Unmarshal(resp.Data, &result); err != nil {
+			t.Fatalf("failed to parse reconnect response: %v", err)
+		}
+
+		// Should indicate already connected
+		if result.Message != "already connected" {
+			t.Errorf("expected 'already connected', got %q", result.Message)
+		}
+		if result.State != "connected" {
+			t.Errorf("expected state 'connected', got %q", result.State)
+		}
+	})
+
+	_ = client.Close()
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != context.Canceled {
+			t.Errorf("daemon exited with error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("daemon did not shut down in time")
+	}
+}
+
 func waitForSocket(path string, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
