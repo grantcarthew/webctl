@@ -22,9 +22,9 @@ When completing a project and starting the next:
 
 Projects are stored in `.ai/projects/`.
 
-- Active Project: P-065 CDP Connection Resilience
+- Active Project: Heartbeat Disconnect Detection (see project.md)
 - Next Projects Available: P-063 (New Tab Command), P-064 (Start Attach Mode)
-- Recent Completion: P-061 Agent Help System (2026-01-26)
+- Recent Completion: P-065 CDP Connection Resilience (Cancelled, 2026-04-13)
 
 ## Quick Reference
 
@@ -105,6 +105,6 @@ webctl clear [console|network]
 This project uses Documentation Driven Development. Design decisions are documented in Design Records (DRs) before or during implementation.
 
 - Read `.ai/workflow.md` for feature development process
-- Read `.ai/projects/p-writing-guide.md` for project documentation
+- Read `.ai/docs/project-writing-guide.md` for project documentation
 - Read `.ai/design/dr-writing-guide.md` for design record format
 - Design records are in `.ai/design/design-records/`
