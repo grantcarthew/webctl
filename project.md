@@ -39,9 +39,9 @@ Out of Scope:
 ## Success Criteria
 
 - [ ] Heartbeat detects silent disconnects within 10 seconds (5s interval + 5s timeout)
-- [ ] Browser crash produces: "browser crashed (connection lost unexpectedly)"
-- [ ] Browser closed by user produces: "browser closed normally"
-- [ ] Heartbeat timeout produces: "browser unresponsive (heartbeat timeout)"
+- [ ] Browser crash (EOF/connection reset) produces: "browser crashed (connection lost unexpectedly)"
+- [ ] Browser closed by user (close code 1000/1001) produces: "browser closed normally"
+- [ ] Heartbeat timeout (context deadline exceeded) produces: "browser unresponsive (heartbeat timeout)"
 - [ ] Daemon shuts down cleanly after detection (no hang, no panic)
 - [ ] Existing tests pass unchanged
 - [ ] Unit tests cover close code classification
@@ -55,30 +55,34 @@ Out of Scope:
 
 ## Current State
 
+Validated against codebase on 2026-04-13. All references confirmed accurate.
+
 The daemon currently detects disconnection reactively:
 
-- `isConnectionError()` checks error strings for known patterns (daemon.go:133-142)
-- `sendToSession()` triggers shutdown when a connection error is detected during a CDP call (daemon.go:144-160)
+- `isConnectionError()` checks error strings for known patterns (daemon.go:134-142)
+- `sendToSession()` triggers shutdown when a connection error is detected during a CDP call (daemon.go:146-160)
 - `requireBrowser()` checks session count and triggers shutdown if zero (daemon.go:115-131)
 - No proactive monitoring exists; silent disconnects go undetected indefinitely
 - On disconnect, exit message is generic: "browser connection lost - daemon shutting down"
 
 CDP client details (internal/cdp/client.go):
 
-- `readLoop()` runs in a goroutine, sets `closeErr` and closes `closedCh` on read failure (line 154-183)
-- `Err()` returns the error that caused closure (line 147-152)
-- `SendContext()` returns early if client is closed (line 77-79)
+- `readLoop()` runs in a goroutine, sets `closeErr` and closes `closedCh` on read failure (line 155-183)
+- `Err()` returns the error that caused closure (line 148-152)
+- `SendToSession()` returns early if client is closed (line 77-79)
 - `closed` is an `atomic.Bool` for lock-free status checks (line 29)
-- WebSocket library: `coder/websocket v1.8.14`
+- WebSocket library: `coder/websocket v1.8.14` (confirmed in go.mod)
   - `websocket.CloseStatus(err)` extracts close code from error (-1 if not a CloseError)
-  - Close codes: 1000=Normal, 1001=GoingAway, 1006=Abnormal
+  - Close codes: `StatusNormalClosure`=1000, `StatusGoingAway`=1001, `StatusAbnormalClosure`=1006
 
 Shutdown path (daemon.go):
 
 - `shutdown` channel (line 61) signals daemon exit
 - `shutdownOnce` (line 62) prevents double-close panic
-- `browserLost` flag (line 63) controls exit message
-- `Run()` select loop (line 327-345) waits on shutdown channel
+- `browserLost` flag (line 63) controls exit message, guarded by `browserLostMu` (line 64)
+- `Run()` select loop (lines 327-345) waits on shutdown channel
+
+No heartbeat files exist yet. Integration test file exists at `internal/daemon/integration_test.go`.
 
 ## Technical Approach
 
@@ -95,6 +99,10 @@ A single goroutine started in `Run()` after CDP connection is established. It:
 
 The goroutine sends the disconnect error to a channel. The `Run()` select loop receives from this channel alongside the existing shutdown/signal/error cases. On receipt, it sets `browserLost` with a classified message and triggers shutdown through the existing path.
 
+Important: The heartbeat must classify the underlying websocket error from `d.cdp.Err()`, not the error returned by `SendContext`. When the CDP client is already closed (readLoop detected disconnect), `SendContext` returns generic errors like "client is closed" or "client closed while waiting for response" which contain no close code information. The `Err()` method on the CDP client returns the actual websocket read error that caused closure.
+
+Additionally, in non-Wasm Go, `coder/websocket` does not wrap abnormal closures (browser crash, EOF) in a `CloseError` with status 1006. A crashed browser produces a plain error (e.g. "unexpected EOF", "connection reset by peer") where `CloseStatus()` returns -1. Close codes 1000 and 1001 are returned when the browser performs a clean close handshake.
+
 ### Close Code Classification
 
 A pure function that takes an error and returns a human-readable disconnect reason:
@@ -103,9 +111,10 @@ A pure function that takes an error and returns a human-readable disconnect reas
 |-------|---------|
 | Close code 1000 (Normal) | "browser closed normally" |
 | Close code 1001 (GoingAway) | "browser closed normally" |
-| Close code 1006 (Abnormal) | "browser crashed (connection lost unexpectedly)" |
-| Close code -1 (not a WebSocket error) | "browser unresponsive (heartbeat timeout)" |
-| Context deadline exceeded | "browser unresponsive (heartbeat timeout)" |
+| Context deadline exceeded (from heartbeat timeout) | "browser unresponsive (heartbeat timeout)" |
+| Any other error (EOF, connection reset, -1 close status) | "browser crashed (connection lost unexpectedly)" |
+
+The heartbeat goroutine should: on `SendContext` failure, first check if it was a context timeout (heartbeat's own 5s deadline). If so, send a timeout-specific error. Otherwise, retrieve `d.cdp.Err()` for the underlying websocket error and send that for classification.
 
 This classification is used only for the exit message. It does not drive any branching logic (no reconnection, no state transitions).
 
@@ -136,13 +145,13 @@ The heartbeat goroutine is started after `enableAutoAttach()` and before the IPC
 
 Unit tests (heartbeat_test.go):
 
-- `TestClassifyDisconnect` - table-driven test covering all close code paths
+- `TestClassifyDisconnect` - table-driven test covering all classification paths
   - nil error
-  - Normal closure (1000)
-  - GoingAway (1001)
-  - Abnormal closure (1006)
-  - Non-WebSocket error (timeout, network error)
-  - Context deadline exceeded
+  - Normal closure (1000) -> "browser closed normally"
+  - GoingAway (1001) -> "browser closed normally"
+  - Context deadline exceeded -> "browser unresponsive (heartbeat timeout)"
+  - EOF / connection reset (non-CloseError) -> "browser crashed (connection lost unexpectedly)"
+  - Unknown error -> "browser crashed (connection lost unexpectedly)"
 
 Integration test (in existing integration_test.go):
 
