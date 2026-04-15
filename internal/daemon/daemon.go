@@ -60,7 +60,7 @@ type Daemon struct {
 	devServerMu     sync.Mutex     // Protects devServer
 	shutdown        chan struct{}
 	shutdownOnce    sync.Once
-	browserLost     bool // Set when shutdown triggered by browser disconnection
+	browserLostMsg  string     // Classified disconnect message, set when shutdown triggered by browser disconnection
 	browserLostMu   sync.Mutex
 	debug           bool
 	terminalState   *term.State // Saved terminal state for restoration
@@ -120,14 +120,15 @@ func (d *Daemon) requireBrowser() (ok bool, resp ipc.Response) {
 	// Browser is dead - clear state and trigger shutdown
 	d.debugf(false, "Browser not connected - clearing state and shutting down daemon")
 	d.sessions.Clear()
+	msg := classifyDisconnect(d.cdp.Err())
 	d.browserLostMu.Lock()
-	d.browserLost = true
+	d.browserLostMsg = msg
 	d.browserLostMu.Unlock()
 	go d.shutdownOnce.Do(func() {
 		close(d.shutdown)
 	})
 
-	return false, ipc.ErrorResponse("browser connection lost - daemon shutting down")
+	return false, ipc.ErrorResponse(msg + " - daemon shutting down")
 }
 
 // isConnectionError checks if an error indicates a CDP connection failure.
@@ -148,13 +149,14 @@ func (d *Daemon) sendToSession(ctx context.Context, sessionID, method string, pa
 	if err != nil && d.isConnectionError(err) {
 		d.debugf(false, "Connection error detected in %s: %v - shutting down daemon", method, err)
 		d.sessions.Clear()
+		msg := classifyDisconnect(d.cdp.Err())
 		d.browserLostMu.Lock()
-		d.browserLost = true
+		d.browserLostMsg = msg
 		d.browserLostMu.Unlock()
 		go d.shutdownOnce.Do(func() {
 			close(d.shutdown)
 		})
-		return nil, fmt.Errorf("browser connection lost - daemon shutting down")
+		return nil, fmt.Errorf("%s - daemon shutting down", msg)
 	}
 	return result, err
 }
@@ -262,6 +264,10 @@ func (d *Daemon) Run(ctx context.Context) error {
 	}
 	d.debugf(false, "Target discovery and attachment enabled")
 
+	// Start heartbeat for proactive disconnect detection
+	disconnectCh := make(chan error, 1)
+	d.startHeartbeat(ctx, disconnectCh)
+
 	// Start IPC server with wrapper handler for external command notifications
 	ipcHandler := func(req ipc.Request) ipc.Response {
 		resp := d.handleRequest(req)
@@ -331,11 +337,15 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return nil
 	case <-d.shutdown:
 		d.browserLostMu.Lock()
-		lost := d.browserLost
+		msg := d.browserLostMsg
 		d.browserLostMu.Unlock()
-		if lost {
-			fmt.Fprintln(os.Stderr, "Error: browser connection lost - daemon shutting down")
+		if msg != "" {
+			fmt.Fprintf(os.Stderr, "\nError: %s - daemon shutting down\n", msg)
 		}
+		return nil
+	case err := <-disconnectCh:
+		msg := classifyDisconnect(err)
+		fmt.Fprintf(os.Stderr, "\nError: %s - daemon shutting down\n", msg)
 		return nil
 	case err := <-errCh:
 		return err
@@ -401,7 +411,7 @@ func (d *Daemon) enableAutoAttach() error {
 					"flatten":  true,
 				})
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "warning: failed to attach to existing target %q: %v\n", targetID, err)
+					fmt.Fprintf(os.Stderr, "\nwarning: failed to attach to existing target %q: %v\n", targetID, err)
 					// Remove from attachedTargets on failure so we can retry
 					d.attachedTargets.Delete(targetID)
 				} else {

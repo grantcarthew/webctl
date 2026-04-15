@@ -1984,3 +1984,111 @@ func TestType_Integration(t *testing.T) {
 		t.Error("daemon did not shut down in time")
 	}
 }
+
+// TestHeartbeat_Integration tests that the heartbeat detects a browser crash
+// and shuts the daemon down with a classified error message.
+// Run with: go test -run Integration ./...
+func TestHeartbeat_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "webctl.sock")
+	pidPath := filepath.Join(tmpDir, "webctl.pid")
+
+	cfg := Config{
+		Headless:   true,
+		Port:       0,
+		SocketPath: socketPath,
+		PIDPath:    pidPath,
+		BufferSize: 100,
+	}
+
+	d := New(cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Capture stderr to verify classified error message
+	var stderrBuf bytes.Buffer
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create pipe: %v", err)
+	}
+	os.Stderr = w
+
+	// Read from pipe in background
+	doneCopying := make(chan struct{})
+	go func() {
+		defer close(doneCopying)
+		buf := make([]byte, 4096)
+		for {
+			n, err := r.Read(buf)
+			if n > 0 {
+				stderrBuf.Write(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	// Start daemon
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- d.Run(ctx)
+	}()
+
+	if !waitForSocket(socketPath, 30*time.Second) {
+		os.Stderr = origStderr
+		t.Fatal("daemon did not start in time")
+	}
+
+	// Get browser PID and kill it to simulate a crash
+	browserPID := d.browser.PID()
+	if browserPID == 0 {
+		os.Stderr = origStderr
+		t.Fatal("browser PID is 0")
+	}
+
+	// Kill browser process (SIGKILL for immediate crash, no clean close handshake)
+	proc, err := os.FindProcess(browserPID)
+	if err != nil {
+		os.Stderr = origStderr
+		t.Fatalf("failed to find browser process: %v", err)
+	}
+	if err := proc.Kill(); err != nil {
+		os.Stderr = origStderr
+		t.Fatalf("failed to kill browser: %v", err)
+	}
+
+	// Daemon should exit within 15 seconds (5s interval + 5s timeout + 5s margin)
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("daemon exited with unexpected error: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		os.Stderr = origStderr
+		t.Fatal("daemon did not shut down within 15 seconds after browser kill")
+	}
+
+	// Cancel context to stop lingering goroutines (e.g. heartbeat) before
+	// restoring stderr, so nothing writes to the pipe after restoration.
+	cancel()
+
+	// Restore stderr before closing the pipe so deferred cleanup
+	// goroutines don't write to a closed pipe.
+	os.Stderr = origStderr
+	w.Close()
+	<-doneCopying
+	r.Close()
+
+	// Verify stderr contains a classified error message
+	output := stderrBuf.String()
+	if !bytes.Contains([]byte(output), []byte("browser connection lost")) {
+		t.Errorf("expected stderr to contain crash message, got: %s", output)
+	}
+}

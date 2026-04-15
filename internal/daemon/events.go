@@ -448,7 +448,7 @@ func (d *Daemon) handleTargetCreated(evt cdp.Event) {
 			"flatten":  true,
 		})
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to attach to target %q: %v\n", params.TargetInfo.TargetID, err)
+			fmt.Fprintf(os.Stderr, "\nwarning: failed to attach to target %q: %v\n", params.TargetInfo.TargetID, err)
 			// Remove from attachedTargets on failure so we can retry
 			d.attachedTargets.Delete(params.TargetInfo.TargetID)
 			return
@@ -502,7 +502,7 @@ func (d *Daemon) handleTargetAttached(evt cdp.Event) {
 		startEnable := time.Now()
 		if err := d.enableDomainsForSession(params.SessionID); err != nil {
 			// Log error but don't fail - session is still tracked
-			fmt.Fprintf(os.Stderr, "warning: failed to enable domains for session: %v\n", err)
+			fmt.Fprintf(os.Stderr, "\nwarning: failed to enable domains for session: %v\n", err)
 		}
 		d.debugf(false, "enableDomainsForSession completed in %v for session %q", time.Since(startEnable), params.SessionID)
 	}()
