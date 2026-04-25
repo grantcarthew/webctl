@@ -32,7 +32,8 @@ require_test_pages \
   'pages/blank.html' \
   'pages/navigation.html' \
   'pages/forms.html' \
-  'pages/cookies.html'
+  'pages/cookies.html' \
+  'pages/slow-load.html'
 
 # Ensure clean state before tests
 force_stop_daemon
@@ -139,6 +140,17 @@ assert_success "${TEST_EXIT_CODE}" "navigate to 127.0.0.1 works"
 assert_contains "${TEST_STDOUT}" "OK" "Output shows OK"
 capture_page_state
 assert_captured_url "forms.html" "Browser navigated via 127.0.0.1"
+
+# Test: Bare domain gets https:// prefix
+# Verifies the CLI normalises bare domains by inspecting the .url field
+# echoed back by the daemon. We use --json without --wait so the test does
+# not depend on the page actually loading; the daemon echoes the normalised
+# URL it sent to the browser regardless of network reachability.
+# example.com is RFC 2606 reserved and stable for this kind of use.
+run_test "navigate bare domain gets https://" "${WEBCTL_BINARY}" navigate --json "example.com"
+assert_success "${TEST_EXIT_CODE}" "navigate to bare domain returns success"
+assert_json_field "${TEST_STDOUT}" '.url | startswith("https://")' "true" "URL begins with https://"
+assert_json_field "${TEST_STDOUT}" ".url" "https://example.com" "URL is https://example.com"
 
 # =============================================================================
 # Navigate Command - Error Cases
@@ -400,6 +412,17 @@ assert_contains "${TEST_STDOUT}" "OK" "Output shows OK"
 run_test "navigate --timeout 0" "${WEBCTL_BINARY}" navigate --wait --timeout 0 "$(get_test_url '/pages/forms.html')"
 assert_success "${TEST_EXIT_CODE}" "navigate --timeout 0 succeeds (no timeout limit)"
 assert_contains "${TEST_STDOUT}" "OK" "Output shows OK"
+
+# Test: navigate --wait --timeout against the slow-load fixture
+# slow-load.html exists primarily for `webctl ready` testing — its delay is
+# implemented in JS that runs after the load event, so --wait still returns
+# quickly. This test verifies the timeout flag is accepted on the slow-load
+# fixture; hard timeout-expiration behaviour is covered by unit tests.
+run_test "navigate --wait --timeout on slow-load fixture" "${WEBCTL_BINARY}" navigate --wait --timeout 10 "$(get_test_url '/pages/slow-load.html')"
+assert_success "${TEST_EXIT_CODE}" "navigate --wait --timeout succeeds on slow-load page"
+assert_contains "${TEST_STDOUT}" "OK" "Output shows OK"
+capture_page_state
+assert_captured_url "slow-load.html" "Browser on slow-load.html"
 
 # =============================================================================
 # Global Flags Tests

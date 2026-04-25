@@ -58,7 +58,7 @@ function build_webctl() {
   fi
 
   local build_output
-  if build_output=$(cd "${PROJECT_ROOT}" && go build -o webctl . 2>&1); then
+  if build_output=$(cd "${PROJECT_ROOT}" && go build -o webctl ./cmd/webctl 2>&1); then
     log_success "webctl built successfully"
     return 0
   else
