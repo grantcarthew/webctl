@@ -69,23 +69,35 @@ func init() {
 	rootCmd.AddCommand(navigateCmd)
 }
 
+// browserOpaqueSchemes are URL schemes browsers handle without a "://" separator.
+// URLs starting with one of these are passed through unchanged so https:// is not
+// incorrectly prepended.
+var browserOpaqueSchemes = []string{
+	"about:", "data:", "javascript:", "mailto:", "tel:", "view-source:",
+}
+
 // normalizeURL adds protocol to URL if missing.
 // Uses http:// for localhost/127.0.0.1/0.0.0.0, https:// otherwise.
+// URLs with a "://" separator or a recognised opaque browser scheme are returned unchanged.
 func normalizeURL(url string) string {
-	// Already has protocol
 	if strings.Contains(url, "://") {
 		return url
 	}
 
-	// Check for localhost or local IPs
 	lower := strings.ToLower(url)
+
+	for _, scheme := range browserOpaqueSchemes {
+		if strings.HasPrefix(lower, scheme) {
+			return url
+		}
+	}
+
 	if strings.HasPrefix(lower, "localhost") ||
 		strings.HasPrefix(lower, "127.0.0.1") ||
 		strings.HasPrefix(lower, "0.0.0.0") {
 		return "http://" + url
 	}
 
-	// Default to https
 	return "https://" + url
 }
 

@@ -3155,6 +3155,22 @@ func TestNormalizeURL(t *testing.T) {
 		{"domain with port", "example.com:8443", "https://example.com:8443"},
 		{"subdomain", "api.example.com", "https://api.example.com"},
 		{"complex url", "api.example.com:8080/v1/users?id=123", "https://api.example.com:8080/v1/users?id=123"},
+
+		// Browser opaque schemes - should pass through unchanged
+		{"about blank", "about:blank", "about:blank"},
+		{"about config", "about:config", "about:config"},
+		{"ABOUT uppercase", "ABOUT:blank", "ABOUT:blank"},
+		{"data html", "data:text/html,<h1>hi</h1>", "data:text/html,<h1>hi</h1>"},
+		{"data base64", "data:image/png;base64,iVBORw0KGgo=", "data:image/png;base64,iVBORw0KGgo="},
+		{"javascript", "javascript:alert(1)", "javascript:alert(1)"},
+		{"mailto", "mailto:user@example.com", "mailto:user@example.com"},
+		{"tel", "tel:1234567890", "tel:1234567890"},
+		{"view-source about", "view-source:about:blank", "view-source:about:blank"},
+
+		// Hostnames that look like opaque schemes - should still get https
+		{"hostname starting with about", "about.com:8080", "https://about.com:8080"},
+		{"hostname starting with data", "data.example.com", "https://data.example.com"},
+		{"hostname starting with tel", "tel.example.com", "https://tel.example.com"},
 	}
 
 	for _, tt := range tests {
