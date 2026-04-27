@@ -1,12 +1,9 @@
 # Agent Help Files
 
-These help files are embedded in the webctl binary at build time.
-
-Source of truth: `.ai/agent-help/`
+These help files are embedded in the webctl binary at build time via `//go:embed` directives in `internal/cli/help_agents.go`.
 
 To update help content:
-1. Edit files in `.ai/agent-help/`
-2. Copy to this directory: `cp .ai/agent-help/*.md internal/cli/agent-help/`
-3. Rebuild: `go build ./cmd/webctl`
+1. Edit the relevant `.md` file in this directory
+2. Rebuild: `go build ./cmd/webctl`
 
-Note: This directory contains copies for embedding. Always edit the originals in `.ai/agent-help/`.
+Topics are exposed via `webctl help <topic>` and `webctl help all`.

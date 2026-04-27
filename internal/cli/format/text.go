@@ -374,8 +374,8 @@ func EvalResult(w io.Writer, data ipc.EvalData) error {
 	}
 }
 
-// Target outputs page sessions list in text format.
-func Target(w io.Writer, data ipc.TargetData, opts OutputOptions) error {
+// Tab outputs the tab list in text format.
+func Tab(w io.Writer, data ipc.TabData, opts OutputOptions) error {
 	for _, session := range data.Sessions {
 		isActive := session.ID == data.ActiveSession
 
@@ -411,8 +411,8 @@ func Target(w io.Writer, data ipc.TargetData, opts OutputOptions) error {
 	return nil
 }
 
-// TargetError outputs target error with session/match information.
-func TargetError(w io.Writer, errorMsg string, sessions []ipc.PageSession, matches []ipc.PageSession, opts OutputOptions) error {
+// TabError outputs a tab error with session/match information.
+func TabError(w io.Writer, errorMsg string, sessions []ipc.PageSession, matches []ipc.PageSession, opts OutputOptions) error {
 	if opts.UseColor {
 		colorFprint(w, color.FgRed, "Error:")
 		_, _ = fmt.Fprintf(w, " %s\n", errorMsg)
@@ -421,9 +421,8 @@ func TargetError(w io.Writer, errorMsg string, sessions []ipc.PageSession, match
 	}
 
 	if len(sessions) > 0 {
-		_, _ = fmt.Fprintln(w, "Available sessions:")
+		_, _ = fmt.Fprintln(w, "Available tabs:")
 		for _, session := range sessions {
-			// Truncate ID to 8 chars
 			displayID := session.ID
 			if len(displayID) > 8 {
 				displayID = displayID[:8]
@@ -433,9 +432,8 @@ func TargetError(w io.Writer, errorMsg string, sessions []ipc.PageSession, match
 	}
 
 	if len(matches) > 0 {
-		_, _ = fmt.Fprintln(w, "Matching sessions:")
+		_, _ = fmt.Fprintln(w, "Matching tabs:")
 		for _, session := range matches {
-			// Truncate ID to 8 chars
 			displayID := session.ID
 			if len(displayID) > 8 {
 				displayID = displayID[:8]

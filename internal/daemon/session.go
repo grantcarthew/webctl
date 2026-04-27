@@ -175,6 +175,35 @@ func (m *SessionManager) Get(sessionID string) *ipc.PageSession {
 	}
 }
 
+// TargetID returns the targetID for the given sessionID, or empty string if not found.
+func (m *SessionManager) TargetID(sessionID string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if s, exists := m.sessions[sessionID]; exists {
+		return s.TargetID
+	}
+	return ""
+}
+
+// GetByTargetID returns the session matching the given targetID, or nil if not found.
+func (m *SessionManager) GetByTargetID(targetID string) *ipc.PageSession {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, s := range m.sessions {
+		if s.TargetID == targetID {
+			return &ipc.PageSession{
+				ID:     s.SessionID,
+				Title:  s.Title,
+				URL:    s.URL,
+				Active: s.SessionID == m.activeID,
+			}
+		}
+	}
+	return nil
+}
+
 // All returns all sessions as IPC PageSession list.
 func (m *SessionManager) All() []ipc.PageSession {
 	m.mu.RLock()

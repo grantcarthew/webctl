@@ -22,9 +22,7 @@ When completing a project and starting the next:
 
 Projects are stored in `.ai/projects/`.
 
-- Active Project: Heartbeat Disconnect Detection (see project.md)
-- Next Projects Available: P-063 (New Tab Command), P-064 (Start Attach Mode)
-- Recent Completion: P-065 CDP Connection Resilience (Cancelled, 2026-04-13)
+- Active Project: Tab Command (see project.md)
 
 ## Quick Reference
 
@@ -40,6 +38,12 @@ webctl navigate <url>
 webctl reload
 webctl back
 webctl forward
+
+# Tab management
+webctl tab                          # List open tabs
+webctl tab switch <query>           # Switch active tab and foreground it
+webctl tab new [url]                # Open a new tab (about:blank if no url)
+webctl tab close [query]            # Close a tab (active tab if no query)
 
 # Observation commands (default: stdout, save for files)
 # Note: Use trailing slash for directories (./dir/) vs files (./file.ext)

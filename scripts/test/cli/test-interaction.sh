@@ -3,7 +3,7 @@
 # Test: CLI Interaction Commands
 # --------------------------------
 # Tests for webctl interaction commands: click, type, select, scroll, focus,
-# key, eval, ready, and utility commands: clear, target.
+# key, eval, ready, and utility commands: clear, tab.
 # Verifies browser interaction functionality across all interaction modes.
 #
 # External Dependencies:
@@ -804,6 +804,7 @@ if [[ "${DAEMON_HEALTHY}" != "true" ]]; then
   log_warning "This is a KNOWN ISSUE with CDP timeout handling - see comments above"
   log_message "Restarting daemon to continue remaining tests..."
 
+  force_stop_daemon
   start_daemon --headless
   start_test_server
 
@@ -898,64 +899,63 @@ assert_matches "(console|network|invalid|target)" "${TEST_STDERR}" \
 # =============================================================================
 
 # =============================================================================
-# Target Command - Basic Functionality
+# Tab Command - Basic Functionality
 # =============================================================================
 
-test_section "Target Command - Basic (List Targets)"
+test_section "Tab Command - Basic (List Tabs)"
 
-# Test: List targets
-run_test "target (list)" "${WEBCTL_BINARY}" target
-assert_success "${TEST_EXIT_CODE}" "target returns success"
+# Test: List tabs
+run_test "tab (list)" "${WEBCTL_BINARY}" tab
+assert_success "${TEST_EXIT_CODE}" "tab returns success"
 assert_contains "${TEST_STDOUT}" "http" "Output contains URL"
 
-test_section "Target Command - JSON Output"
+test_section "Tab Command - JSON Output"
 
-# Test: Target with JSON output
-run_test "target --json" "${WEBCTL_BINARY}" target --json
+# Test: Tab with JSON output
+run_test "tab --json" "${WEBCTL_BINARY}" tab --json
 assert_success "${TEST_EXIT_CODE}" "--json returns success"
 assert_json_field "${TEST_STDOUT}" ".ok" "true" "JSON ok field is true"
 assert_contains "${TEST_STDOUT}" "sessions" "JSON contains sessions field"
 assert_contains "${TEST_STDOUT}" "activeSession" "JSON contains activeSession field"
 
-test_section "Target Command - No-Color Mode"
+test_section "Tab Command - No-Color Mode"
 
-# Test: Target with no-color
-run_test "target --no-color" "${WEBCTL_BINARY}" target --no-color
+# Test: Tab with no-color
+run_test "tab --no-color" "${WEBCTL_BINARY}" tab --no-color
 assert_success "${TEST_EXIT_CODE}" "--no-color returns success"
 assert_no_ansi_codes "${TEST_STDOUT}" "No ANSI escape codes in output"
 
-test_section "Target Command - Error Cases"
+test_section "Tab Command - Error Cases"
 
-# Test: Target with nonexistent query
-run_test "target nonexistent query" "${WEBCTL_BINARY}" target "nonexistent-session-xyz-12345"
-assert_failure "${TEST_EXIT_CODE}" "Nonexistent target returns failure"
+# Test: Tab switch with nonexistent query
+run_test "tab switch nonexistent query" "${WEBCTL_BINARY}" tab switch "nonexistent-session-xyz-12345"
+assert_failure "${TEST_EXIT_CODE}" "Nonexistent tab returns failure"
 
 # =============================================================================
-# Target Command - Session Selection Tests
+# Tab Command - Session Selection Tests
 # =============================================================================
 
-test_section "Target Command - Session Selection"
+test_section "Tab Command - Session Selection"
 
 # Navigate to a known page first to establish predictable state
 setup_navigate_to '/pages/navigation.html'
 
-# Test: Target can match current session by URL pattern
-# The target command searches session URLs for the given pattern
-run_test "target match by URL pattern" "${WEBCTL_BINARY}" target "navigation"
-assert_success "${TEST_EXIT_CODE}" "Target matches URL pattern"
+# Test: Tab switch can match current session by URL pattern
+run_test "tab switch match by URL pattern" "${WEBCTL_BINARY}" tab switch "navigation"
+assert_success "${TEST_EXIT_CODE}" "Tab switch matches URL pattern"
 
-# Verify we're still on the same page (target doesn't navigate, just selects)
+# Verify we're still on the same page (tab switch just sets active session)
 run_test "verify still on navigation page" "${WEBCTL_BINARY}" eval "document.title"
 assert_success "${TEST_EXIT_CODE}" "eval returns success"
 assert_contains "${TEST_STDOUT}" "Navigation" "Still on Navigation page"
 
-# Test: Target can select by common URL pattern (localhost)
-run_test "target match by localhost" "${WEBCTL_BINARY}" target "localhost"
-assert_success "${TEST_EXIT_CODE}" "Target matches localhost"
+# Test: Tab switch can select by common URL pattern (localhost)
+run_test "tab switch match by localhost" "${WEBCTL_BINARY}" tab switch "localhost"
+assert_success "${TEST_EXIT_CODE}" "Tab switch matches localhost"
 
-# Test: Target shows session info in JSON format
-run_test "target --json session info" "${WEBCTL_BINARY}" target --json
-assert_success "${TEST_EXIT_CODE}" "target --json returns success"
+# Test: Tab shows session info in JSON format
+run_test "tab --json session info" "${WEBCTL_BINARY}" tab --json
+assert_success "${TEST_EXIT_CODE}" "tab --json returns success"
 # Verify JSON structure:
 # - activeSession: current session ID string
 # - sessions: array of session objects with url, title, id fields

@@ -2092,3 +2092,180 @@ func TestHeartbeat_Integration(t *testing.T) {
 		t.Errorf("expected stderr to contain crash message, got: %s", output)
 	}
 }
+
+// TestTab_Integration exercises the tab command end-to-end against a real browser.
+// Covers: list, new (with and without URL), switch, and close with active-tab promotion.
+func TestTab_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "webctl.sock")
+	pidPath := filepath.Join(tmpDir, "webctl.pid")
+
+	cfg := Config{
+		Headless:   true,
+		Port:       0,
+		SocketPath: socketPath,
+		PIDPath:    pidPath,
+		BufferSize: 100,
+	}
+
+	d := New(cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- d.Run(ctx)
+	}()
+
+	if !waitForSocket(socketPath, 30*time.Second) {
+		t.Fatal("daemon did not start in time")
+	}
+
+	client, err := ipc.DialPath(socketPath)
+	if err != nil {
+		t.Fatalf("failed to connect: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	tabRequest := func(action, query, url string) ipc.Response {
+		t.Helper()
+		params, _ := json.Marshal(ipc.TabParams{Action: action, Query: query, URL: url})
+		resp, err := client.Send(ipc.Request{Cmd: "tab", Params: params})
+		if err != nil {
+			t.Fatalf("tab %s failed: %v", action, err)
+		}
+		return resp
+	}
+
+	// Initial list — daemon auto-attaches to startup tab(s).
+	t.Run("list_initial", func(t *testing.T) {
+		resp := tabRequest("list", "", "")
+		if !resp.OK {
+			t.Fatalf("tab list returned error: %s", resp.Error)
+		}
+		var data ipc.TabData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		if len(data.Sessions) == 0 {
+			t.Error("expected at least one tab in list")
+		}
+	})
+
+	// Last-tab guard: with one tab, tab close must refuse.
+	t.Run("close_last_tab_refused", func(t *testing.T) {
+		resp := tabRequest("close", "", "")
+		if resp.OK {
+			t.Fatal("expected close to be refused with single tab")
+		}
+		if !bytes.Contains([]byte(resp.Error), []byte("cannot close the last tab")) {
+			t.Errorf("expected last-tab guard error, got %q", resp.Error)
+		}
+	})
+
+	// Open a new tab (about:blank).
+	var newTabID string
+	t.Run("new_about_blank", func(t *testing.T) {
+		resp := tabRequest("new", "", "")
+		if !resp.OK {
+			t.Fatalf("tab new failed: %s", resp.Error)
+		}
+		var data ipc.NewTabData
+		if err := json.Unmarshal(resp.Data, &data); err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		if data.ID == "" {
+			t.Fatal("expected new tab session id")
+		}
+		newTabID = data.ID
+
+		// New tab should be the active session.
+		if active := d.sessions.ActiveID(); active != data.ID {
+			t.Errorf("expected new tab to be active; ActiveID=%q wanted=%q", active, data.ID)
+		}
+	})
+
+	// Open another tab with a URL to verify URL is honoured.
+	var dataTabID string
+	t.Run("new_with_url", func(t *testing.T) {
+		resp := tabRequest("new", "", "data:text/html,<title>Tab2</title>Hello")
+		if !resp.OK {
+			t.Fatalf("tab new failed: %s", resp.Error)
+		}
+		var data ipc.NewTabData
+		_ = json.Unmarshal(resp.Data, &data)
+		if data.ID == "" {
+			t.Fatal("expected new tab session id")
+		}
+		dataTabID = data.ID
+	})
+
+	// Switch to first new tab via id prefix.
+	t.Run("switch_by_id_prefix", func(t *testing.T) {
+		if newTabID == "" {
+			t.Skip("requires new_about_blank to have run")
+		}
+		prefix := newTabID[:8]
+		resp := tabRequest("switch", prefix, "")
+		if !resp.OK {
+			t.Fatalf("tab switch failed: %s", resp.Error)
+		}
+		if active := d.sessions.ActiveID(); active != newTabID {
+			t.Errorf("expected active=%q after switch, got %q", newTabID, active)
+		}
+	})
+
+	// Switch with no match returns an error.
+	t.Run("switch_no_match", func(t *testing.T) {
+		resp := tabRequest("switch", "ZZZZZZZZZZZZ-no-such-tab", "")
+		if resp.OK {
+			t.Fatal("expected error for no-match switch")
+		}
+		if !bytes.Contains([]byte(resp.Error), []byte("no tab matches query")) {
+			t.Errorf("expected no-match error, got %q", resp.Error)
+		}
+	})
+
+	// Close the active tab (newTabID); the most-recently-opened remaining tab
+	// should be promoted to active.
+	t.Run("close_active_promotes_next", func(t *testing.T) {
+		if newTabID == "" || dataTabID == "" {
+			t.Skip("requires new tabs to have been created")
+		}
+
+		// Make newTabID active so closing it forces promotion.
+		_ = tabRequest("switch", newTabID[:8], "")
+
+		before := d.sessions.Count()
+		resp := tabRequest("close", "", "")
+		if !resp.OK {
+			t.Fatalf("tab close failed: %s", resp.Error)
+		}
+
+		// Verify session was actually removed before response returned.
+		if got := d.sessions.Count(); got != before-1 {
+			t.Errorf("expected session count %d after close, got %d", before-1, got)
+		}
+		if d.sessions.Get(newTabID) != nil {
+			t.Errorf("expected session %s to be removed", newTabID)
+		}
+	})
+
+	// Cleanly close the client and shut down.
+	_ = client.Close()
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil && err != context.Canceled {
+			t.Errorf("daemon exited with error: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Error("daemon did not shut down in time")
+	}
+}

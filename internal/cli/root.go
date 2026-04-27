@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
@@ -74,12 +75,21 @@ var JSONOutput bool
 // NoColor disables color output.
 var NoColor bool
 
+// rootHelpTemplate appends the AI agent help topics block after the standard
+// usage output so the topic list lives at the bottom of `webctl --help`.
+// The {{if not .HasParent}} guard scopes the topics block to the root command:
+// cobra inherits HelpTemplate from parent to child, so without the guard the
+// block would also appear under every `webctl <subcommand> --help`.
+const rootHelpTemplate = `{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
+
+{{end}}{{if or .Runnable .HasSubCommands}}{{.UsageString}}{{end}}{{if not .HasParent}}
+{{agentHelpTopics}}
+{{end}}`
+
 var rootCmd = &cobra.Command{
 	Use:   "webctl",
 	Short: "Browser automation CLI for AI agents",
-	Long: `webctl captures DevTools data (console logs, network requests, JS errors) via a persistent daemon that buffers CDP events.
-
-For AI agents, see: webctl help agents`,
+	Long:          `webctl captures DevTools data (console logs, network requests, JS errors) via a persistent daemon that buffers CDP events.`,
 	Version:       Version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -99,8 +109,11 @@ Report issues: https://github.com/grantcarthew/webctl/issues/new
 	rootCmd.InitDefaultHelpCmd()
 	helpCmd, _, _ := rootCmd.Find([]string{"help"})
 	if helpCmd != nil {
-		helpCmd.AddCommand(helpAgentsCmd)
+		registerHelpTopics(helpCmd)
 	}
+
+	cobra.AddTemplateFunc("agentHelpTopics", agentHelpTopicsBlock)
+	rootCmd.SetHelpTemplate(rootHelpTemplate)
 }
 
 // debugf logs a debug message if debug mode is enabled.
@@ -176,9 +189,64 @@ func (t *timer) log() {
 	debugTiming(t.name, t.stop())
 }
 
+// commandGroups assigns each top-level command to a help-rendering group.
+// Commands not listed here fall under cobra's "Additional Commands" section.
+var commandGroups = map[string]string{
+	"start":      "lifecycle",
+	"status":     "lifecycle",
+	"stop":       "lifecycle",
+	"navigate":   "navigation",
+	"reload":     "navigation",
+	"back":       "navigation",
+	"forward":    "navigation",
+	"tab":        "tabs",
+	"html":       "observation",
+	"css":        "observation",
+	"console":    "observation",
+	"network":    "observation",
+	"cookies":    "observation",
+	"screenshot": "observation",
+	"eval":       "observation",
+	"click":      "interaction",
+	"type":       "interaction",
+	"select":     "interaction",
+	"scroll":     "interaction",
+	"focus":      "interaction",
+	"key":        "interaction",
+	"ready":      "sync",
+	"clear":      "buffers",
+	"serve":      "server",
+}
+
+var groupsOnce sync.Once
+
+// setupCommandGroups registers help groups on rootCmd and assigns each
+// subcommand its GroupID. Runs lazily so it executes after every command's
+// init() has registered the command itself.
+func setupCommandGroups() {
+	groupsOnce.Do(func() {
+		rootCmd.AddGroup(
+			&cobra.Group{ID: "lifecycle", Title: "Lifecycle:"},
+			&cobra.Group{ID: "navigation", Title: "Navigation:"},
+			&cobra.Group{ID: "tabs", Title: "Tabs:"},
+			&cobra.Group{ID: "observation", Title: "Observation:"},
+			&cobra.Group{ID: "interaction", Title: "Interaction:"},
+			&cobra.Group{ID: "sync", Title: "Synchronization:"},
+			&cobra.Group{ID: "buffers", Title: "Buffers:"},
+			&cobra.Group{ID: "server", Title: "Local Server:"},
+		)
+		for _, cmd := range rootCmd.Commands() {
+			if id, ok := commandGroups[cmd.Name()]; ok {
+				cmd.GroupID = id
+			}
+		}
+	})
+}
+
 // Execute runs the root command.
 // Supports command abbreviation via unique prefix matching.
 func Execute() error {
+	setupCommandGroups()
 	// Try abbreviation expansion for CLI commands
 	args := os.Args[1:]
 	if len(args) > 0 {
@@ -222,6 +290,7 @@ func tryExpandCommand(prefix string) string {
 // Used by the REPL to execute commands parsed from user input.
 // Returns true if the command was recognized (even if it failed), false if unknown.
 func ExecuteArgs(args []string) (recognized bool, err error) {
+	setupCommandGroups()
 	if len(args) == 0 {
 		return false, nil
 	}
@@ -269,16 +338,21 @@ func ExecuteArgs(args []string) (recognized bool, err error) {
 	return true, err
 }
 
-// isStdoutTTY returns true if stdout is a terminal.
-func isStdoutTTY() bool {
-	return term.IsTerminal(int(os.Stdout.Fd()))
+// isWriterTTY reports whether w is an *os.File backed by a terminal.
+// Non-file writers (bytes.Buffer, pipes wrapped in io.Writer) report false.
+func isWriterTTY(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
 }
 
 // outputJSON writes a JSON response to the given writer.
-// Pretty prints if stdout is a TTY, compact otherwise.
+// Pretty prints if the writer itself is a TTY, compact otherwise.
 func outputJSON(w io.Writer, data any) error {
 	enc := json.NewEncoder(w)
-	if isStdoutTTY() {
+	if isWriterTTY(w) {
 		enc.SetIndent("", "  ")
 	}
 	return enc.Encode(data)

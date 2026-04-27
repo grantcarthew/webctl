@@ -492,6 +492,15 @@ func (d *Daemon) handleTargetAttached(evt cdp.Event) {
 		params.TargetInfo.Title,
 	)
 
+	// Signal any tab-new waiter keyed on this targetID. Non-blocking send;
+	// if no waiter is registered, the post-Send GetByTargetID check will see the session.
+	if ch, ok := d.tabAttachWaiters.Load(params.TargetInfo.TargetID); ok {
+		select {
+		case ch.(chan struct{}) <- struct{}{}:
+		default:
+		}
+	}
+
 	// Refresh REPL prompt to show new session
 	if d.repl != nil {
 		d.repl.refreshPrompt()
@@ -523,6 +532,14 @@ func (d *Daemon) handleTargetDetached(evt cdp.Event) {
 	// Remove from session manager
 	newActive, changed := d.sessions.Remove(params.SessionID)
 	d.debugf(false, "Session removed: newActiveID=%q, activeChanged=%v", newActive, changed)
+
+	// Signal any tab-close waiter keyed on this sessionID.
+	if ch, ok := d.tabDetachWaiters.Load(params.SessionID); ok {
+		select {
+		case ch.(chan struct{}) <- struct{}{}:
+		default:
+		}
+	}
 
 	// Purge entries for this session
 	d.purgeSessionEntries(params.SessionID)

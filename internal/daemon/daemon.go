@@ -84,6 +84,12 @@ type Daemon struct {
 	// networkEnabled tracks which sessions have Network.enable called
 	// We enable Network lazily because it causes Runtime.evaluate to block until networkIdle
 	networkEnabled sync.Map // map[string]bool for sessionID -> enabled
+
+	// Tab attach/detach waiters
+	// tabAttachWaiters: targetID -> chan struct{} signalled when SessionManager.Add fires
+	// tabDetachWaiters: sessionID -> chan struct{} signalled when SessionManager.Remove fires
+	tabAttachWaiters sync.Map
+	tabDetachWaiters sync.Map
 }
 
 // frameNavigatedInfo contains information from a Page.frameNavigated event.
@@ -465,8 +471,8 @@ func (d *Daemon) handleRequest(req ipc.Request) ipc.Response {
 		return d.handleScreenshot(req)
 	case "html":
 		return d.handleHTML(req)
-	case "target":
-		return d.handleTarget(req.Target)
+	case "tab":
+		return d.handleTab(req)
 	case "clear":
 		return d.handleClear(req.Target)
 	case "cdp":

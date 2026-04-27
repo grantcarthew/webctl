@@ -1,38 +1,64 @@
-# webctl Agent Help
+# webctl Browser Automation CLI
 
-stdout is token efficient
+- Use `webctl status` before `webctl start` to check whether a daemon is already running
+- Use `webctl start &` to launch Chromium and start the daemon (or run in a separate shell); the daemon must stay running
+- stdout is token-efficient; use `--json` only when output must be parsed programmatically
 
-Use --json for structured data selection
-
-## Quick Start
+## Core Commands
 
 ```
-webctl start &  # Start daemon in background (or run in separate shell), must stay running
-webctl navigate https://example.com
-webctl ready
-webctl html --select "#main"
-webctl css
-webctl console
-webctl network
-webctl cookies
-webctl screenshot save
-webctl click "button.login"
-webctl type "#username" "user@example.com"
-webctl type "#password" "secret" --key Enter
-webctl ready --network-idle
-webctl console --type error
-webctl html --find "Welcome"
-webctl navigate https://example.com/dashboard
-webctl ready
-webctl eval "document.title"
-webctl back
-webctl forward
-webctl reload
-webctl target              # List tabs
-webctl target "Dashboard"  # Switch to tab by title
-webctl clear console
+# Lifecycle
+webctl start [--headless] [--port <port>]
+webctl status
 webctl stop
+
+# Navigation
+webctl navigate <url> [--wait]
+webctl reload [--wait]
+webctl back [--wait]
+webctl forward [--wait]
+
+# Tabs
+webctl tab
+webctl tab switch <query>
+webctl tab new [url]
+webctl tab close [query]
+
+# Observation
+webctl html [save [path]]
+webctl css [save [path]]
+webctl css computed <selector>
+webctl css get <selector> <property>
+webctl css inline <selector>
+webctl css matched <selector>
+webctl console [save [path]]
+webctl network [save [path]]
+webctl cookies [save [path]]
+webctl cookies set <name> <value>
+webctl cookies delete <name>
+webctl screenshot save [path] [--full-page]
+webctl eval <js-expression>
+
+# Interaction
+webctl click <selector>
+webctl type <selector> <text>
+webctl select <selector> <value>
+webctl scroll <selector|--to x,y|--by x,y>
+webctl focus <selector>
+webctl key <key>
+
+# Synchronization
+webctl ready [selector] [--network-idle] [--eval <js>]
+
+# Buffers
+webctl clear [console|network]
+
+# Local Server
+webctl serve [directory]
+webctl serve --proxy <url>
 ```
+
+For flag detail, use `webctl <command> --help`.
 
 ## Global Flags
 
@@ -42,85 +68,17 @@ webctl stop
 --no-color     Disable color output
 ```
 
-## Command Flags
-
-```
-start:
-  --headless         Run browser in headless mode
-  --port <port>      CDP port (default: 9222)
-navigate, reload, back, forward:
-  --wait             Wait for page load completion
-  --timeout <sec>    Timeout in seconds (default: 60)
-html, css:
-  --select, -s <sel> Filter to element(s)
-  --find, -f <text>  Search for text
-  --raw              Skip formatting
-html with --find:
-  --before, -B <n>   Show N lines before match
-  --after, -A <n>    Show N lines after match
-  --context, -C <n>  Show N lines before and after
-console:
-  --find, -f <text>  Search for text
-  --raw              Skip formatting
-  --type <type>      Filter by type (log, error, warn, info, debug)
-  --head <n>         First N entries
-  --tail <n>         Last N entries
-  --range <n-m>      Entries N through M (1-indexed, inclusive)
-network:
-  --find, -f <text>  Search in URLs and bodies
-  --raw              Skip formatting
-  --type <type>      CDP resource type (xhr, fetch, document, script, etc)
-  --method <method>  HTTP method (GET, POST, PUT, DELETE, etc)
-  --status <code>    Status code or range (200, 4xx, 5xx, 200-299)
-  --url <pattern>    URL regex pattern
-  --mime <type>      MIME type (application/json, text/html, etc)
-  --min-duration     Minimum duration (1s, 500ms, 100ms)
-  --min-size <n>     Minimum size in bytes
-  --failed           Only failed requests
-  --max-body-size    Max body size before truncation (default: 100KB)
-  --head <n>         First N entries
-  --tail <n>         Last N entries
-  --range <n-m>      Entries N through M
-cookies:
-  --find, -f <text>  Search in names and values
-  --raw              Skip formatting
-  --domain <domain>  Filter by domain
-  --name <name>      Filter by exact name
-type:
-  --key <key>        Send key after text (Enter, Tab, Escape, etc)
-  --clear            Clear existing content
-key:
-  --ctrl             Hold Ctrl modifier
-  --alt              Hold Alt modifier
-  --shift            Hold Shift modifier
-  --meta             Hold Meta/Command modifier
-ready:
-  --timeout <dur>    Maximum wait time (default: 60s)
-  --network-idle     Wait for network idle (500ms quiet)
-  --eval <expr>      Wait for JS expression to be truthy
-```
-
 ## Help Topics
 
-Use webctl help agents <topic> for detailed guidance.
+Use `webctl help <topic>` for detailed guidance.
 
 ```
-webctl help agents workflow
-webctl help agents observe
-webctl help agents interact
-webctl help agents wait
-webctl help agents errors
-webctl help agents output
-webctl help agents serve
+webctl help workflow
+webctl help observe
+webctl help interact
+webctl help wait
+webctl help errors
+webctl help output
+webctl help serve
+webctl help all
 ```
-
-All topics combined (use when you need complete reference):
-
-```
-webctl help agents all
-```
-
-## webctl Bug Fix
-
-If you find a bug in webctl: clone the repository which is available under webctl --version, find the bug, raise a detailed issue on GitHub.
-

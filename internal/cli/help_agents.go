@@ -3,6 +3,7 @@ package cli
 import (
 	_ "embed"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -31,59 +32,61 @@ var agentHelpOutput string
 //go:embed agent-help/serve.md
 var agentHelpServe string
 
-var helpAgentsCmd = &cobra.Command{
-	Use:   "agents [topic]",
-	Short: "Token-efficient help for AI agents",
-	Long:  "Displays token-efficient help documentation designed for AI agent consumption.",
-	Args:  cobra.MaximumNArgs(1),
-	RunE:  runHelpAgents,
+type helpTopic struct {
+	name    string
+	short   string
+	content *string
 }
 
-func runHelpAgents(cmd *cobra.Command, args []string) error {
-	// If no topic specified, show overview
-	if len(args) == 0 {
-		fmt.Println(agentHelpOverview)
-		return nil
+// helpTopics lists the AI-agent help topics in display order.
+var helpTopics = []helpTopic{
+	{"agents", "Overview and command map for AI agents", &agentHelpOverview},
+	{"workflow", "Common automation workflow patterns", &agentHelpWorkflow},
+	{"observe", "Observation commands (html, css, console, network, cookies)", &agentHelpObserve},
+	{"interact", "Interaction commands (click, type, key, select, scroll, focus)", &agentHelpInteract},
+	{"wait", "Synchronization with the ready command", &agentHelpWait},
+	{"errors", "Common errors and their solutions", &agentHelpErrors},
+	{"output", "Output modes (stdout, save, JSON)", &agentHelpOutput},
+	{"serve", "Local development server", &agentHelpServe},
+}
+
+// agentHelpTopicsBlock renders the topic list for the root `--help` template.
+func agentHelpTopicsBlock() string {
+	var b strings.Builder
+	b.WriteString("AI agent help topics (use 'webctl help <topic>'):\n")
+	for _, t := range helpTopics {
+		b.WriteString(fmt.Sprintf("  %-11s %s\n", t.name, t.short))
+	}
+	b.WriteString("  all         All topics combined")
+	return b.String()
+}
+
+// registerHelpTopics adds each agent help topic as a subcommand of the help
+// command, plus an `all` subcommand that concatenates every topic.
+func registerHelpTopics(helpCmd *cobra.Command) {
+	for _, t := range helpTopics {
+		t := t
+		helpCmd.AddCommand(&cobra.Command{
+			Use:   t.name,
+			Short: t.short,
+			Args:  cobra.NoArgs,
+			Run: func(cmd *cobra.Command, args []string) {
+				fmt.Println(*t.content)
+			},
+		})
 	}
 
-	topic := args[0]
-
-	// Special case: "all" concatenates all topics
-	if topic == "all" {
-		fmt.Println(agentHelpOverview)
-		fmt.Println("---")
-		fmt.Println(agentHelpWorkflow)
-		fmt.Println("---")
-		fmt.Println(agentHelpObserve)
-		fmt.Println("---")
-		fmt.Println(agentHelpInteract)
-		fmt.Println("---")
-		fmt.Println(agentHelpWait)
-		fmt.Println("---")
-		fmt.Println(agentHelpErrors)
-		fmt.Println("---")
-		fmt.Println(agentHelpOutput)
-		fmt.Println("---")
-		fmt.Println(agentHelpServe)
-		return nil
-	}
-
-	// Map topics to their content (will add more as we create them)
-	topics := map[string]string{
-		"workflow": agentHelpWorkflow,
-		"observe":  agentHelpObserve,
-		"interact": agentHelpInteract,
-		"wait":     agentHelpWait,
-		"errors":   agentHelpErrors,
-		"output":   agentHelpOutput,
-		"serve":    agentHelpServe,
-	}
-
-	content, exists := topics[topic]
-	if !exists {
-		return fmt.Errorf("unknown help topic: %s\n\nAvailable topics:\n  workflow, observe, interact, wait, errors, output, serve, all", topic)
-	}
-
-	fmt.Println(content)
-	return nil
+	helpCmd.AddCommand(&cobra.Command{
+		Use:   "all",
+		Short: "All agent help topics combined",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			for i, t := range helpTopics {
+				if i > 0 {
+					fmt.Println("---")
+				}
+				fmt.Println(*t.content)
+			}
+		},
+	})
 }

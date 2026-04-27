@@ -72,9 +72,9 @@ Common patterns:
   screenshot save ./test-results/homepage-${BUILD_ID}.png --full-page
 
   # Multi-tab capture
-  target "Admin Panel"
+  tab switch "Admin Panel"
   screenshot save ./admin.png
-  target "Dashboard"
+  tab switch "Dashboard"
   screenshot save ./dashboard.png
 
 Response:

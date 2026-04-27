@@ -1778,9 +1778,9 @@ func TestRunNetwork_Success(t *testing.T) {
 	}
 }
 
-// Target command tests
+// Tab command tests
 
-func TestRunTarget_DaemonNotRunning(t *testing.T) {
+func TestRunTabList_DaemonNotRunning(t *testing.T) {
 	enableJSONOutput(t)
 	restore := setMockFactory(&mockFactory{
 		daemonRunning: false,
@@ -1791,7 +1791,7 @@ func TestRunTarget_DaemonNotRunning(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
-	err := runTarget(targetCmd, []string{})
+	err := runTabList(tabCmd, nil)
 
 	_ = w.Close()
 	os.Stderr = oldStderr
@@ -1813,26 +1813,28 @@ func TestRunTarget_DaemonNotRunning(t *testing.T) {
 	}
 }
 
-func TestRunTarget_ListSessions(t *testing.T) {
+func TestRunTabList(t *testing.T) {
 	enableJSONOutput(t)
-	targetData := ipc.TargetData{
+	tabData := ipc.TabData{
 		ActiveSession: "session-abc",
 		Sessions: []ipc.PageSession{
 			{ID: "session-abc", URL: "https://example.com", Title: "Example"},
 			{ID: "session-def", URL: "https://test.com", Title: "Test Page"},
 		},
 	}
-	targetJSON, _ := json.Marshal(targetData)
+	tabJSON, _ := json.Marshal(tabData)
 
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			if req.Cmd != "target" {
-				t.Errorf("expected cmd=target, got %s", req.Cmd)
+			if req.Cmd != "tab" {
+				t.Errorf("expected cmd=tab, got %s", req.Cmd)
 			}
-			if req.Target != "" {
-				t.Errorf("expected empty target for list, got %s", req.Target)
+			var p ipc.TabParams
+			_ = json.Unmarshal(req.Params, &p)
+			if p.Action != "list" {
+				t.Errorf("expected action=list, got %s", p.Action)
 			}
-			return ipc.Response{OK: true, Data: targetJSON}, nil
+			return ipc.Response{OK: true, Data: tabJSON}, nil
 		},
 	}
 
@@ -1846,7 +1848,7 @@ func TestRunTarget_ListSessions(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runTarget(targetCmd, []string{})
+	err := runTabList(tabCmd, nil)
 
 	_ = w.Close()
 	os.Stdout = old
@@ -1876,26 +1878,31 @@ func TestRunTarget_ListSessions(t *testing.T) {
 	}
 }
 
-func TestRunTarget_SwitchSession(t *testing.T) {
+func TestRunTabSwitch(t *testing.T) {
 	enableJSONOutput(t)
-	targetData := ipc.TargetData{
+	tabData := ipc.TabData{
 		ActiveSession: "session-def",
 		Sessions: []ipc.PageSession{
 			{ID: "session-abc", URL: "https://example.com", Title: "Example"},
 			{ID: "session-def", URL: "https://test.com", Title: "Test Page"},
 		},
 	}
-	targetJSON, _ := json.Marshal(targetData)
+	tabJSON, _ := json.Marshal(tabData)
 
 	exec := &mockExecutor{
 		executeFunc: func(req ipc.Request) (ipc.Response, error) {
-			if req.Cmd != "target" {
-				t.Errorf("expected cmd=target, got %s", req.Cmd)
+			if req.Cmd != "tab" {
+				t.Errorf("expected cmd=tab, got %s", req.Cmd)
 			}
-			if req.Target != "test" {
-				t.Errorf("expected target=test, got %s", req.Target)
+			var p ipc.TabParams
+			_ = json.Unmarshal(req.Params, &p)
+			if p.Action != "switch" {
+				t.Errorf("expected action=switch, got %s", p.Action)
 			}
-			return ipc.Response{OK: true, Data: targetJSON}, nil
+			if p.Query != "test" {
+				t.Errorf("expected query=test, got %s", p.Query)
+			}
+			return ipc.Response{OK: true, Data: tabJSON}, nil
 		},
 	}
 
@@ -1909,7 +1916,7 @@ func TestRunTarget_SwitchSession(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runTarget(targetCmd, []string{"test"})
+	err := runTabSwitch(tabSwitchCmd, []string{"test"})
 
 	_ = w.Close()
 	os.Stdout = old
@@ -1934,14 +1941,13 @@ func TestRunTarget_SwitchSession(t *testing.T) {
 	}
 }
 
-func TestRunTarget_AmbiguousMatch(t *testing.T) {
+func TestRunTabSwitch_AmbiguousMatch(t *testing.T) {
 	enableJSONOutput(t)
-	// Daemon returns error with multiple matches
 	matchData := struct {
 		Error   string            `json:"error"`
 		Matches []ipc.PageSession `json:"matches"`
 	}{
-		Error: "ambiguous query 'test', matches multiple sessions",
+		Error: "ambiguous query 'test', matches multiple tabs",
 		Matches: []ipc.PageSession{
 			{ID: "session-abc", URL: "https://test1.com", Title: "Test 1"},
 			{ID: "session-def", URL: "https://test2.com", Title: "Test 2"},
@@ -1961,14 +1967,14 @@ func TestRunTarget_AmbiguousMatch(t *testing.T) {
 	})
 	defer restore()
 
-	old := os.Stdout
+	old := os.Stderr
 	r, w, _ := os.Pipe()
-	os.Stdout = w
+	os.Stderr = w
 
-	_ = runTarget(targetCmd, []string{"test"})
+	_ = runTabSwitch(tabSwitchCmd, []string{"test"})
 
 	_ = w.Close()
-	os.Stdout = old
+	os.Stderr = old
 
 	var buf bytes.Buffer
 	_, _ = buf.ReadFrom(r)
@@ -1989,45 +1995,202 @@ func TestRunTarget_AmbiguousMatch(t *testing.T) {
 	}
 }
 
-func TestTruncateID(t *testing.T) {
-	tests := []struct {
-		id   string
-		n    int
-		want string
-	}{
-		{"short", 8, "short"},
-		{"exactly8", 8, "exactly8"},
-		{"toolongid123456", 8, "toolongi..."},
-		{"", 8, ""},
+func TestRunTabNew(t *testing.T) {
+	enableJSONOutput(t)
+	newData := ipc.NewTabData{
+		ID:    "session-new",
+		URL:   "https://example.com",
+		Title: "Example",
+	}
+	newJSON, _ := json.Marshal(newData)
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			var p ipc.TabParams
+			_ = json.Unmarshal(req.Params, &p)
+			if p.Action != "new" {
+				t.Errorf("expected action=new, got %s", p.Action)
+			}
+			if p.URL != "https://example.com" {
+				t.Errorf("expected url=https://example.com, got %s", p.URL)
+			}
+			return ipc.Response{OK: true, Data: newJSON}, nil
+		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.id, func(t *testing.T) {
-			if got := truncateID(tt.id, tt.n); got != tt.want {
-				t.Errorf("truncateID(%q, %d) = %q, want %q", tt.id, tt.n, got, tt.want)
-			}
-		})
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runTabNew(tabNewCmd, []string{"example.com"})
+
+	_ = w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if result["ok"] != true {
+		t.Error("expected ok=true")
+	}
+	if result["id"] != "session-new" {
+		t.Errorf("expected id=session-new, got %v", result["id"])
 	}
 }
 
-func TestTruncateTitle(t *testing.T) {
-	tests := []struct {
-		title string
-		max   int
-		want  string
-	}{
-		{"Short title", 40, "Short title"},
-		{"  Padded  ", 40, "Padded"},
-		{"This is a very long title that exceeds the maximum length allowed", 40, "This is a very long title that exceed..."},
-		{"", 40, ""},
+func TestRunTabNew_Localhost(t *testing.T) {
+	enableJSONOutput(t)
+	newJSON, _ := json.Marshal(ipc.NewTabData{ID: "x", URL: "http://localhost:3000"})
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			var p ipc.TabParams
+			_ = json.Unmarshal(req.Params, &p)
+			if p.URL != "http://localhost:3000" {
+				t.Errorf("expected url=http://localhost:3000, got %s", p.URL)
+			}
+			return ipc.Response{OK: true, Data: newJSON}, nil
+		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.title, func(t *testing.T) {
-			if got := truncateTitle(tt.title, tt.max); got != tt.want {
-				t.Errorf("truncateTitle(%q, %d) = %q, want %q", tt.title, tt.max, got, tt.want)
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runTabNew(tabNewCmd, []string{"localhost:3000"})
+
+	_ = w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunTabNew_NoArg(t *testing.T) {
+	enableJSONOutput(t)
+	newJSON, _ := json.Marshal(ipc.NewTabData{ID: "x", URL: "about:blank"})
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			var p ipc.TabParams
+			_ = json.Unmarshal(req.Params, &p)
+			if p.URL != "" {
+				t.Errorf("expected empty url for no-arg tab new, got %s", p.URL)
 			}
-		})
+			return ipc.Response{OK: true, Data: newJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runTabNew(tabNewCmd, nil)
+
+	_ = w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunTabClose_NoQuery(t *testing.T) {
+	enableJSONOutput(t)
+	tabJSON, _ := json.Marshal(ipc.TabData{ActiveSession: "session-other"})
+
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			var p ipc.TabParams
+			_ = json.Unmarshal(req.Params, &p)
+			if p.Action != "close" {
+				t.Errorf("expected action=close, got %s", p.Action)
+			}
+			if p.Query != "" {
+				t.Errorf("expected empty query for active-tab close, got %s", p.Query)
+			}
+			return ipc.Response{OK: true, Data: tabJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runTabClose(tabCloseCmd, nil)
+
+	_ = w.Close()
+	os.Stdout = old
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunTabClose_LastTabError(t *testing.T) {
+	enableJSONOutput(t)
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{
+				OK:    false,
+				Error: "cannot close the last tab; use 'webctl stop' to shut down the browser",
+			}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{
+		daemonRunning: true,
+		executor:      exec,
+	})
+	defer restore()
+
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	_ = runTabClose(tabCloseCmd, nil)
+
+	_ = w.Close()
+	os.Stderr = old
+
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+
+	if !bytes.Contains(buf.Bytes(), []byte("cannot close the last tab")) {
+		t.Errorf("expected last-tab error message, got %s", buf.String())
 	}
 }
 
@@ -5286,5 +5449,67 @@ func TestRunReady_NoActiveSession(t *testing.T) {
 	}
 	if resp["error"] != "no active session" {
 		t.Errorf("unexpected error: %v", resp["error"])
+	}
+}
+
+// TestRootHelp_AgentTopicsBlock verifies the AI agent help topics block is
+// rendered for the root command but not for subcommands. Subcommands inherit
+// the help template from rootCmd; the {{if not .HasParent}} guard in
+// rootHelpTemplate is what scopes the block to the root.
+func TestRootHelp_AgentTopicsBlock(t *testing.T) {
+	setupCommandGroups()
+
+	const marker = "AI agent help topics"
+
+	var rootBuf bytes.Buffer
+	rootCmd.SetOut(&rootBuf)
+	if err := rootCmd.Help(); err != nil {
+		t.Fatalf("rootCmd.Help() failed: %v", err)
+	}
+	if !strings.Contains(rootBuf.String(), marker) {
+		t.Errorf("root --help missing %q block:\n%s", marker, rootBuf.String())
+	}
+
+	var subBuf bytes.Buffer
+	tabCmd.SetOut(&subBuf)
+	if err := tabCmd.Help(); err != nil {
+		t.Fatalf("tabCmd.Help() failed: %v", err)
+	}
+	if strings.Contains(subBuf.String(), marker) {
+		t.Errorf("tab --help should not contain %q block:\n%s", marker, subBuf.String())
+	}
+}
+
+// TestOutputJSON_WriterAwareIndentation verifies outputJSON's pretty-print
+// decision is based on the writer's own TTY status, not stdout's. A
+// bytes.Buffer is not a TTY so output must be compact regardless of the
+// process's actual stdout.
+func TestOutputJSON_WriterAwareIndentation(t *testing.T) {
+	var buf bytes.Buffer
+	if err := outputJSON(&buf, map[string]any{"a": 1, "b": 2}); err != nil {
+		t.Fatalf("outputJSON failed: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "\n  ") {
+		t.Errorf("expected compact JSON for non-TTY writer, got pretty:\n%s", out)
+	}
+}
+
+// TestIsWriterTTY covers the type-assertion and pipe-fd branches of
+// isWriterTTY. Testing the TTY=true branch would require a pty and is not
+// covered here.
+func TestIsWriterTTY(t *testing.T) {
+	if isWriterTTY(&bytes.Buffer{}) {
+		t.Error("isWriterTTY(*bytes.Buffer) = true, want false")
+	}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	defer func() { _ = r.Close(); _ = w.Close() }()
+
+	if isWriterTTY(w) {
+		t.Error("isWriterTTY(pipe write end) = true, want false")
 	}
 }

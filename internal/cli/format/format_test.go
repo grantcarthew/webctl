@@ -282,8 +282,8 @@ func TestEvalResult(t *testing.T) {
 	}
 }
 
-func TestTarget(t *testing.T) {
-	data := ipc.TargetData{
+func TestTab(t *testing.T) {
+	data := ipc.TabData{
 		ActiveSession: "session1",
 		Sessions: []ipc.PageSession{
 			{ID: "session1", URL: "https://example.com", Title: "Example"},
@@ -293,7 +293,7 @@ func TestTarget(t *testing.T) {
 
 	var buf bytes.Buffer
 	opts := OutputOptions{UseColor: false}
-	err := Target(&buf, data, opts)
+	err := Tab(&buf, data, opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -304,6 +304,31 @@ func TestTarget(t *testing.T) {
 	}
 	if !strings.Contains(output, "  https://other.com") {
 		t.Error("output should show inactive session with spaces")
+	}
+}
+
+func TestTabError_AmbiguousMatches(t *testing.T) {
+	matches := []ipc.PageSession{
+		{ID: "abc12345", Title: "Test 1"},
+		{ID: "def67890", Title: "Test 2"},
+	}
+
+	var buf bytes.Buffer
+	opts := OutputOptions{UseColor: false}
+	err := TabError(&buf, "ambiguous query 'test', matches multiple tabs", nil, matches, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Error:") {
+		t.Error("expected Error: prefix")
+	}
+	if !strings.Contains(output, "Matching tabs:") {
+		t.Error("expected Matching tabs: header")
+	}
+	if !strings.Contains(output, "abc12345") || !strings.Contains(output, "def67890") {
+		t.Error("expected match IDs in output")
 	}
 }
 

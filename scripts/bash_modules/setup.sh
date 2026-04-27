@@ -179,11 +179,9 @@ function stop_daemon() {
 
 function force_stop_daemon() {
   # force_stop_daemon
-  # Forces daemon to stop regardless of who started it
-
-  if ! is_daemon_running; then
-    return 0
-  fi
+  # Forces daemon and any orphaned browser to stop regardless of who started it.
+  # Always calls webctl stop --force so orphaned browsers (port still bound but
+  # daemon socket gone) are cleaned up even when is_daemon_running returns false.
 
   log_message "Force stopping daemon..."
   "${WEBCTL_BINARY}" stop --force >/dev/null 2>&1 || true
@@ -229,18 +227,42 @@ function start_test_server() {
   # Wait for server to be ready (max 5 seconds)
   local attempts=0
   local max_attempts=10
+  local server_ready=false
   while [[ ${attempts} -lt ${max_attempts} ]]; do
     if curl -s "http://localhost:${port}/" >/dev/null 2>&1; then
-      log_success "Test server started on port ${port}"
-      return 0
+      server_ready=true
+      break
     fi
     sleep 0.5
     ((attempts++))
   done
 
-  log_failure "Test server failed to start"
-  TEST_SERVER_PID=""
-  return 1
+  if [[ "${server_ready}" != "true" ]]; then
+    log_failure "Test server failed to start"
+    TEST_SERVER_PID=""
+    return 1
+  fi
+
+  # The serve handler navigates the browser to the server URL asynchronously.
+  # Wait for that navigation to settle before returning so subsequent
+  # navigate --wait calls aren't overwritten by the deferred serve navigate.
+  if is_daemon_running; then
+    local nav_attempts=0
+    local nav_max_attempts=30
+    while [[ ${nav_attempts} -lt ${nav_max_attempts} ]]; do
+      local current_url
+      current_url=$("${WEBCTL_BINARY}" status --json 2>/dev/null \
+        | jq -r '.data.activeSession.url // empty' 2>/dev/null)
+      if [[ "${current_url}" == *":${port}"* ]]; then
+        break
+      fi
+      sleep 0.1
+      ((nav_attempts++))
+    done
+  fi
+
+  log_success "Test server started on port ${port}"
+  return 0
 }
 
 function stop_test_server() {

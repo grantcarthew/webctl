@@ -117,10 +117,24 @@ type PageSession struct {
 	Status int    `json:"status,omitempty"` // HTTP status of last document load
 }
 
-// TargetData is the response data for the "target" command.
-type TargetData struct {
+// TabParams represents parameters for the "tab" command.
+type TabParams struct {
+	Action string `json:"action"`        // "list", "switch", "new", or "close"
+	Query  string `json:"query,omitempty"`
+	URL    string `json:"url,omitempty"` // Optional URL for "new"
+}
+
+// TabData is the response data for "tab" list and switch/close actions.
+type TabData struct {
 	ActiveSession string        `json:"activeSession,omitempty"`
 	Sessions      []PageSession `json:"sessions"`
+}
+
+// NewTabData is the response data for "tab new".
+type NewTabData struct {
+	ID    string `json:"id"`
+	URL   string `json:"url"`
+	Title string `json:"title,omitempty"`
 }
 
 // ScreenshotParams represents parameters for the "screenshot" command.
