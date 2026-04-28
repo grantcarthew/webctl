@@ -5,15 +5,6 @@
 *.swo
 *~
 
-# AI and Documentation Files
-
-# Reference Directory
-context/*
-!context/README.md
-!context/docs/
-context/docs/*
-!context/docs/README.md
-
 # Go Binary Output
 /webctl
 *.exe
