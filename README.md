@@ -26,22 +26,30 @@ Under active development.
 
 - Daemon with CDP event buffering (console, network)
 - IPC via Unix socket
-- CLI framework (Cobra)
-- Lifecycle commands: `start`, `stop`, `status`, `clear`
+- CLI framework (Cobra) with abbreviation expansion and JSON output
+- Lifecycle: `start`, `stop` (with `--force` reaper), `status`, `clear`
+- Navigation: `navigate`, `reload`, `back`, `forward`
+- Tabs: `tab` (list, switch, new, close)
+- Observation: `html`, `css`, `console`, `network`, `cookies`, `screenshot`, `eval`
+- Interaction: `click`, `type`, `select`, `scroll`, `focus`, `key`
+- Synchronisation: `ready` (page load, selector, network idle, JS condition)
+- Local server: `serve` (static files or reverse proxy with hot reload)
 
 ### In Progress
 
-- Observation commands: `console`, `network`, `screenshot`, etc.
+- `webctl start --attach`: connect to an existing CDP endpoint instead of launching a new browser
 
 ## Commands
 
 | Category | Commands |
 |----------|----------|
-| Observation | console, network, screenshot, html, eval, cookies |
-| Navigation | navigate, reload, back, forward |
-| Interaction | click, type, select, scroll |
-| Synchronisation | wait-for |
 | Lifecycle | start, stop, status, clear |
+| Navigation | navigate, reload, back, forward |
+| Tabs | tab |
+| Observation | html, css, console, network, cookies, screenshot, eval |
+| Interaction | click, type, select, scroll, focus, key |
+| Synchronisation | ready |
+| Local server | serve |
 
 ## Agent Workflow
 
