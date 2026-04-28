@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl html Command Test Suite"
-echo "Project: P-034"
 echo "Tests HTML extraction with stdout default and save mode"
 echo ""
 echo "Prerequisites:"
@@ -309,5 +308,4 @@ read -p "Press Enter to finish..."
 title "Test Suite Complete"
 echo "All html command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-034-testing-html.md"
 echo "Document any issues discovered during testing"

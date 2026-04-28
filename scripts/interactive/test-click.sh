@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl click Command Test Suite"
-echo "Project: P-040"
 echo "Tests element clicking with automatic scrolling and full event chain"
 echo ""
 echo "Prerequisites:"
@@ -360,5 +359,4 @@ read -p "Press Enter to continue..."
 title "Test Suite Complete"
 echo "All click command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-040-testing-click.md"
 echo "Document any issues discovered during testing"

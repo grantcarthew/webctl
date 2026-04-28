@@ -13,16 +13,14 @@ Under active development.
 When completing a project and starting the next:
 
 1. Mark project status as Done, set completion date
-2. Move project file to `.ai/projects/completed/`
-3. Create next project file (from design record or roadmap)
-4. Update Active Project below to reference new project
-5. Update `.ai/projects/README.md` table entry
+2. Replace `project.md` content with the next project (drawn from the roadmap or backlog)
+3. Update Active Project below to reference the new project
 
 ## Active Project
 
-Projects are stored in `.ai/projects/`.
+The active project lives in `project.md` at the repository root.
 
-- Active Project: Tab Command (see project.md)
+- Active Project: Start Attach Mode (see project.md)
 
 ## Quick Reference
 
@@ -102,13 +100,7 @@ webctl clear [console|network]
 - IPC: Unix socket (local), TCP (remote)
 - Output: Text format (default), JSON (--json flag)
 
----
+## Workflow
 
-## Documentation Driven Development (DDD)
-
-This project uses Documentation Driven Development. Design decisions are documented in Design Records (DRs) before or during implementation.
-
-- Read `.ai/workflow.md` for feature development process
+- Read `.ai/workflow.md` for the feature development process
 - Read `.ai/docs/project-writing-guide.md` for project documentation
-- Read `.ai/design/dr-writing-guide.md` for design record format
-- Design records are in `.ai/design/design-records/`

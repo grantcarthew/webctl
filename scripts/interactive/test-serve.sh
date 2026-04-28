@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl serve Command Test Suite"
-echo "Project: P-029"
 echo "Tests development server with static and proxy modes"
 echo ""
 echo "Prerequisites:"
@@ -215,5 +214,4 @@ cmd "git checkout testdata/index.html"
 title "Test Suite Complete"
 echo "All serve command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-029-testing-serve.md"
 echo "Document any issues discovered during testing"

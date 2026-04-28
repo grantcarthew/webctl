@@ -883,7 +883,7 @@ assert_matches "(console|network|invalid|target)" "${TEST_STDERR}" \
   "Error message provides helpful context about valid targets"
 
 # =============================================================================
-# Note: Find Command Removed per DR-030
+# Note: Find Command Removed
 # =============================================================================
 # The standalone 'find' command has been removed in favor of universal --find
 # flags on all observation commands (html, css, console, network, cookies).
@@ -894,8 +894,6 @@ assert_matches "(console|network|invalid|target)" "${TEST_STDERR}" \
 # - Console search: test-observation.sh (console --find)
 # - Network search: test-observation.sh (network --find)
 # - Cookies search: test-cookies.sh (cookies --find)
-#
-# See DR-030 for rationale on this design decision.
 # =============================================================================
 
 # =============================================================================

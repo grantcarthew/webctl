@@ -1,9 +1,8 @@
 # .ai Directory
 
-AI agent working files for Documentation Driven Development.
+AI agent working files.
 
 - `projects/` - Project documents
-- `design/` - Design records
 - `tasks/` - Task prompts
 - `roles/` - Role definitions
 - `workflow.md` - Feature development workflow

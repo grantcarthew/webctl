@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl key Command Test Suite"
-echo "Project: P-045"
 echo "Tests sending keyboard keys with modifier support"
 echo ""
 echo "Prerequisites:"
@@ -555,7 +554,6 @@ read -p "Press Enter to continue..."
 title "Test Suite Complete"
 echo "All key command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-045-testing-key.md"
 echo "Document any issues discovered during testing"
 echo ""
 echo "Note: Some keyboard shortcuts (Ctrl+C, Ctrl+V, browser shortcuts)"

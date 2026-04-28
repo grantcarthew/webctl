@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl select Command Test Suite"
-echo "Project: P-042"
 echo "Tests selecting options in native HTML select dropdowns"
 echo ""
 echo "Prerequisites:"
@@ -317,7 +316,6 @@ read -p "Press Enter to continue..."
 title "Test Suite Complete"
 echo "All select command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-042-testing-select.md"
 echo "Document any issues discovered during testing"
 echo ""
 echo "Note: For more comprehensive testing, consider creating a custom HTML page"

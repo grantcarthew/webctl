@@ -30,7 +30,6 @@ const DefaultPort = 9222
 const UserDataDirDefault = "default"
 
 // buildArgs constructs the Chrome command line arguments.
-// See DR-005 for rationale behind each flag.
 func buildArgs(opts LaunchOptions) []string {
 	port := opts.Port
 	if port == 0 {

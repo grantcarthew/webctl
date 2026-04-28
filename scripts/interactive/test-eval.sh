@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl eval Command Test Suite"
-echo "Project: P-046"
 echo "Tests JavaScript evaluation in browser context"
 echo ""
 echo "Prerequisites:"
@@ -405,5 +404,4 @@ read -p "Press Enter when tested in REPL..."
 title "Test Suite Complete"
 echo "All eval command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-046-testing-eval.md"
 echo "Document any issues discovered during testing"

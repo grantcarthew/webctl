@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl ready Command Test Suite"
-echo "Project: P-047"
 echo "Tests waiting for page/application ready state"
 echo ""
 echo "Prerequisites:"
@@ -330,5 +329,4 @@ read -p "Press Enter when tested in REPL..."
 title "Test Suite Complete"
 echo "All ready command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-047-testing-ready.md"
 echo "Document any issues discovered during testing"

@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl scroll Command Test Suite"
-echo "Project: P-043"
 echo "Tests scrolling to elements, absolute positions, and by offsets"
 echo ""
 echo "Prerequisites:"
@@ -427,5 +426,4 @@ read -p "Press Enter when tested in REPL..."
 title "Test Suite Complete"
 echo "All scroll command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-043-testing-scroll.md"
 echo "Document any issues discovered during testing"

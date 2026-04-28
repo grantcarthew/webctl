@@ -5,7 +5,7 @@ Project-specific context directory for webctl development.
 ## Purpose
 
 This directory stores:
-- **Research documents** (.md files) - In-depth research findings for design decisions
+- **Research documents** (.md files) - In-depth research findings
 - **Cloned repositories** (subdirectories) - Temporary clones for documentation review
 
 ## Structure
@@ -22,7 +22,7 @@ This directory stores:
 
 ### Research Documents
 
-When making significant design decisions, conduct deep research and document findings:
+When making significant decisions, conduct deep research and document findings:
 
 ```bash
 # Example: CDP timeout research
@@ -70,12 +70,11 @@ See existing research documents:
 ## When to Use
 
 Create research documents when:
-- Design decisions need detailed technical justification
+- Decisions need detailed technical justification
 - Code comments reference specific research findings
 - Complex architectural limitations need comprehensive documentation
 - Future maintainers will benefit from understanding "why" decisions were made
 
 ## Related
 
-- Main documentation: `.ai/design/design-records/`
 - Global AI context: `~/.ai/context/` (see environment.md)

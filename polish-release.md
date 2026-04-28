@@ -1,4 +1,4 @@
-# p-000: Polish & Release
+# Polish & Release
 
 - Status: Proposed
 - Started: -
@@ -144,7 +144,7 @@ Document clearly:
 
 ## Dependencies
 
-- p-009 (Wait-For)
+- Wait-For ready
 - All previous projects complete
 
 ## Testing Strategy

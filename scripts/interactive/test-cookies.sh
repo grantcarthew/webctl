@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl cookies Command Test Suite"
-echo "Project: P-038"
 echo "Tests cookie extraction and manipulation (stdout/save/set/delete)"
 echo ""
 echo "Prerequisites:"
@@ -551,5 +550,4 @@ read -p "Press Enter to finish..."
 title "Test Suite Complete"
 echo "All cookies command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-038-testing-cookies.md"
 echo "Document any issues discovered during testing"

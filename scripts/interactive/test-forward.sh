@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl forward Command Test Suite"
-echo "Project: P-033"
 echo "Tests browser history forward navigation"
 echo ""
 echo "Prerequisites:"
@@ -252,5 +251,4 @@ read -p "Press Enter when tested in REPL..."
 title "Test Suite Complete"
 echo "All forward command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-033-testing-forward.md"
 echo "Document any issues discovered during testing"

@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl navigate Command Test Suite"
-echo "Project: P-030"
 echo "Tests URL navigation with protocol auto-detection"
 echo ""
 echo "Prerequisites:"
@@ -204,5 +203,4 @@ echo "Tests complete - daemon can remain running or be stopped"
 title "Test Suite Complete"
 echo "All navigate command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-030-testing-navigate.md"
 echo "Document any issues discovered during testing"

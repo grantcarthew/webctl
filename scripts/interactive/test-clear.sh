@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl clear Command Test Suite"
-echo "Project: P-048"
 echo "Tests clearing event buffers (console and network)"
 echo ""
 echo "Prerequisites:"
@@ -418,5 +417,4 @@ read -p "Press Enter when tested in REPL..."
 title "Test Suite Complete"
 echo "All clear command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-048-testing-clear.md"
 echo "Document any issues discovered during testing"

@@ -1769,22 +1769,17 @@ func TestFind_Integration(t *testing.T) {
 
 	time.Sleep(500 * time.Millisecond)
 
-	// Test: Search for text in minified HTML
-	// REMOVED: Find command removed per DR-030 (use html --find instead)
+	// Find command removed - use html --find instead
 	t.Run("search_minified_html", func(t *testing.T) {
-		t.Skip("find command removed per DR-030 - use html --find instead")
+		t.Skip("find command removed - use html --find instead")
 	})
 
-	// Test: Regex search in minified HTML
-	// REMOVED: Find command removed per DR-030 (use html --find instead)
 	t.Run("regex_search", func(t *testing.T) {
-		t.Skip("find command removed per DR-030 - use html --find instead")
+		t.Skip("find command removed - use html --find instead")
 	})
 
-	// Test: No matches
-	// REMOVED: Find command removed per DR-030 (use html --find instead)
 	t.Run("no_matches", func(t *testing.T) {
-		t.Skip("find command removed per DR-030 - use html --find instead")
+		t.Skip("find command removed - use html --find instead")
 	})
 
 	_ = client.Close()

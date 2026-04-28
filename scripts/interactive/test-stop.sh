@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl stop Command Test Suite"
-echo "Project: P-027"
 echo "Tests daemon shutdown functionality"
 echo ""
 echo "Prerequisites:"
@@ -119,5 +118,4 @@ read -p "Press Enter to continue..."
 title "Test Suite Complete"
 echo "All stop command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-027-testing-stop.md"
 echo "Document any issues discovered during testing"

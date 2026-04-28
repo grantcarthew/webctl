@@ -2,4 +2,4 @@
 
 Human-facing documentation for this project.
 
-For AI agent working files (projects, design records, tasks), see the `.ai/` directory.
+For AI agent working files (projects, tasks, roles), see the `.ai/` directory.

@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl focus Command Test Suite"
-echo "Project: P-044"
 echo "Tests focusing elements with CSS selectors"
 echo ""
 echo "Prerequisites:"
@@ -421,5 +420,4 @@ read -p "Press Enter to continue..."
 title "Test Suite Complete"
 echo "All focus command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-044-testing-focus.md"
 echo "Document any issues discovered during testing"

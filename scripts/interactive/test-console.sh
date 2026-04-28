@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl console Command Test Suite"
-echo "Project: P-036"
 echo "Tests console log extraction with filtering and range limiting"
 echo ""
 echo "Prerequisites:"
@@ -402,5 +401,4 @@ read -p "Press Enter to finish..."
 title "Test Suite Complete"
 echo "All console command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-036-testing-console.md"
 echo "Document any issues discovered during testing"

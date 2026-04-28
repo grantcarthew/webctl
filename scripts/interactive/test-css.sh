@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl css Command Test Suite"
-echo "Project: P-052"
 echo "Tests CSS extraction with all subcommands: save/computed/get/inline/matched"
 echo "and flags: --select (rule filtering), --find, context flags"
 echo ""
@@ -481,5 +480,4 @@ read -p "Press Enter to finish..."
 title "Test Suite Complete"
 echo "All css command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-035-testing-css.md"
 echo "Document any issues discovered during testing"

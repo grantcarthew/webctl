@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl start Command Test Suite"
-echo "Project: P-026"
 echo "Tests daemon startup, browser launch, and REPL mode"
 echo ""
 echo "Prerequisites:"
@@ -112,5 +111,4 @@ read -p "Press Enter to skip or test manually..."
 title "Test Suite Complete"
 echo "All start command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-026-testing-start.md"
 echo "Document any issues discovered during testing"

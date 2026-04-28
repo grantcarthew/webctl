@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl status Command Test Suite"
-echo "Project: P-030"
 echo "Tests daemon status reporting"
 echo ""
 echo "Prerequisites:"
@@ -130,5 +129,4 @@ read -p "Press Enter when daemon stopped..."
 title "Test Suite Complete"
 echo "All status command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-030-testing-status.md"
 echo "Document any issues discovered during testing"

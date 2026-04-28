@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl reload Command Test Suite"
-echo "Project: P-031"
 echo "Tests page reload with hard cache clear"
 echo ""
 echo "Prerequisites:"
@@ -185,5 +184,4 @@ read -p "Press Enter when tested in REPL..."
 title "Test Suite Complete"
 echo "All reload command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-031-testing-reload.md"
 echo "Document any issues discovered during testing"

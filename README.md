@@ -20,7 +20,7 @@ webctl stop                     # Clean shutdown
 
 ## Status
 
-Under active development. See `docs/design/design-records/` for design decisions.
+Under active development.
 
 ### Implemented
 
@@ -31,7 +31,7 @@ Under active development. See `docs/design/design-records/` for design decisions
 
 ### In Progress
 
-- Observation commands (P-007): `console`, `network`, `screenshot`, etc.
+- Observation commands: `console`, `network`, `screenshot`, etc.
 
 ## Commands
 
@@ -54,11 +54,6 @@ webctl reload
 webctl console                             # Verify fix
 webctl stop
 ```
-
-## Documentation
-
-- Design Records: `docs/design/design-records/`
-- Projects: `docs/projects/`
 
 ## Companion Packages
 

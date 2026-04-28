@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl screenshot Command Test Suite"
-echo "Project: P-039"
 echo "Tests screenshot capture with viewport and full-page modes"
 echo ""
 echo "Prerequisites:"
@@ -425,7 +424,6 @@ read -p "Press Enter to finish..."
 title "Test Suite Complete"
 echo "All screenshot command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-039-testing-screenshot.md"
 echo "Document any issues discovered during testing"
 echo ""
 echo "Note: Remember to verify screenshots visually by opening the PNG files"

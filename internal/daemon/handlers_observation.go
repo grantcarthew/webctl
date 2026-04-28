@@ -673,15 +673,11 @@ func (d *Daemon) handleCookiesDelete(sessionID string, params ipc.CookiesParams)
 	return ipc.SuccessResponse(nil)
 }
 
-// handleFind searches HTML content for text patterns.
-// handleFind has been removed per DR-030 (Find Command Removal).
-// The standalone 'find' command has been replaced with universal --find flags
-// on all observation commands (html, css, console, network, cookies).
-//
-// If this handler is ever called, it returns an error directing users to use
-// the html --find flag instead.
+// handleFind is retained as a stub. The standalone 'find' command has been
+// replaced with universal --find flags on observation commands (html, css,
+// console, network, cookies). If invoked, it points users at the replacement.
 func (d *Daemon) handleFind(req ipc.Request) ipc.Response {
-	return ipc.ErrorResponse("find command has been removed - use 'html --find <text>' instead (see DR-030)")
+	return ipc.ErrorResponse("find command has been removed - use 'html --find <text>' instead")
 }
 
 // handleCDP forwards a raw CDP command to the browser.

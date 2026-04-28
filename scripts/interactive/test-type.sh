@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl type Command Test Suite"
-echo "Project: P-041"
 echo "Tests typing text into elements with optional clearing and key sending"
 echo ""
 echo "Prerequisites:"
@@ -401,5 +400,4 @@ read -p "Press Enter when tested in REPL..."
 title "Test Suite Complete"
 echo "All type command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-041-testing-type.md"
 echo "Document any issues discovered during testing"

@@ -1,4 +1,4 @@
-# P-064: Start Attach Mode
+# Start Attach Mode
 
 Project: Implement --attach flag for connecting to existing browser
 
@@ -15,7 +15,7 @@ Add ability to attach webctl daemon to an existing browser CDP endpoint instead 
 - Manual browser setup before automation
 - Working with browsers that have specific profiles or extensions
 
-Currently webctl start always launches a new browser instance. The --attach flag was designed in DR-002 but never implemented.
+Currently webctl start always launches a new browser instance. The --attach flag was previously scoped but never implemented.
 
 ## Goals
 
@@ -49,22 +49,76 @@ Out of Scope:
 - [ ] Daemon validates CDP connection before starting
 - [ ] Clear error messages for connection failures
 - [ ] Compatible with all existing webctl commands
-- [ ] Created DR documenting attach mode implementation
 
 ## Deliverables
 
-- internal/cli/start.go - Add --attach flag
-- internal/daemon/browser.go - Connection logic for existing browser
-- internal/daemon/config.go - AttachURL configuration
-- tests/cli/start-attach.bats - Attach mode tests
-- DR documenting attach mode design
+- internal/cli/start.go - Add --attach flag and CLI parsing of `--attach :PORT` / `host:port` / empty for auto-detect
+- internal/browser/attach.go - New file: attach to an existing CDP endpoint (and auto-detect helper)
+- internal/browser/browser.go - Refactor Browser to support attach mode (see Issue 3)
+- internal/daemon/daemon.go - Add AttachURL to Config; branch in Run() between Start() and Attach()
+- internal/browser/attach_test.go - Go unit tests for endpoint parsing, validation, auto-detect
+- scripts/test/cli/test-start-attach.sh - Shell-driven CLI tests covering flag combinations and error messages
 
 ## Current State
 
-- start command only launches new browser via launcher.Launch()
-- DR-002 designed --attach flag but not implemented
-- Config has Port field but no AttachURL field
-- Daemon assumes it owns the browser lifecycle
+- internal/cli/start.go calls daemon.New(cfg) and d.Run(ctx); the daemon launches a browser via browser.Start() in internal/daemon/daemon.go (Run method).
+- internal/browser/browser.go defines Browser with cmd, port, dataDir, ownsData. Close() always SIGTERMs the process and removes the temp data dir.
+- internal/daemon/daemon.go defines Config inline (no separate config.go) with Headless, Port, SocketPath, PIDPath, BufferSize, Debug, CommandExecutor — no AttachURL field yet.
+- internal/browser/target.go provides FetchVersion(ctx, host, port) and FetchTargets(ctx, host, port) — these already accept a host parameter and can be reused for attach validation without a separate browser process.
+- internal/cli/stop.go has a --force path that kills any browser on the configured port via lsof. This would kill an attached browser.
+- The previous Tab Command project has shipped (commits d557737, 9b3cd63); project.md was renamed from cli-start-attach-mode.md in commit 5106aa4 and AGENTS.md has been updated to point at this project.
+
+## Issues Discovered
+
+1. Stale prior-design references removed (gap) — Resolved.
+
+   The Overview and Deliverables previously pointed at a separate design document for attach mode that is no longer part of this repository. Those references and the matching deliverable have been removed. Design decisions for attach mode will be captured inline in this project document.
+
+2. Deliverables paths do not match the actual codebase (gap) — Resolved.
+
+   - internal/daemon/browser.go does not exist. Browser launch and CDP plumbing live in internal/browser/browser.go and internal/daemon/daemon.go (Run method).
+   - internal/daemon/config.go does not exist. daemon.Config is defined inline in internal/daemon/daemon.go.
+   - tests/cli/start-attach.bats assumes a bats test framework. The project uses scripts/test/cli/test-*.sh shell scripts plus Go *_test.go files; no bats infrastructure is present.
+   Resolution: Deliverables updated to match the actual layout — `internal/cli/start.go`, new `internal/browser/attach.go`, refactor of `internal/browser/browser.go`, edits to `internal/daemon/daemon.go` (Config + Run branch), `internal/browser/attach_test.go`, and `scripts/test/cli/test-start-attach.sh`.
+
+3. browser.Browser struct is launch-centric and Daemon owns the lifecycle (design)
+
+   internal/browser/browser.go's Browser embeds *exec.Cmd and a dataDir it deletes on Close(). internal/daemon/daemon.go always calls defer d.browser.Close() and connects via version.WebSocketURL fetched from the launched process. internal/cli/stop.go --force additionally kills any browser on the configured port. The project notes "Daemon assumes it owns the browser lifecycle" but does not specify the abstraction change required to support attach mode without killing an externally-owned browser or its profile.
+   Suggested resolution: Choose between (a) a Browser interface with Launched and Attached implementations, (b) an attached bool on the existing struct that short-circuits Close() and skips dataDir cleanup, or (c) a separate AttachedBrowser type. Either way, daemon.Run, the deferred Close, and stop.go --force semantics need explicit treatment.
+
+4. Auto-detect behavior when multiple browsers running (decision)
+
+   A. Connect to the first found (port-order priority).
+   B. List all and require explicit user selection.
+   C. Return error and require an explicit endpoint.
+
+5. Browser lifecycle management on stop (decision)
+
+   A. Never close an attached browser on stop (and never delete its profile).
+   B. Add a flag (e.g. --close-on-stop) to control close behaviour.
+   C. Prompt the user on stop (only viable in interactive mode).
+   This decision also constrains how internal/cli/stop.go --force behaves (it currently kills any browser on the CDP port via lsof).
+
+6. Remote CDP endpoint scope is under-specified (gap)
+
+   Scope says "Work with both local and remote CDP endpoints" and the syntax examples include localhost:9222, but the document does not address: non-loopback hosts (CDP grants full browser control with no auth), wss/TLS-fronted endpoints, URL forms accepted (host:port vs http(s)://host:port vs ws(s)://...), and how Browser.Version() — currently hardcoded to 127.0.0.1 — is reached for remote hosts. Without bounds, an implementer will either ship a security footgun or scope-creep into URL parsing and TLS plumbing.
+   Suggested resolution: Either remove "remote" from Scope and constrain attach mode to loopback, or specify the accepted URL forms, document the lack of CDP authentication, and decide whether wss is in scope.
+
+7. --headless interaction with --attach is unspecified (decision)
+
+   With --attach, the daemon no longer controls browser launch, so --headless has no effect. The project does not say what happens when both flags are passed.
+   A. Error if --headless and --attach are combined.
+   B. Silently ignore --headless when --attach is set.
+   C. Document --headless as a no-op under --attach without erroring.
+
+8. Auto-detect strategy lacks concrete bounds (gap)
+
+   The Technical Approach says "Check default Chrome ports (9222, 9223, etc.)" and "Query process list for Chrome --remote-debugging-port" without specifying the port range, the per-probe timeout, or whether process-list scanning is required (or limited to platforms supported elsewhere — Linux/macOS via lsof and ps). The implementer will pick something arbitrary that may need to be revisited.
+   Suggested resolution: Fix the probe range (e.g. 9222–9229) and a short per-probe timeout (e.g. 200 ms), and decide whether process-list scanning is in scope or whether port probing alone is sufficient.
+
+9. AGENTS.md was out of sync with the active project (gap) — Resolved.
+
+   AGENTS.md previously listed the wrong active project and pointed readers at a projects directory that no longer exists. AGENTS.md and `.ai/workflow.md` have been updated to reflect the current layout (project.md at the repository root) and to name this project as active.
 
 ## Technical Approach
 
@@ -118,7 +172,5 @@ Error handling:
 
 ## Related Work
 
-- Builds on: p-004 (Browser Launch)
-- Builds on: p-005 (Daemon & IPC)
-- Implements: dr-002 (CLI Browser Commands design)
-- Enables: Manual browser setup workflows
+- Builds on the existing browser launch and daemon/IPC infrastructure
+- Enables manual browser setup workflows

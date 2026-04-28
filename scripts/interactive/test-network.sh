@@ -15,7 +15,6 @@ cmd() {
 
 clear
 title "webctl network Command Test Suite"
-echo "Project: P-037"
 echo "Tests network request extraction with extensive filtering"
 echo ""
 echo "Prerequisites:"
@@ -581,5 +580,4 @@ read -p "Press Enter to finish..."
 title "Test Suite Complete"
 echo "All network command tests finished"
 echo ""
-echo "Review checklist in docs/projects/p-037-testing-network.md"
 echo "Document any issues discovered during testing"

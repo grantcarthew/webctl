@@ -25,7 +25,7 @@ Brief description: what, why, and how it fits into the larger system.
 - Goals - 3-7 specific, measurable outcomes
 - Scope - In scope and out of scope boundaries
 - Success Criteria - Unambiguous, testable outcomes as task list checkboxes
-- Deliverables - Concrete outputs (files, code, DRs)
+- Deliverables - Concrete outputs (files, code, docs)
 
 ### Optional Sections
 
@@ -44,7 +44,7 @@ Make success criteria testable:
 - Good: "Exit codes are consistent and documented"
 - Bad: "Make good error handling"
 
-Do not include implementation source code, resolved design decisions (those belong in DRs), or step-by-step instructions.
+Do not include implementation source code or step-by-step instructions. Capture decisions inline in the project document.
 
 ## Example
 

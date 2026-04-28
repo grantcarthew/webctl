@@ -129,7 +129,7 @@ webctl network
 
 ### History
 
-- 2025-12-19: Bug discovered during P-011 CDP navigation debugging
+- 2025-12-19: Bug discovered during CDP navigation debugging
 - 2025-12-19: Initial hypothesis - Runtime.evaluate blocks until page load
 - 2025-12-20: Critical discovery - blocking until networkIdle, not loadEventFired
 - 2025-12-20: Investigated Rod's session management (flatten: true) - not the cause
@@ -225,5 +225,5 @@ webctl start --port 9222
 
 ### History
 
-- 2025-12-23: Bug discovered during P-009 design review of navigate command
+- 2025-12-23: Bug discovered while reviewing the navigate command
 - 2025-12-23: Fix implemented and tested
