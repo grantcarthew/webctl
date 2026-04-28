@@ -119,7 +119,7 @@ type PageSession struct {
 
 // TabParams represents parameters for the "tab" command.
 type TabParams struct {
-	Action string `json:"action"`        // "list", "switch", "new", or "close"
+	Action string `json:"action"` // "list", "switch", "new", or "close"
 	Query  string `json:"query,omitempty"`
 	URL    string `json:"url,omitempty"` // Optional URL for "new"
 }

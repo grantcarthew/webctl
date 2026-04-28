@@ -325,4 +325,3 @@ func outputTabListJSON(data ipc.TabData) error {
 		"sessions":      sessions,
 	})
 }
-

@@ -60,7 +60,7 @@ type Daemon struct {
 	devServerMu     sync.Mutex     // Protects devServer
 	shutdown        chan struct{}
 	shutdownOnce    sync.Once
-	browserLostMsg  string     // Classified disconnect message, set when shutdown triggered by browser disconnection
+	browserLostMsg  string // Classified disconnect message, set when shutdown triggered by browser disconnection
 	browserLostMu   sync.Mutex
 	debug           bool
 	terminalState   *term.State // Saved terminal state for restoration

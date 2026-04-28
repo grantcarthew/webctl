@@ -87,8 +87,8 @@ const rootHelpTemplate = `{{with (or .Long .Short)}}{{. | trimTrailingWhitespace
 {{end}}`
 
 var rootCmd = &cobra.Command{
-	Use:   "webctl",
-	Short: "Browser automation CLI for AI agents",
+	Use:           "webctl",
+	Short:         "Browser automation CLI for AI agents",
 	Long:          `webctl captures DevTools data (console logs, network requests, JS errors) via a persistent daemon that buffers CDP events.`,
 	Version:       Version,
 	SilenceUsage:  true,
