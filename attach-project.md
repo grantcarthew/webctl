@@ -81,10 +81,10 @@ Out of Scope:
    - tests/cli/start-attach.bats assumes a bats test framework. The project uses scripts/test/cli/test-*.sh shell scripts plus Go *_test.go files; no bats infrastructure is present.
    Resolution: Deliverables updated to match the actual layout — `internal/cli/start.go`, new `internal/browser/attach.go`, refactor of `internal/browser/browser.go`, edits to `internal/daemon/daemon.go` (Config + Run branch), `internal/browser/attach_test.go`, and `scripts/test/cli/test-start-attach.sh`.
 
-3. browser.Browser struct is launch-centric and Daemon owns the lifecycle (design)
+3. browser.Browser struct is launch-centric and Daemon owns the lifecycle (design) — Resolved: attached flag on existing struct.
 
-   internal/browser/browser.go's Browser embeds *exec.Cmd and a dataDir it deletes on Close(). internal/daemon/daemon.go always calls defer d.browser.Close() and connects via version.WebSocketURL fetched from the launched process. internal/cli/stop.go --force additionally kills any browser on the configured port. The project notes "Daemon assumes it owns the browser lifecycle" but does not specify the abstraction change required to support attach mode without killing an externally-owned browser or its profile.
-   Suggested resolution: Choose between (a) a Browser interface with Launched and Attached implementations, (b) an attached bool on the existing struct that short-circuits Close() and skips dataDir cleanup, or (c) a separate AttachedBrowser type. Either way, daemon.Run, the deferred Close, and stop.go --force semantics need explicit treatment.
+   internal/browser/browser.go's Browser embeds *exec.Cmd and a dataDir it deletes on Close(). internal/daemon/daemon.go always calls defer d.browser.Close(). The struct has no field signalling "connected but not owned", so without a change every daemon-exit path (Ctrl-C, REPL EOF, IPC shutdown, server error) would SIGTERM the user's externally-launched browser.
+   Resolution: Add `host` and `attached` fields to the existing Browser struct. Introduce `browser.Attach(host string, port int) (*Browser, error)` that validates via FetchVersion and returns `&Browser{host, port, attached: true}`. Gate Close() to no-op the SIGTERM/SIGKILL and dataDir cleanup when attached. Default `host` to "127.0.0.1" for launched browsers; this also pays for Issue 6 (remote endpoints). The daemon's `defer d.browser.Close()` stays as-is. stop.go --force semantics are tracked separately under Issue 5.
 
 4. Auto-detect behavior when multiple browsers running (decision)
 
