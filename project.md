@@ -62,7 +62,7 @@ Out of Scope:
 - `internal/cli/stop.go` — `forceCleanup` reads the sidecar state file and skips `findBrowserOnPort` / `killProcess` when `attached==true`.
 - `internal/browser/attach_test.go` — Go unit tests for value parsing (full Issue 10 matrix), validation, auto-detect ranking, WebSocketURL rewrite.
 - `internal/browser/integration_test.go` — extend with an attach integration test gated by `testing.Short()`: launch a real Chrome via `browser.Start`, call `browser.Attach` against the same port from a fresh struct, exercise `Targets`/`Version`, and confirm `Close` on the attached handle leaves the launched browser alive. Protects the WebSocketURL rewrite against regressions that unit tests cannot see.
-- `internal/cli/start_test.go` (or extension of existing test file) — flag parsing tests for the merge logic and the `--headless` / `--port` composition rules.
+- `internal/cli/start_test.go` (new file; package already has main_test.go and sibling per-command test files) — flag parsing tests for the merge logic and the `--headless` / `--port` composition rules. Required rows include: `--attach somehost` → `(host="somehost", port=0)` enters remote auto-detect; `--attach somehost --port 9222` → `(host="somehost", port=9222)`; `--attach somehost:9223 --port 9222` → error "port specified twice"; bare `--attach` with default `--port` → `(host="127.0.0.1", port=0)` enters loopback auto-detect (confirms `Flags().Changed("port")` is consulted, not `startPort`).
 - `scripts/test/cli/test-start-attach.sh` — shell CLI tests covering attach flag combinations, error messages, and the stop-does-not-kill-attached invariant.
 - `docs/start.md` and a new `internal/cli/agent-help/attach.md` topic registered via `registerHelpTopics` in `internal/cli/help_agents.go`, documenting the new flag, the full Issue 10 value matrix, and the CDP-no-auth warning for remote use.
 - `internal/ipc/protocol.go` and `internal/cli/format/text.go` — extend `StatusData` with `Attached` / `Host` / `Port` and surface a `Mode:` line in text output (Issue 11).
@@ -130,6 +130,7 @@ Out of Scope:
      - If the `--attach` value carries a port (`:PORT`, `PORT`, `HOST:PORT`, `[v6]:PORT`) AND `--port` is also passed → error ("port specified twice").
      - If the `--attach` value carries no port (bare `--attach`, or value is host-only like `localhost`, `somehost`, `[::1]`) → `--port` supplies it.
      - If neither carries a port → auto-detect across 9222–9229 on the resolved host.
+   Note: `startPort` has default `9222` (internal/cli/start.go:26), so a literal read of the variable would always count as "carries a port". The implementer must use `cmd.Flags().Changed("port")` to detect the explicit case; the default does not count. `cfg.AttachPort = 0` is the sentinel for "auto-detect across the range".
 
 8. Auto-detect strategy lacks concrete bounds (gap) — Resolved: 9222–9229, three timeout cases, no process scan.
 
@@ -145,7 +146,8 @@ Out of Scope:
 
 9. AGENTS.md was out of sync with the active project (gap) — Resolved.
 
-   AGENTS.md previously listed the wrong active project and pointed readers at a projects directory that no longer exists. AGENTS.md and `.ai/workflow.md` have been updated to reflect the current layout (project.md at the repository root) and to name this project as active.
+   AGENTS.md previously listed the wrong active project and pointed readers at a projects directory that no longer exists. AGENTS.md has been updated to reflect the current layout (project.md at the repository root) and to name this project as active. (`.ai/workflow.md` does not exist in this repo; an earlier draft of this resolution mentioned it in error.)
+   Note: the file was briefly renamed to `attach-project.md` and then reverted; the canonical name is `project.md`. See Issue 12 for the realignment.
 
 10. --attach flag parsing pattern not specified (gap) — Resolved: NoOptDefVal + PreRunE arg-merge.
 
@@ -174,6 +176,16 @@ Out of Scope:
 
     `ipc.StatusData` exposes `{Running, PID, ActiveSession, Sessions}`. An agent inspecting status cannot tell whether the daemon is in launch or attach mode, which host it is bound to, or whether `stop --force` will leave the browser running. Without this, agents have to remember their own startup behaviour to make safe decisions.
     Resolution: extend `ipc.StatusData` with `Attached bool`, `Host string`, and `Port int`. The daemon populates them from its own state (the same fields that go to the sidecar file in Issue 5). The text formatter in `internal/cli/format/text.go` prints `Mode: attached (HOST:PORT)` or `Mode: launched (HOST:PORT)` as a single line. JSON output carries the new fields unconditionally so agents have a stable shape. Update `internal/ipc/protocol_test.go` and `internal/cli/format/format_test.go` for the new fields.
+
+12. AGENTS.md Active Project section is stale; Issue 9's resolution no longer holds (gap) — Resolved.
+
+    AGENTS.md line 126 still named `attach-project.md` as the current project document after the file was renamed back to `project.md`. An agent following AGENTS.md to find the project doc would look for a file that does not exist.
+    Resolution: AGENTS.md:126 updated to point at `project.md`. Issue 9's resolution amended with a note covering the rename history so future reviewers do not retrace this. The tombstone `attach-project.md` remains as a `git rm` for the next commit (already deleted from the working tree).
+
+13. --port default value blocks auto-detect on remote hosts (gap) — Resolved: use Flags().Changed; sentinel is port=0.
+
+    Issue 7 states: "If neither [--attach value nor --port] carries a port → auto-detect across 9222–9229." `startPort` (internal/cli/start.go:21,26) is declared with `IntVar(&startPort, "port", 9222, ...)`, so the variable always holds 9222 unless the user overrides it. A naive implementation that reads `startPort` directly would interpret `webctl start --attach somehost` as `somehost:9222` and never enter the remote auto-detect branch in the Technical Approach example matrix (line 213): `webctl start --attach somehost  # Remote, auto-detect 9222-9229`.
+    Resolution: Issue 7's resolution amended with an explicit note that `cmd.Flags().Changed("port")` must be used to detect the explicit case; the default 9222 does not count as "carries a port". `cfg.AttachPort = 0` is the sentinel for auto-detect. The `internal/cli/start_test.go` deliverable was extended with concrete required test rows that exercise this distinction, including a row that confirms `Flags().Changed("port")` (not the variable value) drives the composition decision.
 
 ## Technical Approach
 

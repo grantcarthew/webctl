@@ -123,7 +123,7 @@ Command abbreviation: `Execute` expands a unique prefix (e.g. `webctl nav` to `n
 
 The project document at the repo root drives current work:
 
-- `attach-project.md` (current): implement `webctl start --attach` to connect to an existing CDP endpoint instead of launching a new browser.
+- `project.md` (current): implement `webctl start --attach` to connect to an existing CDP endpoint instead of launching a new browser.
 
 Project documents follow `.ai/docs/project-writing-guide.md`. Status, Goals, Scope, Success Criteria, and Deliverables are required sections. Capture decisions inline rather than in source comments. When the active project changes, rename the root-level document and update this section.
 
