@@ -44,11 +44,11 @@ There is no existing config or data directory for webctl beyond the runtime sock
 
 ## Requirements
 
-1. When `webctl start` is run with no profile flag, the browser uses a persistent profile directory at `$XDG_DATA_HOME/webctl/profile`, falling back to `~/.local/share/webctl/profile` when `XDG_DATA_HOME` is unset. Chrome creates the directory if it does not exist. Its contents persist across `webctl stop` and subsequent `webctl start`.
+1. When `webctl start` is run with no profile flag, the browser uses a persistent profile directory at `$XDG_DATA_HOME/webctl/profile`, falling back to `~/.local/share/webctl/profile` when `XDG_DATA_HOME` is unset. The CLI resolver creates this directory with `os.MkdirAll(path, 0700)` when it resolves the persistent-default mode, rather than relying on Chrome to create it; this is deterministic across platforms and sets correct permissions on a directory that holds cookies and session state. Its contents persist across `webctl stop` and subsequent `webctl start`.
 
 2. A `--temp-profile` boolean flag on `webctl start` creates a throwaway profile for that launch and removes it on stop. This reproduces the pre-change default behavior.
 
-3. A `--user-data-dir <path>` string flag on `webctl start` launches the browser against the given directory, used as a literal path. webctl never deletes it.
+3. A `--user-data-dir <path>` string flag on `webctl start` launches the browser against the given directory. webctl never deletes it. The CLI rejects an empty value with a usage error and resolves the path with `filepath.Abs` before passing it down. This is required because `LaunchOptions.UserDataDir` overloads its value: an empty string means "temp profile, deleted on stop" and the literal `default` (`UserDataDirDefault`) means "system profile, no `--user-data-dir` flag." Without normalization, `--user-data-dir ""` would silently delete the named directory on stop and `--user-data-dir default` would launch the system profile instead of a directory called `default`. An absolute path can never alias either sentinel.
 
 4. A `--system-profile` boolean flag on `webctl start` launches against the user's real Chrome profile. The CLI maps it to the existing `UserDataDirDefault` value internally so the browser passes no `--user-data-dir` flag. webctl never deletes this profile.
 
@@ -58,7 +58,9 @@ There is no existing config or data directory for webctl beyond the runtime sock
 
 7. A persistent profile must not be left unusable by a stale Chrome singleton lock after an unclean browser exit. First determine whether Chrome already recovers a stale lock on relaunch against the default profile. Add explicit lock clearing only for cases Chrome does not handle on its own, and only when the lock is confirmed stale: the recorded PID is not a live process and the host matches. Never remove a lock that may belong to a running browser. If explicit clearing is added, `webctl stop --force` removes the confirmed-stale lock state as part of reaping orphaned processes.
 
-8. `docs/start.md` documents the profile modes and the default location. `webctl start --help` describes the new flags.
+8. `docs/start.md` documents the profile modes and the default location. `webctl start --help` describes the new flags. The `--system-profile` documentation warns that it requires no other Chrome instance to be running on the default profile: a running instance was not started with remote debugging, the new launch forwards to it and exits, and webctl cannot attach. The persistent default avoids this by using its own dedicated directory.
+
+9. `--system-profile` fails fast instead of hanging. When that mode is selected and the launched process exits within a short window without the CDP endpoint coming up, webctl reports a targeted error explaining the likely cause (an existing Chrome instance holds the default profile) rather than waiting out the full CDP start timeout.
 
 ## Constraints
 
@@ -67,22 +69,31 @@ There is no existing config or data directory for webctl beyond the runtime sock
 - Resolve XDG paths from the environment at runtime. Do not hardcode `/home` or a literal home path.
 - Do not regress attach-mode. If the in-progress `attached` flag gates `Close()`, profile cleanup must remain correct for both attached and launched browsers.
 - Follow the REPL flag-reset contract: if any new persistent global flag is added, reset it in `ExecuteArgs`. Per-command flags on `startCmd` are preferred and avoid this concern.
+- Test isolation: the bash CLI suite currently launches via bare `webctl start`, which this change repurposes to the shared persistent profile. The suite must continue to run against throwaway profiles, and must never touch the developer's real profile; the test harness, not the new default, owns that isolation. This requires both a sandboxed `$XDG_DATA_HOME` for the whole suite and `--temp-profile` on every launch that should stay throwaway, including the direct `webctl start` sites in `test-start-stop.sh`, not only `start_daemon()`.
 
 ## Implementation Plan
 
-1. Add an XDG-aware resolver for the default profile path (`$XDG_DATA_HOME/webctl/profile` with the `~/.local/share` fallback).
+1. Add an XDG-aware resolver for the default profile path (`$XDG_DATA_HOME/webctl/profile` with the `~/.local/share` fallback). The resolver creates the directory with `os.MkdirAll(path, 0700)` so the persistent default does not depend on Chrome creating it. This stays in the CLI layer; the browser layer still receives a concrete path. Applies only to the persistent default — `--user-data-dir` remains the user's responsibility, and the temp and system modes do not create anything here.
 
 2. Add `--temp-profile`, `--user-data-dir`, and `--system-profile` flags to `startCmd`. Reject any combination of the three with a usage error.
 
-3. Resolve the modes in the CLI into a single value passed to the daemon: temp profile resolves to an empty `UserDataDir` (so the browser creates and later deletes a temp dir); the default mode resolves to the persistent path; `--user-data-dir` passes its path through literally; `--system-profile` resolves to the `UserDataDirDefault` value.
+3. Resolve the modes in the CLI into a single value passed to the daemon: temp profile resolves to an empty `UserDataDir` (so the browser creates and later deletes a temp dir); the default mode resolves to the persistent path; `--user-data-dir` rejects an empty value and passes its `filepath.Abs`-resolved path through, so the value can never alias the empty-string or `default` sentinels; `--system-profile` resolves to the `UserDataDirDefault` value.
 
 4. Add a profile field to `daemon.Config`, set it in `runStart`, and pass it into `browser.LaunchOptions` from `daemon.Run`.
 
 5. Verify singleton-lock behavior before building anything: force-kill the browser, then run `webctl start` against the default profile and observe whether Chrome recovers on its own. Add lock clearing only if it does not, gated on a confirmed-stale lock (recorded PID not alive, host matches), and extend `webctl stop --force` to remove that lock state. Do not delete a lock that may be live.
 
-6. Update `docs/start.md` and the command help text.
+6. Update `docs/start.md` and the command help text, including the `--system-profile` warning that a running browser on the default profile blocks attachment.
 
-7. Add or extend tests: argument building per mode in `internal/browser`, the mutually-exclusive flag error in `internal/cli`, and a CLI bash test that writes a sentinel file into the resolved profile directory and asserts it survives a default stop/start cycle but not a `--temp-profile` cycle.
+   For `--system-profile`, detect the forward-and-quit case: if the launched process exits before the CDP endpoint responds, abort the wait early and return a targeted error pointing at an existing Chrome instance, rather than letting `waitForCDP` run its full timeout.
+
+   Implement the exit detection with a single process-exit watcher on `Browser`, established at spawn: one goroutine calls `cmd.Wait()` exactly once and closes a `done` channel, capturing the exit error. `waitForCDP` selects on `done` alongside its ticker and context so a dead process aborts the wait early (with the `--system-profile`-specific message when that mode is selected), and `Browser.Close()` waits on the same `done` channel instead of calling `cmd.Wait()` itself. Do not add a second `cmd.Wait()` in the startup path: `Wait` is single-call, so a startup-side `Wait` would collide with the one in `Close()` and break its SIGKILL-fallback timing. The shared watcher is mandatory, not optional, because the fail-fast path and `Close()` would otherwise both reap the process.
+
+7. Update the bash test harness for isolation, in two parts:
+   - Export `XDG_DATA_HOME` to a per-run temporary directory for the whole CLI suite (set it in the harness setup, remove it on cleanup). This shields the developer's real `~/.local/share/webctl/profile`, isolates every `webctl start` path at once, and gives the step-8 default-profile test a known sandbox to write into and tear down.
+   - Pass `--temp-profile` on the launches that should stay throwaway: `start_daemon()` in `scripts/bash_modules/setup.sh`, and the three direct `webctl start` invocations in `scripts/test/cli/test-start-stop.sh` that spawn a browser (initial start, `--port 9333`, `--json`). Patching only `start_daemon()` misses those direct sites. Without `--temp-profile`, every test shares `$XDG_DATA_HOME/webctl/profile`, where unclean `stop --force` teardowns leave a stale singleton lock that can block the next test's start, and profile state accumulates within a run.
+
+8. Add or extend tests: argument building per mode in `internal/browser`, the mutually-exclusive flag error in `internal/cli`, and a CLI bash test that explicitly opts into the default persistent profile, writes a sentinel file into the resolved profile directory under the suite's sandboxed `$XDG_DATA_HOME`, and asserts it survives a default stop/start cycle but not a `--temp-profile` cycle.
 
 ## Implementation Guidance
 
@@ -96,6 +107,7 @@ There is no existing config or data directory for webctl beyond the runtime sock
 - With `--temp-profile`, the profile directory does not persist after `webctl stop`, matching the previous default.
 - With `--user-data-dir <path>`, the browser uses that directory and webctl does not delete it on stop.
 - With `--system-profile`, the browser launches with no `--user-data-dir` flag and webctl does not delete any profile on stop.
+- With `--system-profile` while another Chrome instance already holds the default profile, `webctl start` fails quickly with an error naming the existing-instance cause, well inside the CDP start timeout, rather than hanging for the full wait.
 - Passing more than one of `--temp-profile`, `--user-data-dir`, or `--system-profile` produces a usage error and a non-zero exit.
 - After a browser is force-killed, a subsequent `webctl start` against the default profile launches successfully without manual lock removal.
 - `docs/start.md` and `webctl start --help` describe the profile modes and the default location.
