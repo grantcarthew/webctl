@@ -119,14 +119,6 @@ Command abbreviation: `Execute` expands a unique prefix (e.g. `webctl nav` to `n
 - The `CommandExecutor` field on `daemon.Config` lets the REPL execute commands in-process via `executor.Direct` instead of round-tripping through IPC.
 - Browser lifecycle: `internal/browser/browser.go` `Browser.Close()` always SIGTERMs the process and removes the temp data dir. The attach-mode work in progress (see Active Project) introduces an `attached` flag that no-ops Close for externally-launched browsers.
 
-## Active Project
-
-The project document at the repo root drives current work:
-
-- `project.md` (current): implement `webctl start --attach` to connect to an existing CDP endpoint instead of launching a new browser.
-
-Project documents follow `.ai/docs/project-writing-guide.md`. Status, Goals, Scope, Success Criteria, and Deliverables are required sections. Capture decisions inline rather than in source comments. When the active project changes, rename the root-level document and update this section.
-
 ## Documentation Conventions
 
 Two audiences, two styles.
