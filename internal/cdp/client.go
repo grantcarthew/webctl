@@ -25,11 +25,15 @@ type Client struct {
 	pending   sync.Map // map[int64]chan *Response
 	listeners sync.Map // map[string][]func(Event)
 
-	// closed signals that the client is shutting down
+	// closed signals that the client is shutting down. closeErr records the
+	// cause; both transition exactly once under closeMu via markClosed.
 	closed   atomic.Bool
 	closedCh chan struct{}
 	closeErr error
 	closeMu  sync.Mutex
+
+	// closeReq guards Close's teardown so it runs on the first call only.
+	closeReq sync.Once
 
 	// done signals that the read loop has exited
 	done chan struct{}
@@ -52,9 +56,13 @@ func Dial(ctx context.Context, wsURL string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to CDP endpoint: %w", err)
 	}
-	// Chrome can send large messages (DOM snapshots, console output, etc.)
-	// Default limit is 32KB which is too small. Set to 16MB.
-	conn.SetReadLimit(16 * 1024 * 1024)
+	// Disable the read limit. Chrome is a trusted local peer we launched, and
+	// it legitimately sends large messages (full response bodies, DOM snapshots,
+	// screenshots) whose size is bounded by real page data, not an adversary.
+	// A fixed limit is a misapplied untrusted-peer guard: exceeding it is fatal
+	// in coder/websocket, which tears down the CDP connection and forces the
+	// daemon to kill an otherwise-healthy browser.
+	conn.SetReadLimit(-1)
 	return NewClient(conn), nil
 }
 
@@ -126,21 +134,29 @@ func (c *Client) Subscribe(method string, handler func(Event)) {
 	handlers.add(handler)
 }
 
+// markClosed performs the shutdown transition exactly once: it records the
+// cause, marks the client closed, and unblocks callers waiting on closedCh.
+// Safe to call concurrently from Close and the read loop.
+func (c *Client) markClosed(cause error) {
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if c.closed.Load() {
+		return
+	}
+	c.closeErr = cause
+	c.closed.Store(true)
+	close(c.closedCh)
+}
+
 // Close closes the client connection and stops the read loop.
 func (c *Client) Close() error {
-	if c.closed.Swap(true) {
-		return nil // Already closed
-	}
-
-	close(c.closedCh)
-
-	c.closeMu.Lock()
-	err := c.conn.Close(websocket.StatusNormalClosure, "client closing")
-	c.closeMu.Unlock()
-
-	// Wait for read loop to exit
-	<-c.done
-
+	var err error
+	c.closeReq.Do(func() {
+		c.markClosed(nil)
+		err = c.conn.Close(websocket.StatusNormalClosure, "client closing")
+		// Wait for read loop to exit
+		<-c.done
+	})
 	return err
 }
 
@@ -159,13 +175,7 @@ func (c *Client) readLoop() {
 	for {
 		_, data, err := c.conn.Read(ctx)
 		if err != nil {
-			if !c.closed.Load() {
-				c.closeMu.Lock()
-				c.closeErr = err
-				c.closeMu.Unlock()
-				c.closed.Store(true)
-				close(c.closedCh)
-			}
+			c.markClosed(err)
 			return
 		}
 

@@ -358,6 +358,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return nil
 	case err := <-disconnectCh:
 		msg := classifyDisconnect(err)
+		d.debugf(false, "browser disconnect: %v", err)
 		fmt.Fprintf(os.Stderr, "\nError: %s - daemon shutting down\n", msg)
 		return nil
 	case err := <-errCh:
