@@ -16,6 +16,19 @@ type Browser struct {
 	port     int
 	dataDir  string
 	ownsData bool // true if we created the temp data dir
+
+	// systemProfile is true when launched against the user's real Chrome
+	// profile (UserDataDirDefault). Used to give a targeted error if the
+	// process exits during startup, which usually means an existing Chrome
+	// instance already holds that profile and the launch forwarded to it.
+	systemProfile bool
+
+	// done is closed by a single watcher goroutine after cmd.Wait() returns.
+	// waitErr holds that result. Wait is single-call, so this watcher is the
+	// sole reaper: both the startup fail-fast path and Close() observe the exit
+	// through done rather than calling cmd.Wait() themselves.
+	done    chan struct{}
+	waitErr error
 }
 
 // ErrBrowserClosed is returned when operating on a closed browser.
@@ -29,6 +42,12 @@ var ErrStartTimeout = errors.New("browser start timeout")
 
 // ErrPortInUse is returned when the requested port is already in use.
 var ErrPortInUse = errors.New("port is already in use")
+
+// ErrSystemProfileInUse is returned when --system-profile is selected but the
+// launched browser exits before CDP comes up, which typically means another
+// Chrome instance already holds the default profile and the new launch
+// forwarded to it (without remote debugging) and quit.
+var ErrSystemProfileInUse = errors.New("system Chrome profile is already in use by another browser instance")
 
 // isPortAvailable checks if a TCP port is available for binding.
 func isPortAvailable(port int) bool {
@@ -95,11 +114,20 @@ func StartWithBinary(binPath string, opts LaunchOptions) (*Browser, error) {
 	}
 
 	b := &Browser{
-		cmd:      cmd,
-		port:     port,
-		dataDir:  dataDir,
-		ownsData: opts.UserDataDir == "", // we created temp dir if UserDataDir was empty
+		cmd:           cmd,
+		port:          port,
+		dataDir:       dataDir,
+		ownsData:      opts.UserDataDir == "", // we created temp dir if UserDataDir was empty
+		systemProfile: opts.UserDataDir == UserDataDirDefault,
+		done:          make(chan struct{}),
 	}
+
+	// Single process-exit watcher. cmd.Wait is single-call, so this goroutine is
+	// the only reaper; waitForCDP and Close() both observe the exit via b.done.
+	go func() {
+		b.waitErr = b.cmd.Wait()
+		close(b.done)
+	}()
 
 	// Wait for CDP endpoint to become available
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -122,6 +150,10 @@ func (b *Browser) waitForCDP(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ErrStartTimeout
+		case <-b.done:
+			// Process died before CDP came up. Fail fast instead of waiting out
+			// the full timeout.
+			return b.startupExitError()
 		case <-ticker.C:
 			_, err := FetchVersion(ctx, "127.0.0.1", b.port)
 			if err == nil {
@@ -129,6 +161,18 @@ func (b *Browser) waitForCDP(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+// startupExitError builds the error for a browser that exited during startup.
+// It is only safe to read b.waitErr after b.done is closed.
+func (b *Browser) startupExitError() error {
+	if b.systemProfile {
+		return ErrSystemProfileInUse
+	}
+	if b.waitErr != nil {
+		return fmt.Errorf("browser exited during startup: %w", b.waitErr)
+	}
+	return fmt.Errorf("browser exited during startup before CDP became available")
 }
 
 // Port returns the CDP debugging port.
@@ -184,21 +228,17 @@ func (b *Browser) Close() error {
 		}
 	}
 
-	// Wait for process to exit with timeout
-	done := make(chan struct{})
-	go func() {
-		_ = b.cmd.Wait()
-		close(done)
-	}()
-
+	// Wait for the process to exit with a timeout. The watcher goroutine started
+	// in StartWithBinary owns the single cmd.Wait() call and closes b.done; we
+	// only observe it here.
 	select {
-	case <-done:
+	case <-b.done:
 		// Process exited cleanly
 	case <-time.After(5 * time.Second):
 		// Force kill after timeout. SIGKILL cannot be caught or ignored on POSIX,
 		// so the process will terminate and cmd.Wait() will return.
 		_ = b.cmd.Process.Kill()
-		<-done
+		<-b.done
 	}
 
 	// Clean up temp data directory

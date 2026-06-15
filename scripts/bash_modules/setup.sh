@@ -28,6 +28,9 @@ TEST_SERVER_PORT="${TEST_SERVER_PORT:-8888}"
 TEST_SERVER_PID=""
 DAEMON_STARTED_BY_TEST=false
 
+# Per-run sandboxed XDG data home (set by setup_xdg_sandbox).
+WEBCTL_TEST_XDG_DATA_HOME=""
+
 # Configurable timeout for navigation operations (seconds)
 # Can be overridden via environment variable
 TEST_TIMEOUT="${TEST_TIMEOUT:-30}"
@@ -115,12 +118,13 @@ function start_daemon() {
 
   log_message "Starting daemon${headless_flag:+ (headless)}..."
 
-  # Start daemon in background
+  # Start daemon in background with a throwaway profile so tests never share
+  # state or leave a stale singleton lock in the shared persistent profile.
   # Note: REPL is automatically skipped when stdin is not a TTY (background process)
   if [[ -n "${headless_flag}" ]]; then
-    "${WEBCTL_BINARY}" start --headless &
+    "${WEBCTL_BINARY}" start --headless --temp-profile &
   else
-    "${WEBCTL_BINARY}" start &
+    "${WEBCTL_BINARY}" start --temp-profile &
   fi
 
   # Wait for daemon to be ready (max 10 seconds)
@@ -654,9 +658,26 @@ function cleanup() {
   return ${exit_code}
 }
 
+function setup_xdg_sandbox() {
+  # setup_xdg_sandbox
+  # Points XDG_DATA_HOME at a per-run temp directory so the persistent default
+  # profile ($XDG_DATA_HOME/webctl/profile) never touches the developer's real
+  # ~/.local/share/webctl, and so default-profile tests have a known sandbox to
+  # write into and tear down. Registered for cleanup via TEMP_FILES.
+
+  if [[ -z "${WEBCTL_TEST_XDG_DATA_HOME}" ]]; then
+    WEBCTL_TEST_XDG_DATA_HOME=$(mktemp -d "/tmp/webctl-test-xdg-XXXXXX")
+    export XDG_DATA_HOME="${WEBCTL_TEST_XDG_DATA_HOME}"
+    TEMP_FILES+=("${WEBCTL_TEST_XDG_DATA_HOME}")
+    log_message "Sandboxed XDG_DATA_HOME at ${WEBCTL_TEST_XDG_DATA_HOME}"
+  fi
+}
+
 function setup_cleanup_trap() {
   # setup_cleanup_trap
-  # Sets up trap handlers for cleanup on exit/interrupt
+  # Sets up trap handlers for cleanup on exit/interrupt, and isolates XDG data.
+
+  setup_xdg_sandbox
 
   trap cleanup EXIT
   trap 'cleanup; exit 130' INT

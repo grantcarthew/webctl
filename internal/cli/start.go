@@ -2,9 +2,10 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 
+	"github.com/grantcarthew/webctl/internal/browser"
 	"github.com/grantcarthew/webctl/internal/daemon"
 	"github.com/spf13/cobra"
 )
@@ -12,19 +13,49 @@ import (
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start daemon and browser",
-	Long:  "Starts the webctl daemon which launches a browser and begins capturing CDP events.",
-	RunE:  runStart,
+	Long: `Starts the webctl daemon which launches a browser and begins capturing CDP events.
+
+Profile modes (mutually exclusive; default is the persistent profile):
+  (default)            Persistent profile at $XDG_DATA_HOME/webctl/profile
+                       (falls back to ~/.local/share/webctl/profile). Logins,
+                       cookies, and site state persist across restarts.
+  --temp-profile       Throwaway profile created on start and deleted on stop.
+  --user-data-dir DIR  Use DIR as the profile. webctl never deletes it.
+  --system-profile     Use your real Chrome profile. Requires that no other
+                       Chrome instance is running on the default profile, or the
+                       launch forwards to it and webctl cannot attach.`,
+	RunE: runStart,
 }
 
 var (
-	startHeadless bool
-	startPort     int
+	startHeadless      bool
+	startPort          int
+	startTempProfile   bool
+	startUserDataDir   string
+	startSystemProfile bool
 )
 
 func init() {
 	startCmd.Flags().BoolVar(&startHeadless, "headless", false, "Run browser in headless mode")
 	startCmd.Flags().IntVar(&startPort, "port", 9222, "CDP port for browser")
+	startCmd.Flags().BoolVar(&startTempProfile, "temp-profile", false, "Use a throwaway profile, deleted on stop")
+	startCmd.Flags().StringVar(&startUserDataDir, "user-data-dir", "", "Use an explicit profile directory, never deleted by webctl")
+	startCmd.Flags().BoolVar(&startSystemProfile, "system-profile", false, "Use the real Chrome profile (no other Chrome may run on it)")
 	rootCmd.AddCommand(startCmd)
+}
+
+// startupErrorHint returns the guidance line for a daemon startup failure, or
+// "" when no hint applies. A held system profile is matched by its typed error
+// so it does not fall through to the orphan-reaping hint, which would be wrong
+// advice for an externally launched Chrome.
+func startupErrorHint(err error) string {
+	switch {
+	case errors.Is(err, browser.ErrSystemProfileInUse):
+		return "close the running Chrome on the default profile, or start with the persistent default profile or --temp-profile"
+	case errors.Is(err, browser.ErrPortInUse):
+		return "use 'webctl stop --force' to kill orphaned processes"
+	}
+	return ""
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
@@ -40,9 +71,16 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	debugParam("headless=%v port=%d", startHeadless, startPort)
 
+	userDataDir, err := resolveProfile(startTempProfile, startUserDataDir, cmd.Flags().Changed("user-data-dir"), startSystemProfile)
+	if err != nil {
+		return outputError(err.Error())
+	}
+	debugParam("profile=%q", userDataDir)
+
 	cfg := daemon.DefaultConfig()
 	cfg.Headless = startHeadless
 	cfg.Port = startPort
+	cfg.UserDataDir = userDataDir
 	cfg.Debug = Debug
 
 	// Declare d first so the closure can capture it.
@@ -73,9 +111,8 @@ func runStart(cmd *cobra.Command, args []string) error {
 	// Run daemon (blocks until shutdown)
 	if err := d.Run(context.Background()); err != nil {
 		outErr := outputError(err.Error())
-		// Add hint for port-in-use errors
-		if strings.Contains(err.Error(), "port") || strings.Contains(err.Error(), "in use") {
-			outputHint("use 'webctl stop --force' to kill orphaned processes")
+		if hint := startupErrorHint(err); hint != "" {
+			outputHint(hint)
 		}
 		return outErr
 	}

@@ -7,6 +7,15 @@ import (
 	"testing"
 )
 
+func containsArg(args []string, want string) bool {
+	for _, arg := range args {
+		if arg == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestBuildArgs_DefaultPort(t *testing.T) {
 	t.Parallel()
 
@@ -83,16 +92,32 @@ func TestBuildArgs_UserDataDir(t *testing.T) {
 	opts := LaunchOptions{UserDataDir: "/tmp/test-profile"}
 	args := buildArgs(opts)
 
-	found := false
-	for _, arg := range args {
-		if arg == "--user-data-dir=/tmp/test-profile" {
-			found = true
-			break
-		}
-	}
-
-	if !found {
+	if !containsArg(args, "--user-data-dir=/tmp/test-profile") {
 		t.Errorf("expected user-data-dir flag, args: %v", args)
+	}
+}
+
+func TestBuildArgs_ConcretePathHidesCrashRestoreBubble(t *testing.T) {
+	t.Parallel()
+
+	opts := LaunchOptions{UserDataDir: "/tmp/test-profile"}
+	args := buildArgs(opts)
+
+	if !containsArg(args, "--hide-crash-restore-bubble") {
+		t.Errorf("expected --hide-crash-restore-bubble for a concrete profile path, args: %v", args)
+	}
+}
+
+func TestBuildArgs_DefaultProfileNoCrashRestoreFlag(t *testing.T) {
+	t.Parallel()
+
+	// The system profile (UserDataDirDefault) must not be altered: no
+	// --user-data-dir and no crash-restore suppression.
+	opts := LaunchOptions{UserDataDir: UserDataDirDefault}
+	args := buildArgs(opts)
+
+	if containsArg(args, "--hide-crash-restore-bubble") {
+		t.Errorf("did not expect --hide-crash-restore-bubble for the system profile, args: %v", args)
 	}
 }
 

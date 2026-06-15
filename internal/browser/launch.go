@@ -89,8 +89,19 @@ func buildArgs(opts LaunchOptions) []string {
 	// Handle user data directory:
 	// - Empty or "default": no flag (use user's Chrome profile)
 	// - Any path: use that directory
+	//
+	// When a concrete profile directory is used, suppress the crash-restore
+	// bubble. An unclean exit (SIGTERM race, stop --force SIGKILL, crash) leaves
+	// exit_type=Crashed in the profile's Preferences, and the next launch would
+	// otherwise show the "Restore pages?" bubble over the active page. By the
+	// time buildArgs runs, spawnProcess has resolved the temp-profile case into a
+	// concrete path too, so this covers the persistent default, --user-data-dir,
+	// and (harmlessly, since a fresh temp profile has nothing to restore) temp.
+	// The system profile carries UserDataDirDefault, falls outside this branch,
+	// and is left untouched because it is the user's real profile.
 	if opts.UserDataDir != "" && opts.UserDataDir != UserDataDirDefault {
 		args = append(args, fmt.Sprintf("--user-data-dir=%s", opts.UserDataDir))
+		args = append(args, "--hide-crash-restore-bubble")
 	}
 
 	// Open about:blank to avoid any default page loading

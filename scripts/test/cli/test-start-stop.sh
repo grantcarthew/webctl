@@ -55,8 +55,9 @@ assert_not_contains "${TEST_STDOUT}" $'\e[' "Output has no ANSI codes"
 test_section "Start Command"
 
 # Start daemon in headless mode
-# The start command blocks, so we run it in background
-"${WEBCTL_BINARY}" start --headless &
+# The start command blocks, so we run it in background.
+# --temp-profile keeps the test off the shared persistent profile.
+"${WEBCTL_BINARY}" start --headless --temp-profile &
 sleep "${DAEMON_START_WAIT}"
 
 # Verify daemon started using assertion framework
@@ -241,7 +242,7 @@ test_section "Custom Port Configuration"
 force_stop_daemon
 
 # Start daemon on custom port (browser connects to 9333 instead of 9222)
-"${WEBCTL_BINARY}" start --headless --port 9333 &
+"${WEBCTL_BINARY}" start --headless --port 9333 --temp-profile &
 sleep "${DAEMON_START_WAIT}"
 
 # Verify daemon started successfully
@@ -272,7 +273,7 @@ force_stop_daemon
 # Test: start --json output format
 # Start command blocks, so we capture output to a temp file and run in background
 JSON_OUTPUT_FILE=$(create_temp_file)
-"${WEBCTL_BINARY}" start --headless --json >"${JSON_OUTPUT_FILE}" 2>&1 &
+"${WEBCTL_BINARY}" start --headless --json --temp-profile >"${JSON_OUTPUT_FILE}" 2>&1 &
 
 # Wait for daemon to start and output to be written
 sleep "${DAEMON_START_WAIT}"
@@ -312,6 +313,135 @@ if [[ "${TEST_EXIT_CODE}" -eq 0 ]]; then
   sleep "${DAEMON_STOP_WAIT}"
   DAEMON_STARTED_BY_TEST=false
 fi
+
+# =============================================================================
+# Persistent Default Profile Tests
+# =============================================================================
+
+test_section "Persistent Default Profile"
+
+# The XDG sandbox (setup_cleanup_trap) points the persistent default profile
+# here. These tests opt into the default explicitly (no profile flag).
+PROFILE_DIR="${XDG_DATA_HOME}/webctl/profile"
+SENTINEL_FILE="${PROFILE_DIR}/webctl-test-sentinel"
+
+force_stop_daemon
+
+# Start with the default persistent profile (no profile flag)
+"${WEBCTL_BINARY}" start --headless &
+attempts=0
+while [[ ${attempts} -lt 20 ]]; do
+  is_daemon_running && break
+  sleep 0.5
+  ((attempts++))
+done
+if is_daemon_running; then TEST_EXIT_CODE=0; DAEMON_STARTED_BY_TEST=true; else TEST_EXIT_CODE=1; fi
+assert_success "${TEST_EXIT_CODE}" "Default profile: daemon started"
+
+# The resolver must have created the persistent profile directory
+assert_dir_exists "${PROFILE_DIR}" "Default profile: directory created under XDG_DATA_HOME"
+
+# Write a sentinel into the profile directory
+echo "persistent-profile-sentinel" >"${SENTINEL_FILE}"
+assert_file_exists "${SENTINEL_FILE}" "Default profile: sentinel written"
+
+# Graceful stop must NOT delete the persistent profile
+run_test "default profile stop" "${WEBCTL_BINARY}" stop
+assert_success "${TEST_EXIT_CODE}" "Default profile: graceful stop succeeds"
+attempts=0
+while [[ ${attempts} -lt 10 ]]; do
+  is_daemon_running || break
+  sleep 0.5
+  ((attempts++))
+done
+DAEMON_STARTED_BY_TEST=false
+
+assert_file_exists "${SENTINEL_FILE}" "Default profile: sentinel survives stop"
+PROFILE_CONTENTS=$(ls -A "${PROFILE_DIR}" 2>/dev/null)
+assert_not_empty "${PROFILE_CONTENTS}" "Default profile: directory non-empty after stop"
+
+# Let the browser release the CDP port before relaunching on the same port.
+sleep "${DAEMON_STOP_WAIT}"
+
+# Restart with the default profile and confirm the same directory is reused
+"${WEBCTL_BINARY}" start --headless &
+attempts=0
+while [[ ${attempts} -lt 20 ]]; do
+  is_daemon_running && break
+  sleep 0.5
+  ((attempts++))
+done
+if is_daemon_running; then TEST_EXIT_CODE=0; DAEMON_STARTED_BY_TEST=true; else TEST_EXIT_CODE=1; fi
+assert_success "${TEST_EXIT_CODE}" "Default profile: daemon restarted"
+assert_file_exists "${SENTINEL_FILE}" "Default profile: sentinel reused across restart"
+
+# Recover from an unclean exit. 'stop --force' SIGKILLs the browser, leaving a
+# crashed exit_type and a stale singleton lock in the profile. The next start on
+# the same persistent profile must come up without manual lock removal. This
+# guards the stale-lock auto-recovery the implementation relies on; the
+# crash-restore bubble it also suppresses is UI and cannot be asserted headlessly.
+force_stop_daemon
+sleep "${DAEMON_STOP_WAIT}"
+
+"${WEBCTL_BINARY}" start --headless &
+attempts=0
+while [[ ${attempts} -lt 20 ]]; do
+  is_daemon_running && break
+  sleep 0.5
+  ((attempts++))
+done
+if is_daemon_running; then TEST_EXIT_CODE=0; DAEMON_STARTED_BY_TEST=true; else TEST_EXIT_CODE=1; fi
+assert_success "${TEST_EXIT_CODE}" "Default profile: recovers after unclean force-kill (stale lock)"
+assert_file_exists "${SENTINEL_FILE}" "Default profile: profile preserved across unclean exit"
+
+run_test "default profile cleanup stop" "${WEBCTL_BINARY}" stop
+attempts=0
+while [[ ${attempts} -lt 10 ]]; do
+  is_daemon_running || break
+  sleep 0.5
+  ((attempts++))
+done
+DAEMON_STARTED_BY_TEST=false
+
+# =============================================================================
+# Temp Profile Non-Persistence Tests
+# =============================================================================
+
+test_section "Temp Profile Non-Persistence"
+
+force_stop_daemon
+
+# Snapshot existing webctl temp profiles, then start one and diff to find ours
+TEMP_BEFORE=$(ls -d /tmp/webctl-chrome-* 2>/dev/null | sort)
+"${WEBCTL_BINARY}" start --headless --temp-profile &
+attempts=0
+while [[ ${attempts} -lt 20 ]]; do
+  is_daemon_running && break
+  sleep 0.5
+  ((attempts++))
+done
+if is_daemon_running; then TEST_EXIT_CODE=0; DAEMON_STARTED_BY_TEST=true; else TEST_EXIT_CODE=1; fi
+assert_success "${TEST_EXIT_CODE}" "Temp profile: daemon started"
+
+TEMP_AFTER=$(ls -d /tmp/webctl-chrome-* 2>/dev/null | sort)
+TEMP_PROFILE_DIR=$(comm -13 <(echo "${TEMP_BEFORE}") <(echo "${TEMP_AFTER}") | grep -v '^$' | head -1)
+assert_not_empty "${TEMP_PROFILE_DIR}" "Temp profile: throwaway directory created"
+assert_dir_exists "${TEMP_PROFILE_DIR}" "Temp profile: directory exists while running"
+
+# Graceful stop must delete the throwaway profile. The browser teardown that
+# removes the directory runs after the daemon acknowledges shutdown, so poll for
+# removal rather than asserting immediately.
+run_test "temp profile stop" "${WEBCTL_BINARY}" stop
+assert_success "${TEST_EXIT_CODE}" "Temp profile: graceful stop succeeds"
+attempts=0
+while [[ ${attempts} -lt 20 ]]; do
+  [[ -d "${TEMP_PROFILE_DIR}" ]] || break
+  sleep 0.5
+  ((attempts++))
+done
+DAEMON_STARTED_BY_TEST=false
+
+assert_dir_not_exists "${TEMP_PROFILE_DIR}" "Temp profile: directory deleted after stop"
 
 # =============================================================================
 # Summary

@@ -433,6 +433,24 @@ function assert_dir_exists() {
   fi
 }
 
+function assert_dir_not_exists() {
+  # assert_dir_not_exists path [message]
+  # Asserts that directory does not exist
+
+  local path="${1}"
+  local message="${2:-Directory does not exist}"
+
+  if [[ ! -d "${path}" ]]; then
+    log_success "${message}: ${path}"
+    increment_pass
+    return 0
+  else
+    log_failure "${message}: ${path} exists but should not"
+    increment_fail
+    return 1
+  fi
+}
+
 # Numeric Assertions
 # -----------------------------------------------------------------------------
 

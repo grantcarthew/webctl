@@ -25,12 +25,18 @@ const DefaultBufferSize = 10000
 
 // Config holds daemon configuration.
 type Config struct {
-	Headless   bool
-	Port       int
-	SocketPath string
-	PIDPath    string
-	BufferSize int
-	Debug      bool
+	Headless bool
+	Port     int
+	// UserDataDir is the resolved browser profile selection, passed straight to
+	// browser.LaunchOptions. The CLI owns mode resolution; the daemon only
+	// carries the value. Empty means a throwaway temp profile, the
+	// browser.UserDataDirDefault sentinel means the user's system Chrome
+	// profile, and any other value is a concrete persistent directory.
+	UserDataDir string
+	SocketPath  string
+	PIDPath     string
+	BufferSize  int
+	Debug       bool
 	// CommandExecutor is called by REPL for CLI command execution with flags.
 	// If nil, REPL falls back to basic IPC-only execution.
 	CommandExecutor ipc.CommandExecutor
@@ -216,8 +222,9 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	// Start browser
 	b, err := browser.Start(browser.LaunchOptions{
-		Port:     d.config.Port,
-		Headless: d.config.Headless,
+		Port:        d.config.Port,
+		Headless:    d.config.Headless,
+		UserDataDir: d.config.UserDataDir,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to start browser: %w", err)
