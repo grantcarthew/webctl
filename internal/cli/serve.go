@@ -109,6 +109,13 @@ func runServeWithDaemon(mode, directory, proxyURL string) error {
 		return ExecuteArgs(args)
 	}
 
+	// Signal IPC readiness so command issuance waits for a serving daemon rather
+	// than a fixed sleep. Nil-safe by contract, so this caller opts in explicitly.
+	ready := make(chan struct{})
+	cfg.ReadyCallback = func(int) {
+		close(ready)
+	}
+
 	d = daemon.New(cfg)
 
 	// Output startup message
@@ -120,19 +127,18 @@ func runServeWithDaemon(mode, directory, proxyURL string) error {
 		daemonErr <- d.Run(context.Background())
 	}()
 
-	// Wait for daemon to start (give it a moment to initialize)
-	time.Sleep(500 * time.Millisecond)
-
-	// Check if daemon failed to start
+	// Proceed the instant the daemon is serving IPC, or fail fast the instant Run
+	// returns an error before serving. No fixed-duration wait, so a cold-start
+	// that exceeds the old 500ms no longer races the socket.
 	select {
 	case err := <-daemonErr:
 		outErr := outputError(fmt.Sprintf("failed to start daemon: %v", err))
-		if strings.Contains(err.Error(), "port") || strings.Contains(err.Error(), "in use") {
-			outputHint("use 'webctl stop --force' to kill orphaned processes")
+		if hint := startupErrorHint(err); hint != "" {
+			outputHint(hint)
 		}
 		return outErr
-	default:
-		// Daemon started successfully
+	case <-ready:
+		// Daemon is serving IPC; proceed to issue commands.
 	}
 
 	// Use direct executor since daemon is in-process

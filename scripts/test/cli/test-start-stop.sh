@@ -303,7 +303,7 @@ if [[ "${TEST_EXIT_CODE}" -eq 0 ]]; then
   if [[ "${TEST_EXIT_CODE}" -eq 0 ]]; then
     TEST_STDOUT="${JSON_OUTPUT}"
     assert_json_field "${TEST_STDOUT}" ".ok" "true" "JSON ok field is true"
-    assert_json_field "${TEST_STDOUT}" ".data.message" "daemon starting" "JSON message field"
+    assert_json_field "${TEST_STDOUT}" ".data.message" "daemon ready" "JSON message field"
     assert_json_field "${TEST_STDOUT}" ".data.port" "9222" "JSON port field"
   fi
 
@@ -312,6 +312,80 @@ if [[ "${TEST_EXIT_CODE}" -eq 0 ]]; then
   assert_success "${TEST_EXIT_CODE}" "Cleanup succeeded"
   sleep "${DAEMON_STOP_WAIT}"
   DAEMON_STARTED_BY_TEST=false
+fi
+
+# =============================================================================
+# Start Failure Contract Tests (no success line before error)
+# =============================================================================
+
+test_section "Start Failure Contract (port in use)"
+
+# Regression guard for the success-before-error contract: a start that fails
+# before the daemon is serving IPC must emit only the failure. We occupy the
+# default CDP port so browser.Start takes the fail-fast ErrPortInUse branch and
+# returns before any browser process spawns - a portable pre-readiness failure
+# that needs no display server or Chrome.
+force_stop_daemon
+
+if command -v python3 >/dev/null 2>&1; then
+  # Wait for any active listener on 9222 (a browser from a previous section still
+  # tearing down) to exit. SO_REUSEADDR lets the holder bind over a leftover
+  # TIME_WAIT socket but not over a live LISTEN (that needs SO_REUSEPORT), so an
+  # un-dead prior listener would make the holder's bind fail and self-skip the test.
+  attempts=0
+  while [[ ${attempts} -lt 40 ]]; do
+    lsof -iTCP:9222 -sTCP:LISTEN -P -n >/dev/null 2>&1 || break
+    sleep 0.25
+    ((attempts++))
+  done
+
+  # Hold 127.0.0.1:9222 with a listening socket. SO_REUSEADDR mirrors Go's
+  # net.Listen so the holder can bind over a TIME_WAIT socket left by a Chrome
+  # killed in a previous section, exactly as isPortAvailable would. With the
+  # holder in LISTEN, isPortAvailable fails (two live listens need SO_REUSEPORT,
+  # which neither sets), so the explicit --port 9222 start hits the fail-fast
+  # ErrPortInUse branch before any browser process spawns.
+  python3 -c 'import socket,time; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(("127.0.0.1",9222)); s.listen(1); time.sleep(60)' &
+  PORT_HOLDER_PID=$!
+
+  # Confirm the holder is actually listening before issuing the start.
+  attempts=0
+  holder_ready=false
+  while [[ ${attempts} -lt 40 ]]; do
+    if lsof -iTCP:9222 -sTCP:LISTEN -P -n >/dev/null 2>&1; then
+      holder_ready=true
+      break
+    fi
+    sleep 0.25
+    ((attempts++))
+  done
+
+  if [[ "${holder_ready}" == "true" ]]; then
+    # holder_ready confirms a live listener on 9222, so start is guaranteed to
+    # fast-fail via ErrPortInUse before spawning a browser - that is the contract
+    # under test. The timeout below is only a backstop against an infinite hang
+    # should that guarantee ever regress, so it is optional: fall back to running
+    # unguarded where neither timeout nor gtimeout exists (e.g. stock macOS).
+    timeout_cmd=""
+    if command -v timeout >/dev/null 2>&1; then
+      timeout_cmd="timeout 15"
+    elif command -v gtimeout >/dev/null 2>&1; then
+      timeout_cmd="gtimeout 15"
+    fi
+    run_test "start --json with port held" ${timeout_cmd} "${WEBCTL_BINARY}" start --headless --json --port 9222 --temp-profile
+    assert_failure "${TEST_EXIT_CODE}" "Start fails when CDP port is already in use"
+    assert_not_contains "${TEST_STDOUT}" '"ok"' "stdout carries no machine-readable result"
+    assert_json_field "${TEST_STDERR}" ".ok" "false" "stderr carries the single ok:false error"
+  else
+    log_failure "Could not hold port 9222 for start-failure test"
+    increment_fail
+  fi
+
+  kill "${PORT_HOLDER_PID}" 2>/dev/null || true
+  wait "${PORT_HOLDER_PID}" 2>/dev/null || true
+  force_stop_daemon
+else
+  log_message "Skipping port-in-use start failure test (python3 not available)"
 fi
 
 # =============================================================================

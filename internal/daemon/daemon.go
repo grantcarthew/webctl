@@ -23,6 +23,13 @@ import (
 // DefaultBufferSize is the default capacity for event buffers.
 const DefaultBufferSize = 10000
 
+// ReadyCallback is invoked once from Run the moment the daemon is serving IPC:
+// the browser is launched, CDP is connected, and the IPC socket is accepting
+// commands. port is the CDP port actually bound, which may differ from the
+// requested port when auto-selection is used. It fires before any terminal-mode
+// change, so readiness output is identical whether or not stdin is a TTY.
+type ReadyCallback func(port int)
+
 // Config holds daemon configuration.
 type Config struct {
 	Headless bool
@@ -40,6 +47,10 @@ type Config struct {
 	// CommandExecutor is called by REPL for CLI command execution with flags.
 	// If nil, REPL falls back to basic IPC-only execution.
 	CommandExecutor ipc.CommandExecutor
+	// ReadyCallback, if non-nil, is invoked once from Run when the daemon
+	// reaches operational readiness (IPC serving). Mirrors CommandExecutor in
+	// being optional and nil-safe: a caller that leaves it unset is unaffected.
+	ReadyCallback ReadyCallback
 }
 
 // DefaultConfig returns the default daemon configuration.
@@ -307,6 +318,15 @@ func (d *Daemon) Run(ctx context.Context) error {
 	go func() {
 		errCh <- d.server.Serve(ctx)
 	}()
+
+	// Signal readiness now that IPC is serving. Fire before the REPL block: the
+	// REPL puts the terminal into raw mode, and emitting readiness output after
+	// that would let it race raw-mode entry and render differently on a TTY than
+	// on non-TTY stdin. The bound port (resolved earlier via b.Port()) is passed
+	// so consumers report the actual port rather than the requested one.
+	if d.config.ReadyCallback != nil {
+		d.config.ReadyCallback(d.config.Port)
+	}
 
 	// Start REPL if stdin is a TTY.
 	// replDone is only closed when REPL exits; if stdin is not a TTY,

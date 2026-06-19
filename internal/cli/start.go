@@ -95,18 +95,22 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return ExecuteArgs(args)
 	}
 
-	d = daemon.New(cfg)
-
-	// Output startup message
-	if JSONOutput {
-		_ = outputSuccess(map[string]any{
-			"message": "daemon starting",
-			"port":    startPort,
-		})
-	} else {
-		// Text mode: just output OK
-		_ = outputSuccess(nil)
+	// Report success only once the daemon is serving IPC, so a start that fails
+	// before readiness emits its error without a preceding success line. Run
+	// invokes this from within its blocking call, before any terminal-mode change.
+	cfg.ReadyCallback = func(port int) {
+		if JSONOutput {
+			_ = outputSuccess(map[string]any{
+				"message": "daemon ready",
+				"port":    port,
+			})
+		} else {
+			// Text mode: just output OK
+			_ = outputSuccess(nil)
+		}
 	}
+
+	d = daemon.New(cfg)
 
 	// Run daemon (blocks until shutdown)
 	if err := d.Run(context.Background()); err != nil {
