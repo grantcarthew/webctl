@@ -88,6 +88,66 @@ assert_success "${TEST_EXIT_CODE}" "html save to directory returns success"
 assert_contains "${TEST_STDOUT}" "${TEMP_HTML_DIR}/" "Output shows directory path"
 
 # =============================================================================
+# Markdown Command Tests
+# =============================================================================
+
+test_section "Markdown Command - Basic Output"
+
+# Navigate to navigation page
+run_test "setup: navigate to navigation.html for markdown" "${WEBCTL_BINARY}" navigate "$(get_test_url '/pages/navigation.html')"
+assert_success "${TEST_EXIT_CODE}" "Navigate succeeded"
+
+# Wait for page to fully load
+sleep 2
+
+# Test: Basic Markdown output to stdout
+run_test "markdown basic output" "${WEBCTL_BINARY}" markdown
+assert_success "${TEST_EXIT_CODE}" "markdown command returns success"
+assert_contains "${TEST_STDOUT}" "Navigation Test Page" "Output contains page heading text"
+assert_not_contains "${TEST_STDOUT}" "<html" "Output is Markdown, not raw HTML"
+
+# Test: md alias resolves to markdown
+run_test "md alias output" "${WEBCTL_BINARY}" md
+assert_success "${TEST_EXIT_CODE}" "md alias returns success"
+assert_contains "${TEST_STDOUT}" "Navigation Test Page" "Alias output contains page heading text"
+
+test_section "Markdown Command - Selector Filtering"
+
+# Test: Markdown with selector filtering converts the raw element subtree only,
+# without html --select's identifier headers, -- separators, or HTML tags.
+run_test "markdown with --select h1" "${WEBCTL_BINARY}" markdown --select "h1"
+assert_success "${TEST_EXIT_CODE}" "markdown --select returns success"
+assert_contains "${TEST_STDOUT}" "Navigation Test Page" "Output contains h1 content"
+assert_not_contains "${TEST_STDOUT}" "<h1>" "Selected subtree is converted to Markdown, not raw HTML"
+
+test_section "Markdown Command - Text Search"
+
+# Test: Markdown with text search
+run_test "markdown with --find" "${WEBCTL_BINARY}" markdown --find "Navigation"
+assert_success "${TEST_EXIT_CODE}" "markdown --find returns success"
+assert_contains "${TEST_STDOUT}" "Navigation" "Output contains searched text"
+
+test_section "Markdown Command - Save Modes"
+
+# Test: Save to temp
+run_test "markdown save to temp" "${WEBCTL_BINARY}" markdown save
+assert_success "${TEST_EXIT_CODE}" "markdown save returns success"
+assert_contains "${TEST_STDOUT}" ".md" "Output shows temp file path"
+
+# Test: Save to custom file
+TEMP_MD_FILE=$(create_temp_file ".md")
+run_test "markdown save to custom file" "${WEBCTL_BINARY}" markdown save "${TEMP_MD_FILE}"
+assert_success "${TEST_EXIT_CODE}" "markdown save to file returns success"
+assert_file_exists "${TEMP_MD_FILE}" "Custom Markdown file created"
+assert_file_contains "${TEMP_MD_FILE}" "Navigation Test Page" "Saved file contains page content"
+
+# Test: Save to directory
+TEMP_MD_DIR=$(create_temp_dir)
+run_test "markdown save to directory" "${WEBCTL_BINARY}" markdown save "${TEMP_MD_DIR}/"
+assert_success "${TEST_EXIT_CODE}" "markdown save to directory returns success"
+assert_contains "${TEST_STDOUT}" "${TEMP_MD_DIR}/" "Output shows directory path"
+
+# =============================================================================
 # CSS Command Tests
 # =============================================================================
 

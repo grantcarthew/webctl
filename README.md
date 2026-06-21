@@ -30,7 +30,7 @@ Under active development.
 - Lifecycle: `start`, `stop` (with `--force` reaper), `status`, `clear`
 - Navigation: `navigate`, `reload`, `back`, `forward`
 - Tabs: `tab` (list, switch, new, close)
-- Observation: `html`, `css`, `console`, `network`, `cookies`, `screenshot`, `eval`
+- Observation: `html`, `markdown`, `css`, `console`, `network`, `cookies`, `screenshot`, `eval`
 - Interaction: `click`, `type`, `select`, `scroll`, `focus`, `key`
 - Synchronisation: `ready` (page load, selector, network idle, JS condition)
 - Local server: `serve` (static files or reverse proxy with hot reload)
@@ -46,7 +46,7 @@ Under active development.
 | Lifecycle | start, stop, status, clear |
 | Navigation | navigate, reload, back, forward |
 | Tabs | tab |
-| Observation | html, css, console, network, cookies, screenshot, eval |
+| Observation | html, markdown, css, console, network, cookies, screenshot, eval |
 | Interaction | click, type, select, scroll, focus, key |
 | Synchronisation | ready |
 | Local server | serve |

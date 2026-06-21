@@ -222,7 +222,7 @@ var replCommands = []string{"exit", "quit", "help", "history", "stop"}
 // webctlCommands lists webctl commands for abbreviation matching.
 var webctlCommands = []string{
 	"back", "clear", "click", "console", "cookies", "eval", "find", "focus",
-	"forward", "html", "key", "navigate", "network", "ready", "reload",
+	"forward", "html", "key", "markdown", "navigate", "network", "ready", "reload",
 	"screenshot", "scroll", "select", "status", "target", "type",
 }
 
@@ -413,6 +413,7 @@ Commands (unique prefixes accepted: h=html, k=key, ba=back, na=navigate, ne=netw
     network             Show network requests
     screenshot          Capture screenshot of current page
     html [selector]     Extract HTML from current page
+    markdown [selector] Extract current page as Markdown
     eval <expression>   Evaluate JavaScript expression
     cookies             Show cookies for current page
 

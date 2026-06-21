@@ -201,6 +201,7 @@ var commandGroups = map[string]string{
 	"forward":    "navigation",
 	"tab":        "tabs",
 	"html":       "observation",
+	"markdown":   "observation",
 	"css":        "observation",
 	"console":    "observation",
 	"network":    "observation",

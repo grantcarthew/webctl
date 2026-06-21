@@ -26,6 +26,7 @@ webctl tab close [query]
 
 # Observation
 webctl html [save [path]]
+webctl markdown [save [path]]
 webctl css [save [path]]
 webctl css computed <selector>
 webctl css get <selector> <property>

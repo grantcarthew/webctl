@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -53,7 +52,7 @@ Save mode (file):
 
 Response formats:
   Default:  [15:04:05] ERROR TypeError: undefined (to stdout)
-  Save:     /tmp/webctl-console/25-12-28-143052-console.json
+  Save:     /tmp/webctl-console/25-12-28-143052-123-console.json
 
 Error cases:
   - "No matches found" - find text not in logs
@@ -157,68 +156,27 @@ func runConsoleDefault(cmd *cobra.Command, args []string) error {
 
 // runConsoleSave handles save subcommand: save to file
 func runConsoleSave(cmd *cobra.Command, args []string) error {
-	t := startTimer("console save")
-	defer t.log()
+	return runSave(cmd, args, saveSpec{
+		timerLabel: "console save",
+		tempDir:    "/tmp/webctl-console",
+		ext:        "json",
+		produce:    consoleSaveContent,
+		identifier: fixedIdentifier("console"),
+	})
+}
 
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	// Get console logs from daemon
+// consoleSaveContent produces the console save-file payload: the JSON envelope
+// written to disk, identical in shape to the console JSON output.
+func consoleSaveContent(cmd *cobra.Command) (string, error) {
 	entries, err := getConsoleFromDaemon(cmd)
 	if err != nil {
-		if errors.Is(err, ErrNoMatches) {
-			return outputNotice("No matches found")
-		}
-		if errors.Is(err, ErrNoEntriesInRange) {
-			return outputNotice("No entries in range")
-		}
-		return outputError(err.Error())
+		return "", err
 	}
-
-	var outputPath string
-
-	if len(args) == 0 {
-		// No path provided - save to temp directory
-		outputPath, err = generateConsolePath()
-		if err != nil {
-			return outputError(err.Error())
-		}
-	} else {
-		// Path provided
-		path := args[0]
-
-		// Check if path ends with separator (directory convention)
-		if strings.HasSuffix(path, string(os.PathSeparator)) || strings.HasSuffix(path, "/") {
-			// Path ends with separator - treat as directory, auto-generate filename
-			filename := generateConsoleFilename()
-
-			// Ensure directory exists
-			if err := os.MkdirAll(path, 0755); err != nil {
-				return outputError(fmt.Sprintf("failed to create directory: %v", err))
-			}
-
-			outputPath = filepath.Join(path, filename)
-		} else {
-			// No trailing slash - treat as file path
-			outputPath = path
-		}
-	}
-
-	// Write console logs to file
-	if err := writeConsoleToFile(outputPath, entries); err != nil {
-		return outputError(err.Error())
-	}
-
-	// Return JSON response
-	if JSONOutput {
-		return outputJSON(os.Stdout, map[string]any{
-			"ok":   true,
-			"path": outputPath,
-		})
-	}
-
-	return format.FilePath(os.Stdout, outputPath)
+	return marshalSaveEnvelope(map[string]any{
+		"ok":    true,
+		"logs":  entries,
+		"count": len(entries),
+	})
 }
 
 // getConsoleFromDaemon fetches console logs from daemon, applying filters
@@ -422,51 +380,4 @@ func applyConsoleLimiting(entries []ipc.ConsoleEntry, head, tail int, rangeStr s
 	}
 
 	return entries, nil
-}
-
-// writeConsoleToFile writes console entries to a file in JSON format, creating directories if needed
-func writeConsoleToFile(path string, entries []ipc.ConsoleEntry) error {
-	// Ensure parent directory exists
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %v", err)
-	}
-
-	// Marshal entries to JSON
-	data := map[string]any{
-		"ok":    true,
-		"logs":  entries,
-		"count": len(entries),
-	}
-
-	jsonBytes, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal console logs: %v", err)
-	}
-
-	// Write to file
-	if err := os.WriteFile(path, jsonBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write console logs: %v", err)
-	}
-
-	debugFile("wrote", path, len(jsonBytes))
-	return nil
-}
-
-// generateConsolePath generates a full path in /tmp/webctl-console/
-// using the pattern: YY-MM-DD-HHMMSS-console.json
-func generateConsolePath() (string, error) {
-	filename := generateConsoleFilename()
-	return filepath.Join("/tmp/webctl-console", filename), nil
-}
-
-// generateConsoleFilename generates a filename using the pattern:
-// YY-MM-DD-HHMMSS-console.json
-func generateConsoleFilename() string {
-	// Generate timestamp: YY-MM-DD-HHMMSS
-	now := time.Now()
-	timestamp := now.Format("06-01-02-150405")
-
-	// Generate filename with fixed identifier "console"
-	return fmt.Sprintf("%s-console.json", timestamp)
 }

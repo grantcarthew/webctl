@@ -134,6 +134,25 @@ func TestFormatHTMLElementIdentifier(t *testing.T) {
 	}
 }
 
+// TestMarkdownAliasResolves verifies the "md" alias resolves to the markdown
+// command through cobra Find, the same path ExecuteArgs (and thus the REPL)
+// uses to dispatch commands.
+func TestMarkdownAliasResolves(t *testing.T) {
+	for _, name := range []string{"markdown", "md"} {
+		cmd, _, err := rootCmd.Find([]string{name})
+		if err != nil {
+			t.Fatalf("Find(%q) returned error: %v", name, err)
+		}
+		if cmd == nil || cmd.Name() != "markdown" {
+			got := "<nil>"
+			if cmd != nil {
+				got = cmd.Name()
+			}
+			t.Errorf("Find(%q) resolved to %q, want markdown", name, got)
+		}
+	}
+}
+
 func TestSanitizeSelector(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -42,7 +42,7 @@ type helpTopic struct {
 var helpTopics = []helpTopic{
 	{"agents", "Overview and command map for AI agents", &agentHelpOverview},
 	{"workflow", "Common automation workflow patterns", &agentHelpWorkflow},
-	{"observe", "Observation commands (html, css, console, network, cookies)", &agentHelpObserve},
+	{"observe", "Observation commands (html, markdown, css, console, network, cookies)", &agentHelpObserve},
 	{"interact", "Interaction commands (click, type, key, select, scroll, focus)", &agentHelpInteract},
 	{"wait", "Synchronization with the ready command", &agentHelpWait},
 	{"errors", "Common errors and their solutions", &agentHelpErrors},

@@ -1,6 +1,6 @@
 # Output Modes
 
-Commands: html, css, console, network, cookies
+Commands: html, markdown, css, console, network, cookies
 
 ## Default: stdout
 
@@ -30,6 +30,8 @@ webctl <command> save ./dir/
 webctl --json <command>
 webctl <command> --raw
 ```
+
+--raw applies to html, css, console, network, cookies (not markdown).
 
 ## Screenshot
 

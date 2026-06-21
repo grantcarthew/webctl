@@ -5,14 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/cssformat"
-	"github.com/grantcarthew/webctl/internal/executor"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
 )
@@ -59,7 +56,7 @@ Element-specific operations:
 
 Response formats:
   Default:  body { margin: 0; ... } (to stdout)
-  Save:     /tmp/webctl-css/25-12-28-143052-example.css
+  Save:     /tmp/webctl-css/25-12-28-143052-123-example.css
   Computed: property: value (multiple elements with -- separators)
   Get:      rgb(0,0,0) (to stdout)
   Inline:   style attribute content (multiple with -- separators)
@@ -303,92 +300,13 @@ func runCSSDefault(cmd *cobra.Command, args []string) error {
 
 // runCSSSave handles save subcommand: save to file
 func runCSSSave(cmd *cobra.Command, args []string) error {
-	t := startTimer("css save")
-	defer t.log()
-
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	// Get CSS from daemon
-	css, err := getCSSFromDaemon(cmd)
-	if err != nil {
-		if errors.Is(err, ErrNoMatches) {
-			return outputNotice("No matches found")
-		}
-		if errors.Is(err, ErrNoElements) {
-			return outputNotice("No elements found")
-		}
-		if errors.Is(err, ErrNoRules) {
-			return outputNotice("No rules found")
-		}
-		return outputError(err.Error())
-	}
-
-	// Get selector for filename generation
-	selector, _ := cmd.Flags().GetString("select")
-	if selector == "" && cmd.Parent() != nil {
-		selector, _ = cmd.Parent().PersistentFlags().GetString("select")
-	}
-
-	var outputPath string
-
-	if len(args) == 0 {
-		// No path provided - save to temp directory
-		exec, err := execFactory.NewExecutor()
-		if err != nil {
-			return outputError(err.Error())
-		}
-		defer func() { _ = exec.Close() }()
-
-		outputPath, err = generateCSSPath(exec, selector)
-		if err != nil {
-			return outputError(err.Error())
-		}
-	} else {
-		// Path provided
-		path := args[0]
-
-		// Check if path ends with separator (directory convention)
-		if strings.HasSuffix(path, string(os.PathSeparator)) || strings.HasSuffix(path, "/") {
-			// Path ends with separator - treat as directory, auto-generate filename
-			exec, err := execFactory.NewExecutor()
-			if err != nil {
-				return outputError(err.Error())
-			}
-			defer func() { _ = exec.Close() }()
-
-			filename, err := generateCSSFilename(exec, selector)
-			if err != nil {
-				return outputError(err.Error())
-			}
-
-			// Ensure directory exists
-			if err := os.MkdirAll(path, 0755); err != nil {
-				return outputError(fmt.Sprintf("failed to create directory: %v", err))
-			}
-
-			outputPath = filepath.Join(path, filename)
-		} else {
-			// No trailing slash - treat as file path
-			outputPath = path
-		}
-	}
-
-	// Write CSS to file
-	if err := writeCSSToFile(outputPath, css); err != nil {
-		return outputError(err.Error())
-	}
-
-	// Return JSON response
-	if JSONOutput {
-		return outputJSON(os.Stdout, map[string]any{
-			"ok":   true,
-			"path": outputPath,
-		})
-	}
-
-	return format.FilePath(os.Stdout, outputPath)
+	return runSave(cmd, args, saveSpec{
+		timerLabel: "css save",
+		tempDir:    "/tmp/webctl-css",
+		ext:        "css",
+		produce:    getCSSFromDaemon,
+		identifier: selectorOrTitleIdentifier,
+	})
 }
 
 func runCSSComputed(cmd *cobra.Command, args []string) error {
@@ -819,102 +737,4 @@ func filterCSSByText(css, searchText string, before, after int) (string, error) 
 	}
 
 	return strings.Join(result, "\n"), nil
-}
-
-// writeCSSToFile writes CSS content to a file, creating directories if needed
-func writeCSSToFile(path, css string) error {
-	// Ensure parent directory exists
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %v", err)
-	}
-
-	// Write CSS to file
-	if err := os.WriteFile(path, []byte(css), 0644); err != nil {
-		return fmt.Errorf("failed to write CSS: %v", err)
-	}
-
-	return nil
-}
-
-// generateCSSPath generates a full path in /tmp/webctl-css/
-// using the pattern: YY-MM-DD-HHMMSS-{identifier}.css
-func generateCSSPath(exec executor.Executor, selector string) (string, error) {
-	filename, err := generateCSSFilename(exec, selector)
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Join("/tmp/webctl-css", filename), nil
-}
-
-// generateCSSFilename generates a filename using the pattern:
-// YY-MM-DD-HHMMSS-{identifier}.css
-// Identifier is based on selector (if provided) or page title
-func generateCSSFilename(exec executor.Executor, selector string) (string, error) {
-	// Generate timestamp: YY-MM-DD-HHMMSS
-	now := time.Now()
-	timestamp := now.Format("06-01-02-150405")
-
-	// Get identifier (selector or page title)
-	identifier := "untitled"
-	if selector != "" {
-		// Use normalized selector
-		identifier = normalizeSelector(selector)
-	} else {
-		// Get page title
-		resp, err := exec.Execute(ipc.Request{Cmd: "status"})
-		if err != nil {
-			return "", err
-		}
-
-		if !resp.OK {
-			return "", fmt.Errorf("%s", resp.Error)
-		}
-
-		var status ipc.StatusData
-		if err := json.Unmarshal(resp.Data, &status); err != nil {
-			return "", err
-		}
-
-		if status.ActiveSession != nil && status.ActiveSession.Title != "" {
-			identifier = normalizeTitle(status.ActiveSession.Title)
-		}
-	}
-
-	// Generate filename
-	return fmt.Sprintf("%s-%s.css", timestamp, identifier), nil
-}
-
-// normalizeSelector normalizes a CSS selector for use in a filename.
-// Removes special characters and converts to lowercase.
-func normalizeSelector(selector string) string {
-	// Remove leading/trailing whitespace
-	selector = strings.TrimSpace(selector)
-
-	// Limit to 30 characters
-	if len(selector) > 30 {
-		selector = selector[:30]
-	}
-
-	// Convert non-alphanumeric to hyphens
-	reg := regexp.MustCompile(`[^a-zA-Z0-9]+`)
-	selector = reg.ReplaceAllString(selector, "-")
-
-	// Replace multiple consecutive hyphens with single hyphen
-	reg = regexp.MustCompile(`-+`)
-	selector = reg.ReplaceAllString(selector, "-")
-
-	// Remove leading/trailing hyphens
-	selector = strings.Trim(selector, "-")
-
-	// Convert to lowercase
-	selector = strings.ToLower(selector)
-
-	// Fallback to "element" if empty after normalization
-	if selector == "" {
-		selector = "element"
-	}
-
-	return selector
 }

@@ -712,7 +712,17 @@ func TestRunCookiesDelete_BasicSuccess(t *testing.T) {
 	}
 }
 
-func TestWriteCookiesToFile(t *testing.T) {
+// cookiesSaveSpec mirrors the saveSpec runCookiesSave delegates to, used to
+// exercise the shared save helper's filename and path resolution.
+var cookiesSaveSpec = saveSpec{
+	timerLabel: "cookies save",
+	tempDir:    "/tmp/webctl-cookies",
+	ext:        "json",
+	produce:    cookiesSaveContent,
+	identifier: fixedIdentifier("cookies"),
+}
+
+func TestCookiesSaveContent(t *testing.T) {
 	cookies := []ipc.Cookie{
 		{
 			Name:    "test",
@@ -723,19 +733,29 @@ func TestWriteCookiesToFile(t *testing.T) {
 		},
 	}
 
-	tmpFile := filepath.Join(t.TempDir(), "test-cookies.json")
+	cookiesData := ipc.CookiesData{Cookies: cookies, Count: len(cookies)}
+	cookiesJSON, _ := json.Marshal(cookiesData)
 
-	err := writeCookiesToFile(tmpFile, cookies)
+	exec := &mockExecutor{
+		executeFunc: func(req ipc.Request) (ipc.Response, error) {
+			return ipc.Response{OK: true, Data: cookiesJSON}, nil
+		},
+	}
+
+	restore := setMockFactory(&mockFactory{daemonRunning: true, executor: exec})
+	defer restore()
+
+	content, err := cookiesSaveContent(cookiesSaveCmd)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify file exists
-	if _, err := os.Stat(tmpFile); os.IsNotExist(err) {
-		t.Errorf("expected file to be created at %s", tmpFile)
+	tmpFile := filepath.Join(t.TempDir(), "test-cookies.json")
+	if err := writeSaveFile(tmpFile, content); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify file contents
+	// Verify file contents preserve the envelope format.
 	data, err := os.ReadFile(tmpFile)
 	if err != nil {
 		t.Fatalf("failed to read file: %v", err)
@@ -769,22 +789,22 @@ func TestWriteCookiesToFile(t *testing.T) {
 	}
 }
 
-func TestGenerateCookiesFilename(t *testing.T) {
-	filename := generateCookiesFilename()
+func TestSaveFilename_Cookies(t *testing.T) {
+	filename := cookiesSaveSpec.filename(cookiesSaveCmd)
 
 	if !strings.HasSuffix(filename, "-cookies.json") {
 		t.Errorf("expected filename to end with -cookies.json, got %s", filename)
 	}
 
-	// Verify timestamp format (YY-MM-DD-HHMMSS)
+	// New unified shape: YY-MM-DD-HHMMSS-mmm-cookies.json (6 hyphen-split parts).
 	parts := strings.Split(filename, "-")
-	if len(parts) != 5 {
-		t.Errorf("expected 5 parts in filename, got %d: %s", len(parts), filename)
+	if len(parts) != 6 {
+		t.Errorf("expected 6 parts in filename, got %d: %s", len(parts), filename)
 	}
 }
 
-func TestGenerateCookiesPath(t *testing.T) {
-	path, err := generateCookiesPath()
+func TestResolveSavePath_CookiesTemp(t *testing.T) {
+	path, err := resolveSavePath(cookiesSaveCmd, nil, cookiesSaveSpec)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

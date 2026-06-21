@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -56,7 +55,7 @@ Mutation subcommands:
 
 Response formats:
   Default:  session | abc123 | .example.com | / | Session | Secure, HttpOnly
-  Save:     /tmp/webctl-cookies/25-12-28-143052-cookies.json
+  Save:     /tmp/webctl-cookies/25-12-28-143052-123-cookies.json
 
 Error cases:
   - "No matches found" - find text not in cookies
@@ -266,65 +265,27 @@ func runCookiesDefault(cmd *cobra.Command, args []string) error {
 
 // runCookiesSave handles save subcommand: save to file
 func runCookiesSave(cmd *cobra.Command, args []string) error {
-	t := startTimer("cookies save")
-	defer t.log()
+	return runSave(cmd, args, saveSpec{
+		timerLabel: "cookies save",
+		tempDir:    "/tmp/webctl-cookies",
+		ext:        "json",
+		produce:    cookiesSaveContent,
+		identifier: fixedIdentifier("cookies"),
+	})
+}
 
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	// Get cookies from daemon
+// cookiesSaveContent produces the cookies save-file payload: the JSON envelope
+// written to disk, matching the cookies JSON output.
+func cookiesSaveContent(cmd *cobra.Command) (string, error) {
 	cookies, err := getCookiesFromDaemon(cmd)
 	if err != nil {
-		if errors.Is(err, ErrNoMatches) {
-			return outputNotice("No matches found")
-		}
-		return outputError(err.Error())
+		return "", err
 	}
-
-	var outputPath string
-
-	if len(args) == 0 {
-		// No path provided - save to temp directory
-		outputPath, err = generateCookiesPath()
-		if err != nil {
-			return outputError(err.Error())
-		}
-	} else {
-		// Path provided
-		path := args[0]
-
-		// Check if path ends with separator (directory convention)
-		if strings.HasSuffix(path, string(os.PathSeparator)) || strings.HasSuffix(path, "/") {
-			// Path ends with separator - treat as directory, auto-generate filename
-			filename := generateCookiesFilename()
-
-			// Ensure directory exists
-			if err := os.MkdirAll(path, 0755); err != nil {
-				return outputError(fmt.Sprintf("failed to create directory: %v", err))
-			}
-
-			outputPath = filepath.Join(path, filename)
-		} else {
-			// No trailing slash - treat as file path
-			outputPath = path
-		}
-	}
-
-	// Write cookies to file
-	if err := writeCookiesToFile(outputPath, cookies); err != nil {
-		return outputError(err.Error())
-	}
-
-	// Return JSON response
-	if JSONOutput {
-		return outputJSON(os.Stdout, map[string]any{
-			"ok":   true,
-			"path": outputPath,
-		})
-	}
-
-	return format.FilePath(os.Stdout, outputPath)
+	return marshalSaveEnvelope(map[string]any{
+		"ok":      true,
+		"cookies": cookies,
+		"count":   len(cookies),
+	})
 }
 
 // getCookiesFromDaemon fetches cookies from daemon, applying filters
@@ -479,53 +440,6 @@ func filterCookiesByText(cookies []ipc.Cookie, searchText string) []ipc.Cookie {
 	}
 
 	return matchedCookies
-}
-
-// writeCookiesToFile writes cookies to a file in JSON format, creating directories if needed
-func writeCookiesToFile(path string, cookies []ipc.Cookie) error {
-	// Ensure parent directory exists
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %v", err)
-	}
-
-	// Marshal cookies to JSON
-	data := map[string]any{
-		"ok":      true,
-		"cookies": cookies,
-		"count":   len(cookies),
-	}
-
-	jsonBytes, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal cookies: %v", err)
-	}
-
-	// Write to file
-	if err := os.WriteFile(path, jsonBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write cookies: %v", err)
-	}
-
-	debugFile("wrote", path, len(jsonBytes))
-	return nil
-}
-
-// generateCookiesPath generates a full path in /tmp/webctl-cookies/
-// using the pattern: YY-MM-DD-HHMMSS-cookies.json
-func generateCookiesPath() (string, error) {
-	filename := generateCookiesFilename()
-	return filepath.Join("/tmp/webctl-cookies", filename), nil
-}
-
-// generateCookiesFilename generates a filename using the pattern:
-// YY-MM-DD-HHMMSS-cookies.json
-func generateCookiesFilename() string {
-	// Generate timestamp: YY-MM-DD-HHMMSS
-	now := time.Now()
-	timestamp := now.Format("06-01-02-150405")
-
-	// Generate filename with fixed identifier "cookies"
-	return fmt.Sprintf("%s-cookies.json", timestamp)
 }
 
 func runCookiesSet(cmd *cobra.Command, args []string) error {

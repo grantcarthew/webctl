@@ -15,6 +15,18 @@ webctl html save ./page.html
 webctl html save ./output/
 ```
 
+## markdown
+
+```
+webctl markdown
+webctl md
+webctl markdown --select "#main"
+webctl markdown --find "install"
+webctl markdown save
+webctl markdown save ./page.md
+webctl markdown save ./output/
+```
+
 ## css
 
 ```

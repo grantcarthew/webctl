@@ -5,13 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/grantcarthew/webctl/internal/cli/format"
-	"github.com/grantcarthew/webctl/internal/executor"
 	"github.com/grantcarthew/webctl/internal/htmlformat"
 	"github.com/grantcarthew/webctl/internal/ipc"
 	"github.com/spf13/cobra"
@@ -49,7 +47,7 @@ Save mode (file):
 
 Response formats:
   Default:  <html>...</html> (to stdout)
-  Save:     /tmp/webctl-html/25-12-28-143052-example.html
+  Save:     /tmp/webctl-html/25-12-28-143052-123-example.html
 
 Error cases:
   - "selector '.missing' matched no elements" - nothing matches
@@ -153,89 +151,13 @@ func runHTMLDefault(cmd *cobra.Command, args []string) error {
 
 // runHTMLSave handles save subcommand: save to file
 func runHTMLSave(cmd *cobra.Command, args []string) error {
-	t := startTimer("html save")
-	defer t.log()
-
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	// Get HTML from daemon
-	html, err := getHTMLFromDaemon(cmd)
-	if err != nil {
-		if errors.Is(err, ErrNoMatches) {
-			return outputNotice("No matches found")
-		}
-		if errors.Is(err, ErrNoElements) {
-			return outputNotice("No elements found")
-		}
-		return outputError(err.Error())
-	}
-
-	// Get selector for filename generation
-	selector, _ := cmd.Flags().GetString("select")
-	if selector == "" && cmd.Parent() != nil {
-		selector, _ = cmd.Parent().PersistentFlags().GetString("select")
-	}
-
-	var outputPath string
-
-	if len(args) == 0 {
-		// No path provided - save to temp directory
-		exec, err := execFactory.NewExecutor()
-		if err != nil {
-			return outputError(err.Error())
-		}
-		defer func() { _ = exec.Close() }()
-
-		outputPath, err = generateHTMLPath(exec, selector)
-		if err != nil {
-			return outputError(err.Error())
-		}
-	} else {
-		// Path provided
-		path := args[0]
-
-		// Check if path ends with separator (directory convention)
-		if strings.HasSuffix(path, string(os.PathSeparator)) || strings.HasSuffix(path, "/") {
-			// Path ends with separator - treat as directory, auto-generate filename
-			exec, err := execFactory.NewExecutor()
-			if err != nil {
-				return outputError(err.Error())
-			}
-			defer func() { _ = exec.Close() }()
-
-			filename, err := generateHTMLFilename(exec, selector)
-			if err != nil {
-				return outputError(err.Error())
-			}
-
-			// Ensure directory exists
-			if err := os.MkdirAll(path, 0755); err != nil {
-				return outputError(fmt.Sprintf("failed to create directory: %v", err))
-			}
-
-			outputPath = filepath.Join(path, filename)
-		} else {
-			// No trailing slash - treat as file path
-			outputPath = path
-		}
-	}
-
-	// Write HTML to file
-	if err := writeHTMLToFile(outputPath, html); err != nil {
-		return outputError(err.Error())
-	}
-
-	// Return JSON response
-	if JSONOutput {
-		return outputJSON(os.Stdout, map[string]any{
-			"ok":   true,
-			"path": outputPath,
-		})
-	}
-
-	return format.FilePath(os.Stdout, outputPath)
+	return runSave(cmd, args, saveSpec{
+		timerLabel: "html save",
+		tempDir:    "/tmp/webctl-html",
+		ext:        "html",
+		produce:    getHTMLFromDaemon,
+		identifier: selectorOrTitleIdentifier,
+	})
 }
 
 // getHTMLDataFromDaemon fetches HTML from daemon and returns both formatted string and raw data
@@ -447,63 +369,6 @@ func filterHTMLByText(html, searchText string, before, after int) (string, error
 	}
 
 	return strings.Join(result, "\n"), nil
-}
-
-// writeHTMLToFile writes HTML content to a file, creating directories if needed
-func writeHTMLToFile(path, html string) error {
-	// Ensure parent directory exists
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %v", err)
-	}
-
-	// Write HTML to file
-	if err := os.WriteFile(path, []byte(html), 0644); err != nil {
-		return fmt.Errorf("failed to write HTML: %v", err)
-	}
-
-	debugFile("wrote", path, len(html))
-	return nil
-}
-
-// generateHTMLPath generates a full path in /tmp/webctl-html/
-// using the pattern: YY-MM-DD-HHMMSS-{identifier}.html
-func generateHTMLPath(exec executor.Executor, selector string) (string, error) {
-	filename, err := generateHTMLFilename(exec, selector)
-	if err != nil {
-		return "", err
-	}
-
-	return filepath.Join("/tmp/webctl-html", filename), nil
-}
-
-// generateHTMLFilename generates a filename using the pattern:
-// YY-MM-DD-HHMMSS-{identifier}.html
-// Identifier is based on selector (if provided) or page title
-func generateHTMLFilename(exec executor.Executor, selector string) (string, error) {
-	// Generate timestamp: YY-MM-DD-HHMMSS
-	now := time.Now()
-	timestamp := now.Format("06-01-02-150405")
-
-	// Determine identifier
-	identifier := "page"
-	if selector != "" {
-		identifier = sanitizeSelector(selector)
-	} else {
-		// Get page title for identifier
-		resp, err := exec.Execute(ipc.Request{Cmd: "status"})
-		if err == nil && resp.OK {
-			var status ipc.StatusData
-			if err := json.Unmarshal(resp.Data, &status); err == nil {
-				if status.ActiveSession != nil && status.ActiveSession.Title != "" {
-					identifier = normalizeTitle(status.ActiveSession.Title)
-				}
-			}
-		}
-	}
-
-	// Generate filename
-	return fmt.Sprintf("%s-%s.html", timestamp, identifier), nil
 }
 
 // sanitizeSelector converts a CSS selector to a safe filename component

@@ -247,6 +247,12 @@ func TestExpandAbbreviation(t *testing.T) {
 		// Webctl commands - single character (unique)
 		{"h -> html", "h", webctlCommands, "html", true},
 		{"k -> key", "k", webctlCommands, "key", true},
+		{"m -> markdown", "m", webctlCommands, "markdown", true},
+
+		// markdown prefixes; "md" is the cobra alias, not a name prefix, so the
+		// REPL leaves it unexpanded and cobra Find resolves the alias.
+		{"mar -> markdown", "mar", webctlCommands, "markdown", true},
+		{"md not a name prefix", "md", webctlCommands, "", false},
 
 		// Single character (ambiguous)
 		{"s ambiguous", "s", webctlCommands, "", false}, // status, screenshot, select, scroll

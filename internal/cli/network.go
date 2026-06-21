@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -65,7 +64,7 @@ Save mode (file):
 
 Response formats:
   Default:  GET https://example.com 200 45ms (to stdout)
-  Save:     /tmp/webctl-network/25-12-28-143052-network.json
+  Save:     /tmp/webctl-network/25-12-28-143052-123-network.json
 
 Error cases:
   - "No matches found" - find text not in requests
@@ -142,14 +141,7 @@ func runNetworkDefault(cmd *cobra.Command, args []string) error {
 
 	// JSON mode: output JSON
 	if JSONOutput {
-		maxBodySize, _ := cmd.Flags().GetInt("max-body-size")
-		if maxBodySize == 0 && cmd.Parent() != nil {
-			maxBodySize, _ = cmd.Parent().PersistentFlags().GetInt("max-body-size")
-		}
-		if maxBodySize == 0 {
-			maxBodySize = 102400
-		}
-		return outputNetworkJSON(entries, maxBodySize)
+		return outputNetworkJSON(entries, resolveMaxBodySize(cmd))
 	}
 
 	// Check --raw flag
@@ -160,14 +152,7 @@ func runNetworkDefault(cmd *cobra.Command, args []string) error {
 
 	if raw {
 		// Raw mode: output as JSON
-		maxBodySize, _ := cmd.Flags().GetInt("max-body-size")
-		if maxBodySize == 0 && cmd.Parent() != nil {
-			maxBodySize, _ = cmd.Parent().PersistentFlags().GetInt("max-body-size")
-		}
-		if maxBodySize == 0 {
-			maxBodySize = 102400
-		}
-		return outputNetworkJSON(entries, maxBodySize)
+		return outputNetworkJSON(entries, resolveMaxBodySize(cmd))
 	}
 
 	// Text mode: use text formatter
@@ -176,74 +161,49 @@ func runNetworkDefault(cmd *cobra.Command, args []string) error {
 
 // runNetworkSave handles save subcommand: save to file
 func runNetworkSave(cmd *cobra.Command, args []string) error {
-	t := startTimer("network save")
-	defer t.log()
+	return runSave(cmd, args, saveSpec{
+		timerLabel: "network save",
+		tempDir:    "/tmp/webctl-network",
+		ext:        "json",
+		produce:    networkSaveContent,
+		identifier: fixedIdentifier("network"),
+	})
+}
 
-	if !execFactory.IsDaemonRunning() {
-		return outputError("daemon not running. Start with: webctl start")
-	}
-
-	// Get network entries from daemon
+// networkSaveContent produces the network save-file payload: the JSON envelope
+// with per-entry body truncation applied, matching the network JSON output.
+func networkSaveContent(cmd *cobra.Command) (string, error) {
 	entries, err := getNetworkFromDaemon(cmd)
 	if err != nil {
-		if errors.Is(err, ErrNoMatches) {
-			return outputNotice("No matches found")
-		}
-		return outputError(err.Error())
+		return "", err
 	}
 
-	var outputPath string
-
-	if len(args) == 0 {
-		// No path provided - save to temp directory
-		outputPath, err = generateNetworkPath()
-		if err != nil {
-			return outputError(err.Error())
-		}
-	} else {
-		// Path provided
-		path := args[0]
-
-		// Check if path ends with separator (directory convention)
-		if strings.HasSuffix(path, string(os.PathSeparator)) || strings.HasSuffix(path, "/") {
-			// Path ends with separator - treat as directory, auto-generate filename
-			filename := generateNetworkFilename()
-
-			// Ensure directory exists
-			if err := os.MkdirAll(path, 0755); err != nil {
-				return outputError(fmt.Sprintf("failed to create directory: %v", err))
-			}
-
-			outputPath = filepath.Join(path, filename)
-		} else {
-			// No trailing slash - treat as file path
-			outputPath = path
+	maxBodySize := resolveMaxBodySize(cmd)
+	for i := range entries {
+		if len(entries[i].Body) > maxBodySize {
+			entries[i].Body = entries[i].Body[:maxBodySize]
+			entries[i].BodyTruncated = true
 		}
 	}
 
-	// Get max-body-size for JSON output
+	return marshalSaveEnvelope(map[string]any{
+		"ok":      true,
+		"entries": entries,
+		"count":   len(entries),
+	})
+}
+
+// resolveMaxBodySize reads the --max-body-size flag, falling back to the parent
+// command's persistent flag and finally the 100KB default.
+func resolveMaxBodySize(cmd *cobra.Command) int {
 	maxBodySize, _ := cmd.Flags().GetInt("max-body-size")
 	if maxBodySize == 0 && cmd.Parent() != nil {
 		maxBodySize, _ = cmd.Parent().PersistentFlags().GetInt("max-body-size")
 	}
 	if maxBodySize == 0 {
-		maxBodySize = 102400 // Default
+		maxBodySize = 102400
 	}
-
-	// Write network requests to file
-	if err := writeNetworkToFile(outputPath, entries, maxBodySize); err != nil {
-		return outputError(err.Error())
-	}
-
-	// Return JSON response
-	if JSONOutput {
-		return outputJSON(os.Stdout, map[string]any{
-			"ok":   true,
-			"path": outputPath,
-		})
-	}
-
-	return format.FilePath(os.Stdout, outputPath)
+	return maxBodySize
 }
 
 // getNetworkFromDaemon fetches network entries from daemon, applying filters
@@ -642,59 +602,4 @@ func outputNetworkJSON(entries []ipc.NetworkEntry, maxBodySize int) error {
 		"count":   len(entries),
 	}
 	return outputJSON(os.Stdout, result)
-}
-
-// writeNetworkToFile writes network entries to a file in JSON format, creating directories if needed
-func writeNetworkToFile(path string, entries []ipc.NetworkEntry, maxBodySize int) error {
-	// Ensure parent directory exists
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("failed to create directory: %v", err)
-	}
-
-	// Apply body truncation
-	for i := range entries {
-		if len(entries[i].Body) > maxBodySize {
-			entries[i].Body = entries[i].Body[:maxBodySize]
-			entries[i].BodyTruncated = true
-		}
-	}
-
-	// Marshal entries to JSON
-	data := map[string]any{
-		"ok":      true,
-		"entries": entries,
-		"count":   len(entries),
-	}
-
-	jsonBytes, err := json.MarshalIndent(data, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal network entries: %v", err)
-	}
-
-	// Write to file
-	if err := os.WriteFile(path, jsonBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write network entries: %v", err)
-	}
-
-	debugFile("wrote", path, len(jsonBytes))
-	return nil
-}
-
-// generateNetworkPath generates a full path in /tmp/webctl-network/
-// using the pattern: YY-MM-DD-HHMMSS-network.json
-func generateNetworkPath() (string, error) {
-	filename := generateNetworkFilename()
-	return filepath.Join("/tmp/webctl-network", filename), nil
-}
-
-// generateNetworkFilename generates a filename using the pattern:
-// YY-MM-DD-HHMMSS-network.json
-func generateNetworkFilename() string {
-	// Generate timestamp: YY-MM-DD-HHMMSS
-	now := time.Now()
-	timestamp := now.Format("06-01-02-150405")
-
-	// Generate filename with fixed identifier "network"
-	return fmt.Sprintf("%s-network.json", timestamp)
 }
