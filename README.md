@@ -6,6 +6,22 @@ CLI tool for browser automation and debugging, designed for AI agents.
 
 webctl captures DevTools data (console logs, network requests, JS errors) that standard web fetching tools cannot access. CDP events are ephemeral - you must be listening when they occur. webctl solves this with a persistent daemon that buffers events for later query.
 
+## Install
+
+Homebrew (Linux/macOS):
+
+```bash
+brew tap grantcarthew/tap
+brew trust grantcarthew/tap
+brew install grantcarthew/tap/webctl
+```
+
+Build from source:
+
+```bash
+go build -o webctl ./cmd/webctl
+```
+
 ## Architecture
 
 Daemon + stateless command model:
