@@ -196,6 +196,7 @@ Status values: Todo, In progress, Done, Skipped.
 | R9 | Stop silent response drops | Todo | | |
 | R10 | Tighten discovery boundary | Todo | | |
 | R11 | IPC protocol version safety | Todo | | |
+| R12 | Attribute lifecycle milestones by loaderId | Todo | | Deferred from 02. domContentEventFired/loadEventFired carry no loaderId, so under rapid back-to-back navigations on one session a straggler event can close the successor's milestone early. 02 bounds this (matches today's sessionID-keyed behaviour) but does not close it. Principled fix: correlate Page.lifecycleEvent loaderId with Page.navigate/frameNavigated. Low priority for sequential single-agent use. |
 
 The project is complete when every row is Done or Skipped and the Acceptance Criteria below hold.
 
