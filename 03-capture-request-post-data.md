@@ -116,7 +116,7 @@ This replaces the current block that prints the response body under request-body
 
 10. Documentation. Update internal/cli/agent-help/observe.md (and any other agent-help topic that describes network fields) to mention request-body capture, the inline-vs-fetched distinction, and the multipart-file limitation. If a per-field reference exists for network output, update it to list the new field.
 
-11. Tests. Add unit coverage for parsing a `requestWillBeSent` event that carries `postData` and one that carries `hasPostData` without `postData`. Cover truncation of the request body at the CLI layer and inclusion of the request body in `--find`. Integration coverage (gated by `testing.Short()`) should assert that a real POST with a JSON body is captured and visible in `webctl network`.
+11. Tests. Add unit coverage for parsing a `requestWillBeSent` event that carries `postData` and one that carries `hasPostData` without `postData`. Cover truncation of the request body at the CLI layer and inclusion of the request body in `--find`. Integration coverage (gated by `testing.Short()`) must assert two distinct capture paths: a real POST with a small JSON body that arrives inline, and a real request whose body exceeds `maxPostDataSize` so it is captured via the fallback `Network.getRequestPostData` fetch. Both must show the full body in `webctl network`. The oversize case is mandatory because it is the only test that exercises the off-read-loop fetch and awaiting-entry matching; the inline case alone leaves that path unverified.
 
 ## Constraints
 
