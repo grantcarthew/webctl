@@ -187,7 +187,9 @@ func TestNetwork(t *testing.T) {
 		t.Error("output should contain POST request")
 	}
 	if !strings.Contains(output, `{"key":"value"}`) {
-		t.Error("output should contain request body")
+		// Body here is the response body; request-body assertions are added with
+		// the request-body capture work (see 03-capture-request-post-data.md req 11).
+		t.Error("output should contain response body")
 	}
 }
 

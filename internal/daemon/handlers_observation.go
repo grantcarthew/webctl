@@ -101,11 +101,14 @@ func (d *Daemon) handleNetwork() ipc.Response {
 		return d.noActiveSessionError()
 	}
 
-	// Enable Network domain lazily for this session
-	if _, loaded := d.networkEnabled.LoadOrStore(activeID, true); !loaded {
+	// Enable Network domain lazily for this session, at most once. Claim the
+	// enable, send outside the lock, and clear the claim on failure so a later
+	// call retries rather than leaving the session marked enabled.
+	if d.sessions.ClaimNetworkEnable(activeID) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if _, err := d.sendToSession(ctx, activeID, "Network.enable", nil); err != nil {
+			d.sessions.ClearNetworkEnabled(activeID)
 			d.debugf(false, "warning: failed to enable Network domain: %v", err)
 		} else {
 			d.debugf(false, "Network domain enabled lazily for session %s", activeID)

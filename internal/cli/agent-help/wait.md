@@ -4,6 +4,12 @@ Ready command synchronization modes.
 
 ## Page Load Mode
 
+Default mode. Returns immediately if document.readyState is already complete.
+Otherwise, if a navigation this daemon initiated is in flight, it waits until the
+DOM is ready (DOMContentLoaded) and returns; if none is in flight, it returns
+immediately. DOM-ready does not wait for subresources (images, scripts,
+stylesheets); use network-idle mode when outstanding requests must settle.
+
 ```
 webctl ready
 webctl ready --timeout 30s

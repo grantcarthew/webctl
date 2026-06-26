@@ -84,35 +84,10 @@ type Daemon struct {
 	terminalStateMu sync.Mutex
 	repl            *REPL // REPL instance for external command notifications
 
-	// Navigation event waiting
-	navWaiters  sync.Map // map[string]chan *frameNavigatedInfo for sessionID -> waiter
-	loadWaiters sync.Map // map[string]chan struct{} for sessionID -> waiter (loadEventFired)
-
-	// Navigation state tracking
-	// navigating tracks sessions currently in navigation (before loadEventFired)
-	// Value is a chan struct{} that will be closed when load completes
-	navigating sync.Map // map[string]chan struct{} for sessionID -> done channel
-
-	// Target attachment tracking
-	// attachedTargets tracks which targetIDs we've already attached to (prevents double-attach)
-	attachedTargets sync.Map // map[string]bool for targetID -> attached
-
-	// Network domain lazy enablement
-	// networkEnabled tracks which sessions have Network.enable called
-	// We enable Network lazily because it causes Runtime.evaluate to block until networkIdle
-	networkEnabled sync.Map // map[string]bool for sessionID -> enabled
-
-	// Tab attach/detach waiters
-	// tabAttachWaiters: targetID -> chan struct{} signalled when SessionManager.Add fires
-	// tabDetachWaiters: sessionID -> chan struct{} signalled when SessionManager.Remove fires
-	tabAttachWaiters sync.Map
-	tabDetachWaiters sync.Map
-}
-
-// frameNavigatedInfo contains information from a Page.frameNavigated event.
-type frameNavigatedInfo struct {
-	URL   string
-	Title string
+	// navTracker owns the per-session navigation/load/frame-navigated rendezvous.
+	navTracker *navTracker
+	// attaches deduplicates Target.attachToTarget calls by targetID.
+	attaches *attachSet
 }
 
 // debugf logs a debug message if debug mode is enabled (daemon-level or request-level).
@@ -197,6 +172,8 @@ func New(cfg Config) *Daemon {
 		networkBuf: NewRingBuffer[ipc.NetworkEntry](cfg.BufferSize),
 		shutdown:   make(chan struct{}),
 		debug:      cfg.Debug,
+		navTracker: newNavTracker(),
+		attaches:   newAttachSet(),
 	}
 }
 
@@ -432,7 +409,7 @@ func (d *Daemon) enableAutoAttach() error {
 		d.debugf(false, "  Target: type=%q, targetID=%q, url=%q", targetInfo.Type, targetInfo.TargetID, targetInfo.URL)
 		if targetInfo.Type == "page" {
 			// Check if we've already attached (targetCreated might have fired before getTargets returned)
-			if _, alreadyAttached := d.attachedTargets.LoadOrStore(targetInfo.TargetID, true); alreadyAttached {
+			if !d.attaches.mark(targetInfo.TargetID) {
 				d.debugf(false, "  Already attached to targetID=%q, skipping", targetInfo.TargetID)
 				continue
 			}
@@ -446,8 +423,8 @@ func (d *Daemon) enableAutoAttach() error {
 				})
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "\nwarning: failed to attach to existing target %q: %v\n", targetID, err)
-					// Remove from attachedTargets on failure so we can retry
-					d.attachedTargets.Delete(targetID)
+					// Clear the mark on failure so we can retry
+					d.attaches.clear(targetID)
 				} else {
 					d.debugf(false, "  Successfully attached to target %q", targetID)
 				}
@@ -465,15 +442,22 @@ func (d *Daemon) enableDomainsForSession(sessionID string) error {
 	// NOTE: Previously Network was enabled lazily due to concerns about Runtime.evaluate
 	// blocking until networkIdle. Testing shows this is not an issue with our setup
 	// (manual Target.attachToTarget with flatten:true, no waitForDebuggerOnStart).
-	domains := []string{"Runtime.enable", "Page.enable", "DOM.enable", "Network.enable"}
+	domains := []string{"Runtime.enable", "Page.enable", "DOM.enable"}
 	for _, method := range domains {
 		if _, err := d.cdp.SendToSession(context.Background(), sessionID, method, nil); err != nil {
 			return fmt.Errorf("failed to enable %s: %w", method, err)
 		}
 	}
 
-	// Mark Network as enabled for this session
-	d.networkEnabled.Store(sessionID, true)
+	// Network.enable at most once per session: claim first, enable, and clear the
+	// claim on failure so a later caller can retry rather than being permanently
+	// marked enabled.
+	if d.sessions.ClaimNetworkEnable(sessionID) {
+		if _, err := d.cdp.SendToSession(context.Background(), sessionID, "Network.enable", nil); err != nil {
+			d.sessions.ClearNetworkEnabled(sessionID)
+			return fmt.Errorf("failed to enable Network.enable: %w", err)
+		}
+	}
 
 	// Enable lifecycle events (required to receive Page.lifecycleEvent)
 	if _, err := d.cdp.SendToSession(context.Background(), sessionID, "Page.setLifecycleEventsEnabled", map[string]any{"enabled": true}); err != nil {

@@ -16,7 +16,7 @@ var readyCmd = &cobra.Command{
 	Long: `Waits for the page or application to be ready before continuing.
 
 Supports multiple synchronization modes for different use cases:
-- Page load (default): waits for browser load event
+- Page load (default): waits for the DOM to be ready
 - Element presence: waits for CSS selector to match
 - Network idle: waits for all network requests to complete
 - JS condition: waits for custom JavaScript expression to be true
@@ -26,10 +26,13 @@ chain multiple ready commands or use custom JavaScript.
 
 Page load mode (default):
   Checks document.readyState first - if already "complete", returns
-  immediately. Otherwise, waits for the browser's load event to fire.
+  immediately. Otherwise, if a navigation this daemon initiated is in
+  flight, waits until the DOM is ready (DOMContentLoaded) and returns;
+  if no navigation is in flight, returns immediately.
 
-  This is useful after navigation to ensure all resources (images,
-  scripts, stylesheets) have fully loaded.
+  DOM-ready does not wait for all subresources (images, scripts,
+  stylesheets) to finish loading. Use --network-idle when you need to
+  wait for outstanding requests to settle.
 
 Selector mode:
   Waits for an element matching the CSS selector to appear in the DOM.
@@ -51,7 +54,7 @@ Timeout:
                         Accepts Go duration format: 10s, 1m, 500ms
 
 Examples:
-  # Page load mode - wait for full page load
+  # Page load mode - wait for the DOM to be ready
   ready
   ready --timeout 10s
 

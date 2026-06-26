@@ -118,17 +118,14 @@ func (d *Daemon) handleTabNew(url string) ipc.Response {
 		return ipc.ErrorResponse("createTarget returned empty targetId")
 	}
 
-	// Register a one-shot buffered waiter keyed by targetID BEFORE checking
-	// SessionManager so we don't miss the attach event if it has not yet fired.
-	waiter := make(chan struct{}, 1)
-	d.tabAttachWaiters.Store(createResp.TargetID, waiter)
-	defer d.tabAttachWaiters.Delete(createResp.TargetID)
-
-	// Check whether the attach event already landed before we registered.
-	session := d.sessions.GetByTargetID(createResp.TargetID)
+	// Resolve the attach rendezvous through SessionManager. The check-current-state
+	// and register-waiter steps are one atomic operation under its lock, so the
+	// attach event (via Add) cannot signal in a gap between them.
+	session, wait := d.sessions.waitForAttach(createResp.TargetID)
 	if session == nil {
+		defer d.sessions.stopWaitForAttach(createResp.TargetID)
 		select {
-		case <-waiter:
+		case <-wait:
 			session = d.sessions.GetByTargetID(createResp.TargetID)
 		case <-time.After(tabWaiterTimeout):
 			return ipc.ErrorResponse("timeout waiting for new tab to attach")
@@ -186,11 +183,6 @@ func (d *Daemon) handleTabClose(query string) ipc.Response {
 
 	wasActive := d.sessions.ActiveID() == sessionID
 
-	// Register detach waiter BEFORE sending the close, keyed by sessionID.
-	waiter := make(chan struct{}, 1)
-	d.tabDetachWaiters.Store(sessionID, waiter)
-	defer d.tabDetachWaiters.Delete(sessionID)
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -212,10 +204,14 @@ func (d *Daemon) handleTabClose(query string) ipc.Response {
 		return ipc.ErrorResponse("browser refused to close tab")
 	}
 
-	// If the session is already gone (race), skip the wait.
-	if d.sessions.Get(sessionID) != nil {
+	// Resolve the detach rendezvous through SessionManager. The check-current-state
+	// and register-waiter steps are one atomic operation under its lock, so the
+	// detach event (via Remove) cannot signal in a gap between them. A nil channel
+	// means the session is already gone (the detach already fired).
+	if wait := d.sessions.waitForDetach(sessionID); wait != nil {
+		defer d.sessions.stopWaitForDetach(sessionID)
 		select {
-		case <-waiter:
+		case <-wait:
 		case <-time.After(tabWaiterTimeout):
 			return ipc.ErrorResponse("timeout waiting for tab to close")
 		}

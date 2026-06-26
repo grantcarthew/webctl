@@ -35,24 +35,11 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 		return ipc.ErrorResponse("url is required")
 	}
 
-	// Mark session as navigating BEFORE sending command.
-	// Close any existing navigation channel first (handles rapid navigation).
-	if oldCh, loaded := d.navigating.LoadAndDelete(activeID); loaded {
-		d.debugf(false, "navigate: closing old navigating channel for session %s", activeID)
-		close(oldCh.(chan struct{}))
-	}
-	navDoneCh := make(chan struct{})
-	d.navigating.Store(activeID, navDoneCh)
-	d.debugf(false, "navigate: created navigating channel for session %s", activeID)
-
-	// If wait requested, register load waiter BEFORE sending command to avoid race
-	// where loadEventFired fires before we register (especially for cached pages)
-	var loadWaiterCh chan struct{}
-	if params.Wait {
-		loadWaiterCh = make(chan struct{}, 1)
-		d.loadWaiters.Store(activeID, loadWaiterCh)
-		d.debugf(false, "navigate: registered load waiter before sending command")
-	}
+	// Begin a navigation unconditionally, independent of --wait, so a later ready
+	// default-mode call can detect this navigation as in-flight. begin atomically
+	// cancels and replaces any prior navigation for the session.
+	nav := d.navTracker.begin(activeID)
+	d.debugf(false, "navigate: began navigation for session %s", activeID)
 
 	// Send navigate command
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -62,10 +49,6 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 		"url": params.URL,
 	})
 	if err != nil {
-		// Clean up waiter on error
-		if params.Wait {
-			d.loadWaiters.Delete(activeID)
-		}
 		return ipc.ErrorResponse(fmt.Sprintf("navigation failed: %v", err))
 	}
 
@@ -75,14 +58,10 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 		FrameID   string `json:"frameId"`
 	}
 	if err := json.Unmarshal(result, &navResp); err == nil && navResp.ErrorText != "" {
-		// Clean up waiter on error
-		if params.Wait {
-			d.loadWaiters.Delete(activeID)
-		}
 		return ipc.ErrorResponse(navResp.ErrorText)
 	}
 
-	// If wait requested, wait for page load
+	// If wait requested, wait for full page load (Loaded milestone).
 	if params.Wait {
 		timeout := cdp.DefaultTimeout
 		if params.Timeout > 0 {
@@ -90,12 +69,10 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 		}
 		d.debugf(false, "navigate: waiting for page load (timeout=%v)", timeout)
 
-		defer d.loadWaiters.Delete(activeID)
-
-		select {
-		case <-loadWaiterCh:
-			// Load event fired
-		case <-time.After(timeout):
+		switch awaitMilestone(nav.Loaded(), nav.Cancelled(), timeout) {
+		case navCancelled:
+			return cancelledNavResponse(nav, activeID)
+		case navTimedOut:
 			return ipc.ErrorResponse("timeout waiting for page load")
 		}
 
@@ -141,22 +118,10 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 		}
 	}
 
-	// Mark session as navigating BEFORE sending command.
-	if oldCh, loaded := d.navigating.LoadAndDelete(activeID); loaded {
-		d.debugf(false, "reload: closing old navigating channel for session %s", activeID)
-		close(oldCh.(chan struct{}))
-	}
-	navDoneCh := make(chan struct{})
-	d.navigating.Store(activeID, navDoneCh)
-	d.debugf(false, "reload: created navigating channel for session %s", activeID)
-
-	// If wait requested, register load waiter BEFORE sending command to avoid race
-	var loadWaiterCh chan struct{}
-	if params.Wait {
-		loadWaiterCh = make(chan struct{}, 1)
-		d.loadWaiters.Store(activeID, loadWaiterCh)
-		d.debugf(false, "reload: registered load waiter before sending command")
-	}
+	// Begin a navigation unconditionally so a later ready can detect the reload as
+	// in-flight, independent of --wait.
+	nav := d.navTracker.begin(activeID)
+	d.debugf(false, "reload: began navigation for session %s", activeID)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -165,14 +130,10 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 		"ignoreCache": params.IgnoreCache,
 	})
 	if err != nil {
-		// Clean up waiter on error
-		if params.Wait {
-			d.loadWaiters.Delete(activeID)
-		}
 		return ipc.ErrorResponse(fmt.Sprintf("reload failed: %v", err))
 	}
 
-	// If wait requested, wait for page load
+	// If wait requested, wait for full page load (Loaded milestone).
 	if params.Wait {
 		timeout := cdp.DefaultTimeout
 		if params.Timeout > 0 {
@@ -180,12 +141,10 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 		}
 		d.debugf(false, "reload: waiting for page load (timeout=%v)", timeout)
 
-		defer d.loadWaiters.Delete(activeID)
-
-		select {
-		case <-loadWaiterCh:
-			// Load event fired
-		case <-time.After(timeout):
+		switch awaitMilestone(nav.Loaded(), nav.Cancelled(), timeout) {
+		case navCancelled:
+			return cancelledNavResponse(nav, activeID)
+		case navTimedOut:
 			return ipc.ErrorResponse("timeout waiting for page load")
 		}
 
@@ -284,36 +243,21 @@ func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams, debug bool
 		return ipc.ErrorResponse("no next page in history")
 	}
 
-	// Mark session as navigating BEFORE sending command.
-	if oldCh, loaded := d.navigating.LoadAndDelete(activeID); loaded {
-		d.debugf(debug, "navigateHistory: closing old navigating channel for session %s", activeID)
-		close(oldCh.(chan struct{}))
-	}
-	navDoneCh := make(chan struct{})
-	d.navigating.Store(activeID, navDoneCh)
-	d.debugf(debug, "navigateHistory: created navigating channel for session %s", activeID)
-
-	// If wait requested, register frame navigation waiter BEFORE sending command to avoid race
-	var frameNavCh chan *frameNavigatedInfo
-	if params.Wait {
-		frameNavCh = make(chan *frameNavigatedInfo, 1)
-		d.navWaiters.Store(activeID, frameNavCh)
-		d.debugf(debug, "navigateHistory: registered frame navigation waiter before sending command")
-	}
+	// Begin a navigation unconditionally so a later ready can detect the history
+	// navigation as in-flight, independent of --wait.
+	nav := d.navTracker.begin(activeID)
+	d.debugf(debug, "navigateHistory: began navigation for session %s", activeID)
 
 	// Navigate to history entry
 	_, err = d.sendToSession(ctx, activeID, "Page.navigateToHistoryEntry", map[string]any{
 		"entryId": history.Entries[targetIndex].ID,
 	})
 	if err != nil {
-		// Clean up waiter on error
-		if params.Wait {
-			d.navWaiters.Delete(activeID)
-		}
 		return ipc.ErrorResponse(fmt.Sprintf("failed to navigate history: %v", err))
 	}
 
-	// If wait requested, wait for frame navigation (not loadEventFired, which doesn't fire for BFCache)
+	// If wait requested, wait for frame navigation (not loadEventFired, which
+	// doesn't fire for BFCache), then resolve the title off the read loop.
 	if params.Wait {
 		timeout := cdp.DefaultTimeout
 		if params.Timeout > 0 {
@@ -321,18 +265,25 @@ func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams, debug bool
 		}
 		d.debugf(debug, "navigateHistory: waiting for frame navigation (timeout=%v)", timeout)
 
-		defer d.navWaiters.Delete(activeID)
-
 		targetURL := history.Entries[targetIndex].URL
-		select {
-		case info := <-frameNavCh:
-			return ipc.SuccessResponse(ipc.NavigateData{
-				URL:   targetURL,
-				Title: info.Title,
-			})
-		case <-time.After(timeout):
+		switch awaitMilestone(nav.FrameNavigated(), nav.Cancelled(), timeout) {
+		case navCancelled:
+			return cancelledNavResponse(nav, activeID)
+		case navTimedOut:
 			return ipc.ErrorResponse(fmt.Sprintf("timeout waiting for navigation to %s", targetURL))
 		}
+
+		// FrameNavigated has closed; report the requested history-entry URL to stay
+		// consistent with navigate --wait and the non-wait history path, which both
+		// return the requested URL rather than the resolved one. Resolve the title
+		// off the read loop.
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel2()
+		title := d.getPageTitle(ctx2, activeID)
+		return ipc.SuccessResponse(ipc.NavigateData{
+			URL:   targetURL,
+			Title: title,
+		})
 	}
 
 	// Return immediately - don't wait for frameNavigated
@@ -386,7 +337,9 @@ func (d *Daemon) handleReady(req ipc.Request) ipc.Response {
 	}
 }
 
-// handleReadyPageLoad waits for the page to finish loading (existing behavior).
+// handleReadyPageLoad implements ready default mode: it returns immediately when
+// document.readyState is already "complete", otherwise it waits for the current
+// navigation (if any) to reach DOM-ready.
 func (d *Daemon) handleReadyPageLoad(sessionID string, timeout time.Duration) ipc.Response {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -414,8 +367,8 @@ func (d *Daemon) handleReadyPageLoad(sessionID string, timeout time.Duration) ip
 		return ipc.SuccessResponse(nil)
 	}
 
-	// Page not yet loaded, wait for loadEventFired
-	if err := d.waitForLoadEvent(sessionID, timeout); err != nil {
+	// Page not yet loaded, wait for the navigation to reach DOM-ready
+	if err := d.waitForDOMReady(sessionID, timeout); err != nil {
 		return ipc.ErrorResponse(err.Error())
 	}
 
@@ -560,23 +513,22 @@ func (d *Daemon) querySelector(ctx context.Context, sessionID, selector string) 
 	return queryResp.NodeID != 0, nil
 }
 
-// ensureNetworkEnabled ensures the Network domain is enabled for the session.
+// ensureNetworkEnabled ensures the Network domain is enabled for the session,
+// at most once. It claims the enable, sends Network.enable outside the lock, and
+// clears the claim on failure so a later caller can retry.
 func (d *Daemon) ensureNetworkEnabled(sessionID string) error {
-	// Check if already enabled
-	if _, loaded := d.networkEnabled.Load(sessionID); loaded {
+	if !d.sessions.ClaimNetworkEnable(sessionID) {
 		return nil
 	}
 
-	// Enable Network domain
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err := d.sendToSession(ctx, sessionID, "Network.enable", nil)
-	if err != nil {
+	if _, err := d.sendToSession(ctx, sessionID, "Network.enable", nil); err != nil {
+		d.sessions.ClearNetworkEnabled(sessionID)
 		return fmt.Errorf("failed to enable Network domain: %v", err)
 	}
 
-	d.networkEnabled.Store(sessionID, true)
 	return nil
 }
 
@@ -655,31 +607,98 @@ func (d *Daemon) getPageTitle(ctx context.Context, sessionID string) string {
 	return resp.Result.Value
 }
 
-// waitForLoadEvent waits for a Page.loadEventFired event for the given session.
-// Creates and registers a waiter channel internally.
-func (d *Daemon) waitForLoadEvent(sessionID string, timeout time.Duration) error {
-	// Check if navigation already completed (navigating channel was closed/deleted)
-	// This handles race condition where fast navigations (e.g., from cache) complete
-	// before we register the waiter.
-	if _, navigating := d.navigating.Load(sessionID); !navigating {
-		d.debugf(false, "waitForLoadEvent: navigation already complete for session %s", sessionID)
+// waitForDOMReady blocks until the session's current navigation reaches DOM-ready
+// (ready default mode), returning immediately when no navigation is in flight.
+//
+// Awaiting an already-reached DOM-ready milestone returns at once, so the legacy
+// register-then-double-check dance is unnecessary. A superseding navigation
+// re-binds the wait to the newer navigation rather than erroring, because ready's
+// contract is to block until the page is ready and the page is now loading the
+// newer URL. A detach returns an error naming the closed session. The overall
+// timeout bounds the whole wait, including any re-binds.
+func (d *Daemon) waitForDOMReady(sessionID string, timeout time.Duration) error {
+	nav := d.navTracker.current(sessionID)
+	if nav == nil {
+		// No navigation in flight; ready has nothing to wait for.
+		d.debugf(false, "waitForDOMReady: no navigation in flight for session %s", sessionID)
 		return nil
 	}
-
-	ch := make(chan struct{}, 1)
-	d.loadWaiters.Store(sessionID, ch)
-	defer d.loadWaiters.Delete(sessionID)
-
-	// Check again after registering waiter (double-check pattern)
-	if _, navigating := d.navigating.Load(sessionID); !navigating {
-		d.debugf(false, "waitForLoadEvent: navigation completed while registering waiter for session %s", sessionID)
-		return nil
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	deadline := timer.C
+	for {
+		// DOM-ready takes priority: if the page is ready, report success even when
+		// the navigation was also superseded or its session is detaching.
+		select {
+		case <-nav.DOMReady():
+			return nil
+		default:
+		}
+		select {
+		case <-nav.DOMReady():
+			return nil
+		case <-nav.Cancelled():
+			if nav.CancelReason() == cancelDetached {
+				return fmt.Errorf("session %s closed while waiting for page load", sessionID)
+			}
+			// Superseded: re-bind to the newer navigation and keep waiting. A nil
+			// replacement means the navigation was cleared, which only happens on
+			// detach, so report the session as closed rather than a false success.
+			d.debugf(false, "waitForDOMReady: navigation superseded, re-binding for session %s", sessionID)
+			nav = d.navTracker.current(sessionID)
+			if nav == nil {
+				return fmt.Errorf("session %s closed while waiting for page load", sessionID)
+			}
+		case <-deadline:
+			return fmt.Errorf("timeout waiting for page load")
+		}
 	}
+}
 
+// navOutcome reports how awaitMilestone returned.
+type navOutcome int
+
+const (
+	navReached   navOutcome = iota // the awaited milestone closed
+	navCancelled                   // the navigation was cancelled (superseded or detached)
+	navTimedOut                    // the timeout elapsed first
+)
+
+// errNavigationSuperseded is the uniform error the --wait navigation commands
+// return when a newer navigation supersedes theirs.
+const errNavigationSuperseded = "navigation superseded by a newer navigation"
+
+// awaitMilestone blocks until the milestone closes, the navigation is cancelled,
+// or the timeout elapses, reporting which happened. It is pure rendezvous logic so
+// the consumers stay testable without a browser.
+//
+// The milestone takes priority: a navigation that reached its milestone before a
+// superseding navigation cancelled it has succeeded, so report success rather than
+// letting a plain select pick at random when both channels are closed.
+func awaitMilestone(milestone, cancelled <-chan struct{}, timeout time.Duration) navOutcome {
 	select {
-	case <-ch:
-		return nil
-	case <-time.After(timeout):
-		return fmt.Errorf("timeout waiting for page load")
+	case <-milestone:
+		return navReached
+	default:
 	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-milestone:
+		return navReached
+	case <-cancelled:
+		return navCancelled
+	case <-timer.C:
+		return navTimedOut
+	}
+}
+
+// cancelledNavResponse maps a closed Cancelled milestone to the error a --wait
+// command returns: the supersession message, or a message naming the closed
+// session when the real cause was the session detaching.
+func cancelledNavResponse(nav *Navigation, sessionID string) ipc.Response {
+	if nav.CancelReason() == cancelDetached {
+		return ipc.ErrorResponse(fmt.Sprintf("session %s closed during navigation", sessionID))
+	}
+	return ipc.ErrorResponse(errNavigationSuperseded)
 }

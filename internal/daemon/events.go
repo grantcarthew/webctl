@@ -433,7 +433,7 @@ func (d *Daemon) handleTargetCreated(evt cdp.Event) {
 		params.TargetInfo.TargetID, params.TargetInfo.Type, params.TargetInfo.URL)
 
 	// Check if we've already attached to this target (prevent double-attach)
-	if _, alreadyAttached := d.attachedTargets.LoadOrStore(params.TargetInfo.TargetID, true); alreadyAttached {
+	if !d.attaches.mark(params.TargetInfo.TargetID) {
 		d.debugf(false, "Target.targetCreated: already attached to targetID=%q, skipping", params.TargetInfo.TargetID)
 		return
 	}
@@ -449,8 +449,8 @@ func (d *Daemon) handleTargetCreated(evt cdp.Event) {
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "\nwarning: failed to attach to target %q: %v\n", params.TargetInfo.TargetID, err)
-			// Remove from attachedTargets on failure so we can retry
-			d.attachedTargets.Delete(params.TargetInfo.TargetID)
+			// Clear the mark on failure so we can retry
+			d.attaches.clear(params.TargetInfo.TargetID)
 			return
 		}
 
@@ -484,22 +484,14 @@ func (d *Daemon) handleTargetAttached(evt cdp.Event) {
 	d.debugf(false, "Target.attachedToTarget: sessionID=%q, targetID=%q, url=%q",
 		params.SessionID, params.TargetInfo.TargetID, params.TargetInfo.URL)
 
-	// Add to session manager
+	// Add to session manager. Add signals any registered tab-new waiter for this
+	// targetID under its lock, closing the attach rendezvous.
 	d.sessions.Add(
 		params.SessionID,
 		params.TargetInfo.TargetID,
 		params.TargetInfo.URL,
 		params.TargetInfo.Title,
 	)
-
-	// Signal any tab-new waiter keyed on this targetID. Non-blocking send;
-	// if no waiter is registered, the post-Send GetByTargetID check will see the session.
-	if ch, ok := d.tabAttachWaiters.Load(params.TargetInfo.TargetID); ok {
-		select {
-		case ch.(chan struct{}) <- struct{}{}:
-		default:
-		}
-	}
 
 	// Refresh REPL prompt to show new session
 	if d.repl != nil {
@@ -529,17 +521,23 @@ func (d *Daemon) handleTargetDetached(evt cdp.Event) {
 
 	d.debugf(false, "Target.detachedFromTarget: sessionID=%q", params.SessionID)
 
-	// Remove from session manager
+	// Cancel any in-flight navigation with the detach reason so a blocked ready or
+	// --wait consumer wakes with the session-closed outcome instead of timing out.
+	// This is distinct from the tab-close waiter signalled by Remove below: the two
+	// wake different consumers, so their relative order does not matter.
+	d.navTracker.clear(params.SessionID)
+
+	// Drop the attach-dedup mark for this target. Resolve the targetID before Remove
+	// deletes the session; targetIDs are never reused, so clearing here cannot cause a
+	// later double-attach and it keeps the attach set from growing for the daemon's life.
+	if targetID := d.sessions.TargetID(params.SessionID); targetID != "" {
+		d.attaches.clear(targetID)
+	}
+
+	// Remove from session manager. Remove signals any registered tab-close waiter
+	// for this sessionID under its lock, closing the detach rendezvous.
 	newActive, changed := d.sessions.Remove(params.SessionID)
 	d.debugf(false, "Session removed: newActiveID=%q, activeChanged=%v", newActive, changed)
-
-	// Signal any tab-close waiter keyed on this sessionID.
-	if ch, ok := d.tabDetachWaiters.Load(params.SessionID); ok {
-		select {
-		case ch.(chan struct{}) <- struct{}{}:
-		default:
-		}
-	}
 
 	// Purge entries for this session
 	d.purgeSessionEntries(params.SessionID)
@@ -592,12 +590,16 @@ func (d *Daemon) purgeSessionEntries(sessionID string) {
 }
 
 // handleFrameNavigated processes Page.frameNavigated events.
-// Signals any waiting navigation operations.
+// Closes the current navigation's FrameNavigated milestone.
 //
 // This event is critical for history navigation (back/forward) because Chrome's
 // BFCache (Back/Forward Cache) optimization prevents Page.loadEventFired from
 // firing when navigating to cached pages. Page.frameNavigated DOES fire for all
 // navigation types, making it the reliable choice for history navigation waiting.
+//
+// The page title is intentionally not resolved here: a synchronous CDP call on
+// the read-loop goroutine would stall event processing. The consumer resolves the
+// title on its own goroutine after waking on the milestone.
 func (d *Daemon) handleFrameNavigated(evt cdp.Event) {
 	var params struct {
 		Frame struct {
@@ -616,53 +618,29 @@ func (d *Daemon) handleFrameNavigated(evt cdp.Event) {
 		return
 	}
 
-	// Check if anyone is waiting for this session's navigation
-	if ch, ok := d.navWaiters.LoadAndDelete(evt.SessionID); ok {
-		waiter := ch.(chan *frameNavigatedInfo)
-		// Get title via JavaScript since frameNavigated doesn't include it
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		title := d.getPageTitle(ctx, evt.SessionID)
-		select {
-		case waiter <- &frameNavigatedInfo{URL: params.Frame.URL, Title: title}:
-		default:
-		}
+	if nav := d.navTracker.current(evt.SessionID); nav != nil {
+		nav.markFrameNavigated()
 	}
 }
 
-// handleLoadEventFired processes Page.loadEventFired events.
-// Signals any waiting ready operations and marks navigation as complete.
+// handleLoadEventFired processes Page.loadEventFired events, marking the current
+// navigation Loaded (which also closes its DOM-ready milestone).
 func (d *Daemon) handleLoadEventFired(evt cdp.Event) {
 	d.debugf(false, "Page.loadEventFired: sessionID=%s", evt.SessionID)
 
-	// Signal ready waiters
-	if ch, ok := d.loadWaiters.LoadAndDelete(evt.SessionID); ok {
-		d.debugf(false, "Page.loadEventFired: signaling ready waiter for session %s", evt.SessionID)
-		waiter := ch.(chan struct{})
-		select {
-		case waiter <- struct{}{}:
-		default:
-		}
-	}
-
-	// Mark navigation as complete by closing the navigating channel
-	if ch, ok := d.navigating.LoadAndDelete(evt.SessionID); ok {
-		d.debugf(false, "Page.loadEventFired: closing navigating channel for session %s", evt.SessionID)
-		close(ch.(chan struct{}))
+	if nav := d.navTracker.current(evt.SessionID); nav != nil {
+		nav.markLoaded()
 	}
 }
 
-// handleDOMContentEventFired processes Page.domContentEventFired events.
-// Marks navigation as complete for DOM operations - fires earlier than loadEventFired.
-// This allows html/eval commands to proceed once DOM is ready, without waiting
-// for all resources (images, scripts, ads) to finish loading.
+// handleDOMContentEventFired processes Page.domContentEventFired events, marking
+// the current navigation DOM-ready. This fires before loadEventFired, letting
+// ready default mode and DOM operations proceed once the DOM is ready without
+// waiting for all resources (images, scripts, ads) to finish loading.
 func (d *Daemon) handleDOMContentEventFired(evt cdp.Event) {
 	d.debugf(false, "Page.domContentEventFired: sessionID=%s", evt.SessionID)
 
-	// Mark navigation as complete by closing the navigating channel
-	// This fires before loadEventFired, allowing DOM operations to proceed sooner
-	if ch, ok := d.navigating.LoadAndDelete(evt.SessionID); ok {
-		d.debugf(false, "Page.domContentEventFired: closing navigating channel for session %s", evt.SessionID)
-		close(ch.(chan struct{}))
+	if nav := d.navTracker.current(evt.SessionID); nav != nil {
+		nav.markDOMReady()
 	}
 }

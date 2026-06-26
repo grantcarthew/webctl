@@ -186,7 +186,7 @@ Status values: Todo, In progress, Done, Skipped.
 | Finding | Title | Status | Commit | Notes |
 |---------|-------|--------|--------|-------|
 | R1 | Decompose the Daemon god-object | Todo | | |
-| R2 | Encapsulate navigation rendezvous | In progress | | Redesigned and spun out to 02-navigation-lifecycle-redesign.md (Navigation milestones + per-session tracker; network/tab concerns rehomed to SessionManager). Mark Done when that project lands. |
+| R2 | Encapsulate navigation rendezvous | Done | | Implemented here: Navigation milestones plus per-session tracker (internal/daemon/navigation.go); network and tab rendezvous rehomed to SessionManager. Deferred follow-up tracked in 02-failed-navigate-leaves-a-stale-in-flight-navigation.md. |
 | R3 | Reduce CDP coupling in handlers | Todo | | |
 | R4 | Explicit command registration | Todo | | |
 | R5 | Split the contract file | Todo | | |
