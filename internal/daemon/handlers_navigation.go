@@ -49,6 +49,8 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 		"url": params.URL,
 	})
 	if err != nil {
+		// The navigation never started; clear it so a later ready does not block on it.
+		d.navTracker.abort(activeID, nav)
 		return ipc.ErrorResponse(fmt.Sprintf("navigation failed: %v", err))
 	}
 
@@ -58,6 +60,7 @@ func (d *Daemon) handleNavigate(req ipc.Request) ipc.Response {
 		FrameID   string `json:"frameId"`
 	}
 	if err := json.Unmarshal(result, &navResp); err == nil && navResp.ErrorText != "" {
+		d.navTracker.abort(activeID, nav)
 		return ipc.ErrorResponse(navResp.ErrorText)
 	}
 
@@ -130,6 +133,8 @@ func (d *Daemon) handleReload(req ipc.Request) ipc.Response {
 		"ignoreCache": params.IgnoreCache,
 	})
 	if err != nil {
+		// The reload never started; clear it so a later ready does not block on it.
+		d.navTracker.abort(activeID, nav)
 		return ipc.ErrorResponse(fmt.Sprintf("reload failed: %v", err))
 	}
 
@@ -253,6 +258,8 @@ func (d *Daemon) navigateHistory(delta int, params ipc.HistoryParams, debug bool
 		"entryId": history.Entries[targetIndex].ID,
 	})
 	if err != nil {
+		// The history navigation never started; clear it so a later ready does not block on it.
+		d.navTracker.abort(activeID, nav)
 		return ipc.ErrorResponse(fmt.Sprintf("failed to navigate history: %v", err))
 	}
 
@@ -638,16 +645,24 @@ func (d *Daemon) waitForDOMReady(sessionID string, timeout time.Duration) error 
 		case <-nav.DOMReady():
 			return nil
 		case <-nav.Cancelled():
-			if nav.CancelReason() == cancelDetached {
+			switch nav.CancelReason() {
+			case cancelDetached:
 				return fmt.Errorf("session %s closed while waiting for page load", sessionID)
+			case cancelAborted:
+				// The navigation failed to start, so the page is in whatever state it
+				// already held; there is nothing to wait for.
+				d.debugf(false, "waitForDOMReady: navigation aborted for session %s", sessionID)
+				return nil
 			}
 			// Superseded: re-bind to the newer navigation and keep waiting. A nil
-			// replacement means the navigation was cleared, which only happens on
-			// detach, so report the session as closed rather than a false success.
+			// replacement means the session has no navigation in flight (cleared on
+			// detach, or aborted because a start failed), so there is nothing left to
+			// wait for; report success, the same outcome as the no-navigation entry
+			// guard. A direct detach is still reported via the cancelDetached arm.
 			d.debugf(false, "waitForDOMReady: navigation superseded, re-binding for session %s", sessionID)
 			nav = d.navTracker.current(sessionID)
 			if nav == nil {
-				return fmt.Errorf("session %s closed while waiting for page load", sessionID)
+				return nil
 			}
 		case <-deadline:
 			return fmt.Errorf("timeout waiting for page load")
@@ -667,6 +682,11 @@ const (
 // errNavigationSuperseded is the uniform error the --wait navigation commands
 // return when a newer navigation supersedes theirs.
 const errNavigationSuperseded = "navigation superseded by a newer navigation"
+
+// errNavigationAborted is the error a --wait navigation command maps an aborted
+// cancellation to. In normal flow the aborting handler is the same goroutine and
+// has already returned its start-failure error, so this is a defensive mapping.
+const errNavigationAborted = "navigation aborted before it started"
 
 // awaitMilestone blocks until the milestone closes, the navigation is cancelled,
 // or the timeout elapses, reporting which happened. It is pure rendezvous logic so
@@ -697,8 +717,12 @@ func awaitMilestone(milestone, cancelled <-chan struct{}, timeout time.Duration)
 // command returns: the supersession message, or a message naming the closed
 // session when the real cause was the session detaching.
 func cancelledNavResponse(nav *Navigation, sessionID string) ipc.Response {
-	if nav.CancelReason() == cancelDetached {
+	switch nav.CancelReason() {
+	case cancelDetached:
 		return ipc.ErrorResponse(fmt.Sprintf("session %s closed during navigation", sessionID))
+	case cancelAborted:
+		return ipc.ErrorResponse(errNavigationAborted)
+	default:
+		return ipc.ErrorResponse(errNavigationSuperseded)
 	}
-	return ipc.ErrorResponse(errNavigationSuperseded)
 }

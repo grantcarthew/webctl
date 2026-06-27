@@ -138,6 +138,135 @@ func TestNavTracker_ClearCancelsWithDetach(t *testing.T) {
 	}
 }
 
+// A failed-start path must clear the session's navigation: current() returns nil
+// and a following ready default-mode call returns immediately with success rather
+// than blocking on a navigation that will never reach DOM-ready.
+func TestNavTracker_AbortClearsFailedStart(t *testing.T) {
+	d := New(DefaultConfig())
+	nav := d.navTracker.begin("s")
+
+	d.navTracker.abort("s", nav)
+
+	if d.navTracker.current("s") != nil {
+		t.Error("current should be nil after abort")
+	}
+	if !isClosed(nav.Cancelled()) {
+		t.Error("abort did not cancel the navigation")
+	}
+	if nav.CancelReason() != cancelAborted {
+		t.Errorf("cancel reason = %v, want cancelAborted", nav.CancelReason())
+	}
+	if err := d.waitForDOMReady("s", time.Second); err != nil {
+		t.Errorf("ready default mode after abort = %v, want nil", err)
+	}
+}
+
+// A ready consumer already blocked on a navigation that is then aborted must wake
+// with success, carrying neither the supersession nor the session-closed message.
+func TestWaitForLoadEvent_AbortReturnsSuccess(t *testing.T) {
+	d := New(DefaultConfig())
+	nav := d.navTracker.begin("s1")
+
+	done := make(chan error, 1)
+	go func() { done <- d.waitForDOMReady("s1", 5*time.Second) }()
+
+	d.navTracker.abort("s1", nav)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("waitForDOMReady returned %v, want nil after abort", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waitForDOMReady did not return after the navigation was aborted")
+	}
+}
+
+// The aborted cancellation cause must be distinct from supersession and detach so
+// woken consumers can tell the three apart.
+func TestNavTracker_AbortCauseIsDistinct(t *testing.T) {
+	if cancelAborted == cancelSuperseded || cancelAborted == cancelDetached {
+		t.Fatalf("cancelAborted (%v) must differ from cancelSuperseded (%v) and cancelDetached (%v)",
+			cancelAborted, cancelSuperseded, cancelDetached)
+	}
+
+	d := New(DefaultConfig())
+	nav := d.navTracker.begin("s")
+	d.navTracker.abort("s", nav)
+
+	resp := cancelledNavResponse(nav, "s")
+	if resp.OK {
+		t.Fatal("expected error response for aborted navigation")
+	}
+	if resp.Error == errNavigationSuperseded {
+		t.Error("abort should not report the supersession message")
+	}
+	if strings.Contains(resp.Error, "closed") {
+		t.Errorf("abort should not report a session-closed message, got %q", resp.Error)
+	}
+	if resp.Error != errNavigationAborted {
+		t.Errorf("error = %q, want %q", resp.Error, errNavigationAborted)
+	}
+}
+
+// abort must be a no-op when the session has no tracked navigation at all, not
+// only when the tracked navigation differs from the one passed.
+func TestNavTracker_AbortNoOpWhenNoNavigation(t *testing.T) {
+	tr := newNavTracker()
+	orphan := newNavigation()
+
+	tr.abort("absent", orphan) // must neither panic nor cancel the orphan
+
+	if isClosed(orphan.Cancelled()) {
+		t.Error("abort of an untracked session cancelled the passed navigation")
+	}
+	if tr.current("absent") != nil {
+		t.Error("abort of an untracked session created a map entry")
+	}
+}
+
+// When a consumer is bound to navigation A, a successor B supersedes it, and B
+// then fails its start and is aborted-and-removed, the consumer re-binds to a nil
+// current navigation. That means nothing is in flight, so ready returns success
+// rather than a false session-closed error.
+func TestWaitForLoadEvent_SupersedeThenAbortReturnsSuccess(t *testing.T) {
+	d := New(DefaultConfig())
+	d.navTracker.begin("s1") // navigation A, the consumer binds to it
+
+	done := make(chan error, 1)
+	go func() { done <- d.waitForDOMReady("s1", 5*time.Second) }()
+
+	navB := d.navTracker.begin("s1") // supersede A, waking the consumer to re-bind
+	d.navTracker.abort("s1", navB)   // B failed its start: remove it, leaving nil
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("waitForDOMReady returned %v, want nil when the successor was aborted", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waitForDOMReady did not return after the superseding navigation was aborted")
+	}
+}
+
+// Aborting a failed start must never cancel or remove a newer navigation created
+// by a later begin for the same session.
+func TestNavTracker_AbortDoesNotClobberSuccessor(t *testing.T) {
+	tr := newNavTracker()
+	stale := tr.begin("s") // the failed start's navigation
+	fresh := tr.begin("s") // a later begin supersedes it
+
+	// Aborting the stale navigation must be a no-op against the successor.
+	tr.abort("s", stale)
+
+	if tr.current("s") != fresh {
+		t.Error("abort of a superseded navigation removed or replaced the successor")
+	}
+	if isClosed(fresh.Cancelled()) {
+		t.Error("abort of a superseded navigation cancelled the successor")
+	}
+}
+
 // A --wait consumer must return the explicit superseded error (behavioral
 // contract item 7) when its navigation is cancelled by a supersession, rather
 // than waiting out its timeout.

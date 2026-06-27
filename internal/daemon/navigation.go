@@ -11,6 +11,10 @@ const (
 	cancelSuperseded cancelReason = iota
 	// cancelDetached means the session detached (tab/page closed) while this navigation lived.
 	cancelDetached
+	// cancelAborted means the navigation command failed to start, so no navigation
+	// ever happened. A woken consumer treats this as "nothing to wait for" rather
+	// than as a supersession or a detach.
+	cancelAborted
 )
 
 // Navigation represents one in-flight or just-completed navigation for a session.
@@ -164,6 +168,25 @@ func (t *navTracker) clear(sessionID string) {
 	defer t.mu.Unlock()
 	if n, ok := t.nav[sessionID]; ok {
 		n.cancel(cancelDetached)
+		delete(t.nav, sessionID)
+	}
+}
+
+// abort ends a navigation that never started, for the failure paths where a
+// handler called begin but the CDP navigate/reload/history command did not get
+// under way. It cancels nav with the aborted cause so any already-blocked ready
+// consumer wakes with a truthful, non-error outcome, and removes it from the map
+// so current() returns nil afterward.
+//
+// It acts only when nav is still the session's tracked navigation: a later begin
+// may already have superseded it, and a stale abort must never clobber that newer
+// navigation. The map mutation and the cancel run under t.mu, matching the t.mu to
+// nav.mu ordering begin and clear already use.
+func (t *navTracker) abort(sessionID string, nav *Navigation) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if n, ok := t.nav[sessionID]; ok && n == nav {
+		n.cancel(cancelAborted)
 		delete(t.nav, sessionID)
 	}
 }
