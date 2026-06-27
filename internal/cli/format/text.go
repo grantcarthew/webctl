@@ -256,17 +256,39 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 			_, _ = fmt.Fprintf(w, "%s %s %d %dms\n", e.Method, e.URL, e.Status, durationMs)
 		}
 
-		// Request body (if present and non-empty)
-		if e.Body != "" && e.Method != "GET" {
-			// Try to parse as JSON to detect if it's request/response
-			// For now, just show bodies indented
-			bodyLines := strings.Split(strings.TrimSpace(e.Body), "\n")
-			for _, line := range bodyLines {
-				_, _ = fmt.Fprintf(w, "  %s\n", line)
-			}
-		}
+		// Request body then response body, each printed only when present and
+		// non-empty. Entries arrive already bounded to --max-body-size, so the
+		// bodies are rendered verbatim and a trailing marker flags any that were
+		// cut. Binary response bodies are filed rather than stored on Body, so
+		// nothing prints for them.
+		printNetworkBody(w, "request:", e.RequestBody, e.RequestBodyTruncated)
+		printNetworkBody(w, "response:", e.Body, e.BodyTruncated)
 	}
 	return nil
+}
+
+// printNetworkBody renders a labeled network body. A single-line body follows
+// the label on the same line; a multi-line body prints the bare label line then
+// each body line indented four spaces. When truncated is set, a trailing marker
+// line signals that --max-body-size cut the body, so a text reader is not misled
+// by a payload that silently ends. Nothing prints for an empty body.
+func printNetworkBody(w io.Writer, label, body string, truncated bool) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return
+	}
+	lines := strings.Split(body, "\n")
+	if len(lines) == 1 {
+		_, _ = fmt.Fprintf(w, "  %s %s\n", label, lines[0])
+	} else {
+		_, _ = fmt.Fprintf(w, "  %s\n", label)
+		for _, line := range lines {
+			_, _ = fmt.Fprintf(w, "    %s\n", line)
+		}
+	}
+	if truncated {
+		_, _ = fmt.Fprintf(w, "    … [truncated]\n")
+	}
 }
 
 // Cookies outputs cookies in text format (semicolon-separated attributes).

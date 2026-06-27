@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/grantcarthew/webctl/internal/cli/format"
 	"github.com/grantcarthew/webctl/internal/ipc"
@@ -104,7 +105,7 @@ func init() {
 	networkCmd.PersistentFlags().Duration("min-duration", 0, "Filter by minimum request duration")
 	networkCmd.PersistentFlags().Int64("min-size", 0, "Filter by minimum response size in bytes")
 	networkCmd.PersistentFlags().Bool("failed", false, "Show only failed requests")
-	networkCmd.PersistentFlags().Int("max-body-size", 102400, "Maximum body size in bytes before truncation (default 100KB)")
+	networkCmd.PersistentFlags().Int("max-body-size", ipc.DefaultMaxBodySize, "Maximum body size in bytes before truncation (default 100KB; 0 suppresses all body content)")
 	networkCmd.PersistentFlags().Int("head", 0, "Return first N entries")
 	networkCmd.PersistentFlags().Int("tail", 0, "Return last N entries")
 	networkCmd.PersistentFlags().String("range", "", "Return entries in range (format: START-END)")
@@ -155,7 +156,9 @@ func runNetworkDefault(cmd *cobra.Command, args []string) error {
 		return outputNetworkJSON(entries, resolveMaxBodySize(cmd))
 	}
 
-	// Text mode: use text formatter
+	// Text mode: bound bodies to --max-body-size before rendering, then format.
+	// The formatter prints the already-bounded text and does not truncate itself.
+	applyBodyTruncation(entries, resolveMaxBodySize(cmd))
 	return format.Network(os.Stdout, entries, format.NewOutputOptions(JSONOutput, NoColor))
 }
 
@@ -178,13 +181,7 @@ func networkSaveContent(cmd *cobra.Command) (string, error) {
 		return "", err
 	}
 
-	maxBodySize := resolveMaxBodySize(cmd)
-	for i := range entries {
-		if len(entries[i].Body) > maxBodySize {
-			entries[i].Body = entries[i].Body[:maxBodySize]
-			entries[i].BodyTruncated = true
-		}
-	}
+	applyBodyTruncation(entries, resolveMaxBodySize(cmd))
 
 	return marshalSaveEnvelope(map[string]any{
 		"ok":      true,
@@ -194,16 +191,19 @@ func networkSaveContent(cmd *cobra.Command) (string, error) {
 }
 
 // resolveMaxBodySize reads the --max-body-size flag, falling back to the parent
-// command's persistent flag and finally the 100KB default.
+// command's persistent flag and finally the default. It distinguishes an unset
+// flag from an explicit value via Changed, so a deliberate --max-body-size 0
+// (suppress all body content) is honoured rather than coalesced to the default.
 func resolveMaxBodySize(cmd *cobra.Command) int {
-	maxBodySize, _ := cmd.Flags().GetInt("max-body-size")
-	if maxBodySize == 0 && cmd.Parent() != nil {
-		maxBodySize, _ = cmd.Parent().PersistentFlags().GetInt("max-body-size")
+	if cmd.Flags().Changed("max-body-size") {
+		maxBodySize, _ := cmd.Flags().GetInt("max-body-size")
+		return maxBodySize
 	}
-	if maxBodySize == 0 {
-		maxBodySize = 102400
+	if cmd.Parent() != nil && cmd.Parent().PersistentFlags().Changed("max-body-size") {
+		maxBodySize, _ := cmd.Parent().PersistentFlags().GetInt("max-body-size")
+		return maxBodySize
 	}
-	return maxBodySize
+	return ipc.DefaultMaxBodySize
 }
 
 // getNetworkFromDaemon fetches network entries from daemon, applying filters
@@ -364,7 +364,12 @@ func filterNetworkByText(entries []ipc.NetworkEntry, searchText string) []ipc.Ne
 			matchedEntries = append(matchedEntries, entry)
 			continue
 		}
-		// Search in body
+		// Search in request body
+		if strings.Contains(strings.ToLower(entry.RequestBody), searchLower) {
+			matchedEntries = append(matchedEntries, entry)
+			continue
+		}
+		// Search in response body
 		if strings.Contains(strings.ToLower(entry.Body), searchLower) {
 			matchedEntries = append(matchedEntries, entry)
 			continue
@@ -586,15 +591,42 @@ func applyNetworkLimiting(entries []ipc.NetworkEntry, head, tail int, rangeStr s
 	return entries, nil
 }
 
-// outputNetworkJSON outputs entries in JSON format.
-func outputNetworkJSON(entries []ipc.NetworkEntry, maxBodySize int) error {
-	// Apply body truncation based on max-body-size flag
+// truncateBody cuts body to at most maxBytes bytes on a UTF-8 rune boundary
+// (the longest valid prefix not exceeding maxBytes, so a multibyte rune is never
+// split) and reports whether it truncated.
+func truncateBody(body string, maxBytes int) (string, bool) {
+	if maxBytes < 0 {
+		maxBytes = 0
+	}
+	if len(body) <= maxBytes {
+		return body, false
+	}
+	end := maxBytes
+	for end > 0 && !utf8.RuneStart(body[end]) {
+		end--
+	}
+	return body[:end], true
+}
+
+// applyBodyTruncation bounds the request and response body of every entry to
+// maxBodySize, setting each entry's own truncation flag. Shared by the JSON,
+// save, and text output paths so the byte-budget logic lives in one place.
+func applyBodyTruncation(entries []ipc.NetworkEntry, maxBodySize int) {
 	for i := range entries {
-		if len(entries[i].Body) > maxBodySize {
-			entries[i].Body = entries[i].Body[:maxBodySize]
+		if truncated, did := truncateBody(entries[i].RequestBody, maxBodySize); did {
+			entries[i].RequestBody = truncated
+			entries[i].RequestBodyTruncated = true
+		}
+		if truncated, did := truncateBody(entries[i].Body, maxBodySize); did {
+			entries[i].Body = truncated
 			entries[i].BodyTruncated = true
 		}
 	}
+}
+
+// outputNetworkJSON outputs entries in JSON format.
+func outputNetworkJSON(entries []ipc.NetworkEntry, maxBodySize int) error {
+	applyBodyTruncation(entries, maxBodySize)
 
 	result := map[string]any{
 		"ok":      true,

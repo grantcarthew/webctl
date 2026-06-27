@@ -73,6 +73,13 @@ func NormalizeConsoleType(t string) string {
 	return lower
 }
 
+// DefaultMaxBodySize is the default byte budget for network bodies. The CLI uses
+// it as the --max-body-size truncation default; the daemon uses it as the
+// Network.enable maxPostDataSize inline cap. They are deliberately equal so a
+// request body that survives truncation also arrives inline without a fallback
+// fetch.
+const DefaultMaxBodySize = 102400
+
 // NetworkEntry represents a network request/response entry.
 type NetworkEntry struct {
 	SessionID       string            `json:"sessionId,omitempty"`
@@ -89,11 +96,49 @@ type NetworkEntry struct {
 	Size            int64             `json:"size,omitempty"`
 	RequestHeaders  map[string]string `json:"requestHeaders,omitempty"`
 	ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
-	Body            string            `json:"body,omitempty"`
-	BodyTruncated   bool              `json:"bodyTruncated,omitempty"`
-	BodyPath        string            `json:"bodyPath,omitempty"`
-	Failed          bool              `json:"failed"`
-	Error           string            `json:"error,omitempty"`
+	RequestBody     string            `json:"requestBody,omitempty"`
+	// RequestBodyTruncated reports that --max-body-size cut the request body.
+	RequestBodyTruncated bool   `json:"requestBodyTruncated,omitempty"`
+	Body                 string `json:"body,omitempty"`
+	BodyTruncated        bool   `json:"bodyTruncated,omitempty"`
+	BodyPath             string `json:"bodyPath,omitempty"`
+	Failed               bool   `json:"failed"`
+	Error                string `json:"error,omitempty"`
+
+	// awaitingRequestBody marks an entry whose request body was advertised
+	// (hasPostData) but omitted from requestWillBeSent, so the daemon is
+	// fetching it via Network.getRequestPostData off the read loop. It travels
+	// with the entry because the ring buffer stores entries by value and
+	// compacts them on removal, leaving no stable external identity to key on;
+	// a requestId-keyed side map also cannot distinguish redirect hops that
+	// share the id. Excluded from JSON so a query racing an in-flight fetch
+	// cannot serialize a transient pending flag.
+	awaitingRequestBody bool `json:"-"`
+}
+
+// AwaitRequestBody marks the entry as awaiting an out-of-band request-body
+// fetch. The flag is unexported on the wire (json:"-") but the daemon, in a
+// different package, needs to set and read it, so access goes through these
+// methods.
+func (e *NetworkEntry) AwaitRequestBody() {
+	e.awaitingRequestBody = true
+}
+
+// AwaitingRequestBody reports whether the entry is awaiting a request-body fetch.
+func (e *NetworkEntry) AwaitingRequestBody() bool {
+	return e.awaitingRequestBody
+}
+
+// SetRequestBody stores a fetched request body and clears the awaiting marker.
+func (e *NetworkEntry) SetRequestBody(body string) {
+	e.RequestBody = body
+	e.awaitingRequestBody = false
+}
+
+// ClearAwaitingRequestBody clears the awaiting marker without storing a body,
+// used when the fetch returns no data or fails.
+func (e *NetworkEntry) ClearAwaitingRequestBody() {
+	e.awaitingRequestBody = false
 }
 
 // ConsoleData is the response data for the "console" command.

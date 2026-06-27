@@ -107,7 +107,7 @@ func (d *Daemon) handleNetwork() ipc.Response {
 	if d.sessions.ClaimNetworkEnable(activeID) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if _, err := d.sendToSession(ctx, activeID, "Network.enable", nil); err != nil {
+		if _, err := d.sendToSession(ctx, activeID, "Network.enable", networkEnableParams()); err != nil {
 			d.sessions.ClearNetworkEnabled(activeID)
 			d.debugf(false, "warning: failed to enable Network domain: %v", err)
 		} else {

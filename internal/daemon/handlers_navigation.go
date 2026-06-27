@@ -524,7 +524,7 @@ func (d *Daemon) ensureNetworkEnabled(sessionID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if _, err := d.sendToSession(ctx, sessionID, "Network.enable", nil); err != nil {
+	if _, err := d.sendToSession(ctx, sessionID, "Network.enable", networkEnableParams()); err != nil {
 		d.sessions.ClearNetworkEnabled(sessionID)
 		return fmt.Errorf("failed to enable Network domain: %v", err)
 	}

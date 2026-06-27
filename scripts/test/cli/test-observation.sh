@@ -366,6 +366,30 @@ run_test "network save to directory" "${WEBCTL_BINARY}" network save "${TEMP_NET
 assert_success "${TEST_EXIT_CODE}" "network save to directory returns success"
 assert_contains "${TEST_STDOUT}" "${TEMP_NETWORK_DIR}/" "Output shows directory path"
 
+test_section "Network Command - Request Body Capture"
+
+# Trigger a POST with a JSON body, then verify both stdout and saved output carry
+# the request body. The static test server has no /api/echo route, but the request
+# body is captured at requestWillBeSent regardless of the 404 response.
+run_test "clear network buffer for request-body test" "${WEBCTL_BINARY}" clear network
+assert_success "${TEST_EXIT_CODE}" "Network buffer cleared"
+
+run_test "trigger POST with body" "${WEBCTL_BINARY}" eval "fetch('/api/echo', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({marker:'obo-reqbody'})}).catch(()=>{})"
+assert_success "${TEST_EXIT_CODE}" "POST request triggered"
+sleep 2
+
+# --find matches the request body by its payload.
+run_test "network --find request body" "${WEBCTL_BINARY}" network --find "obo-reqbody"
+assert_success "${TEST_EXIT_CODE}" "network --find matches request body"
+assert_contains "${TEST_STDOUT}" "obo-reqbody" "Output contains the request body payload"
+
+# network save output includes the request body (requirement 8).
+TEMP_REQBODY_FILE=$(create_temp_file ".json")
+run_test "network save with request body" "${WEBCTL_BINARY}" network save "${TEMP_REQBODY_FILE}"
+assert_success "${TEST_EXIT_CODE}" "network save returns success"
+assert_file_contains "${TEMP_REQBODY_FILE}" "requestBody" "Saved file contains requestBody field"
+assert_file_contains "${TEMP_REQBODY_FILE}" "obo-reqbody" "Saved file contains the request body payload"
+
 # =============================================================================
 # Cookies Command Tests
 # =============================================================================

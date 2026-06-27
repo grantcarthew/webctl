@@ -65,6 +65,103 @@ func TestDaemon_parseRequestEvent_usesWallTime(t *testing.T) {
 	}
 }
 
+func TestDaemon_parseRequestEvent_inlinePostData(t *testing.T) {
+	d := New(DefaultConfig())
+
+	body := `{"username":"grant","password":"hunter2"}`
+	params := map[string]any{
+		"requestId": "req-1",
+		"wallTime":  float64(time.Now().Unix()),
+		"request": map[string]any{
+			"url":         "https://api.example.com/login",
+			"method":      "POST",
+			"headers":     map[string]string{"content-type": "application/json"},
+			"postData":    body,
+			"hasPostData": true,
+		},
+		"type": "Fetch",
+	}
+	paramsJSON, _ := json.Marshal(params)
+
+	entry, ok := d.parseRequestEvent(cdp.Event{
+		Method: "Network.requestWillBeSent",
+		Params: json.RawMessage(paramsJSON),
+	})
+	if !ok {
+		t.Fatal("parseRequestEvent returned false")
+	}
+	if entry.RequestBody != body {
+		t.Errorf("RequestBody = %q, want %q", entry.RequestBody, body)
+	}
+	// Inline body is complete, so the entry must not await a fetch.
+	if entry.AwaitingRequestBody() {
+		t.Error("entry should not be awaiting a request-body fetch when postData is inline")
+	}
+}
+
+func TestDaemon_parseRequestEvent_omittedPostData(t *testing.T) {
+	d := New(DefaultConfig())
+
+	// hasPostData true with no inline postData: body exceeded maxPostDataSize and
+	// must be fetched separately, so the entry is marked awaiting.
+	params := map[string]any{
+		"requestId": "req-2",
+		"wallTime":  float64(time.Now().Unix()),
+		"request": map[string]any{
+			"url":         "https://api.example.com/upload",
+			"method":      "PUT",
+			"headers":     map[string]string{"content-type": "application/octet-stream"},
+			"hasPostData": true,
+		},
+		"type": "Fetch",
+	}
+	paramsJSON, _ := json.Marshal(params)
+
+	entry, ok := d.parseRequestEvent(cdp.Event{
+		Method: "Network.requestWillBeSent",
+		Params: json.RawMessage(paramsJSON),
+	})
+	if !ok {
+		t.Fatal("parseRequestEvent returned false")
+	}
+	if entry.RequestBody != "" {
+		t.Errorf("RequestBody = %q, want empty (body omitted from event)", entry.RequestBody)
+	}
+	if !entry.AwaitingRequestBody() {
+		t.Error("entry should be awaiting a request-body fetch when hasPostData is true and postData is absent")
+	}
+}
+
+func TestDaemon_parseRequestEvent_noPostData(t *testing.T) {
+	d := New(DefaultConfig())
+
+	// A GET with no body: neither inline body nor awaiting marker.
+	params := map[string]any{
+		"requestId": "req-3",
+		"wallTime":  float64(time.Now().Unix()),
+		"request": map[string]any{
+			"url":    "https://example.com/",
+			"method": "GET",
+		},
+		"type": "Document",
+	}
+	paramsJSON, _ := json.Marshal(params)
+
+	entry, ok := d.parseRequestEvent(cdp.Event{
+		Method: "Network.requestWillBeSent",
+		Params: json.RawMessage(paramsJSON),
+	})
+	if !ok {
+		t.Fatal("parseRequestEvent returned false")
+	}
+	if entry.RequestBody != "" {
+		t.Errorf("RequestBody = %q, want empty", entry.RequestBody)
+	}
+	if entry.AwaitingRequestBody() {
+		t.Error("GET request should not await a request-body fetch")
+	}
+}
+
 func TestDaemon_parseConsoleEvent(t *testing.T) {
 	d := New(DefaultConfig())
 

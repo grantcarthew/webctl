@@ -169,7 +169,14 @@ func TestConsole(t *testing.T) {
 func TestNetwork(t *testing.T) {
 	entries := []ipc.NetworkEntry{
 		{Method: "GET", URL: "https://api.example.com", Status: 200, Duration: 0.123},
-		{Method: "POST", URL: "https://api.example.com", Status: 404, Duration: 0.456, Body: `{"key":"value"}`},
+		{
+			Method:      "POST",
+			URL:         "https://api.example.com",
+			Status:      404,
+			Duration:    0.456,
+			RequestBody: `{"user":"grant"}`,
+			Body:        `{"key":"value"}`,
+		},
 	}
 
 	var buf bytes.Buffer
@@ -186,10 +193,94 @@ func TestNetwork(t *testing.T) {
 	if !strings.Contains(output, "POST https://api.example.com 404 456ms") {
 		t.Error("output should contain POST request")
 	}
-	if !strings.Contains(output, `{"key":"value"}`) {
-		// Body here is the response body; request-body assertions are added with
-		// the request-body capture work (see 03-capture-request-post-data.md req 11).
-		t.Error("output should contain response body")
+	if !strings.Contains(output, `  request: {"user":"grant"}`) {
+		t.Errorf("output should label the request body:\n%s", output)
+	}
+	if !strings.Contains(output, `  response: {"key":"value"}`) {
+		t.Errorf("output should label the response body:\n%s", output)
+	}
+}
+
+func TestNetwork_GETResponseBodyPrints(t *testing.T) {
+	// A GET response body must print: dropping the old Method != GET gate means a
+	// GET's payload is shown like any other method's.
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "https://api.example.com/data", Status: 200, Body: `{"ok":true}`},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if strings.Contains(output, "request:") {
+		t.Error("a GET with no request body should not print a request line")
+	}
+	if !strings.Contains(output, `  response: {"ok":true}`) {
+		t.Errorf("GET response body should print:\n%s", output)
+	}
+}
+
+func TestNetwork_MultiLineBody(t *testing.T) {
+	entries := []ipc.NetworkEntry{
+		{Method: "POST", URL: "https://api.example.com", Status: 200, RequestBody: "line1\nline2"},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	// Multi-line body: bare label line, then each line indented four spaces.
+	if !strings.Contains(output, "  request:\n") {
+		t.Errorf("multi-line body should print a bare label line:\n%s", output)
+	}
+	if !strings.Contains(output, "    line1\n") || !strings.Contains(output, "    line2\n") {
+		t.Errorf("multi-line body lines should be indented four spaces:\n%s", output)
+	}
+}
+
+func TestNetwork_TruncatedBodyMarker(t *testing.T) {
+	// A body the CLI bounded to --max-body-size reaches the formatter with its
+	// truncation flag set; text output must flag the cut so a human reader is not
+	// misled by a payload that silently ends.
+	entries := []ipc.NetworkEntry{
+		{
+			Method:               "POST",
+			URL:                  "https://api.example.com",
+			Status:               200,
+			RequestBody:          `{"chunk":"AAAA`,
+			RequestBodyTruncated: true,
+			Body:                 `{"ok":tr`,
+			BodyTruncated:        true,
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if strings.Count(output, "… [truncated]") != 2 {
+		t.Errorf("both truncated bodies should print a marker:\n%s", output)
+	}
+}
+
+func TestNetwork_NoMarkerWhenNotTruncated(t *testing.T) {
+	entries := []ipc.NetworkEntry{
+		{Method: "POST", URL: "https://api.example.com", Status: 200, RequestBody: `{"ok":true}`},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(buf.String(), "truncated") {
+		t.Errorf("a body within budget should not print a truncation marker:\n%s", buf.String())
 	}
 }
 

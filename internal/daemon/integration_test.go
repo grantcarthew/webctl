@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -564,6 +566,120 @@ func TestNetwork_Integration(t *testing.T) {
 			t.Log("body was not captured (may be timing issue)")
 		} else {
 			t.Logf("body length: %d bytes", len(jsonEntry.Body))
+		}
+	})
+
+	// Test: Request POST data capture, both the inline path (small body arrives in
+	// requestWillBeSent) and the fallback path (body exceeds maxPostDataSize and is
+	// fetched via Network.getRequestPostData off the read loop). httpbin.org/post
+	// echoes the request, and same-origin fetch avoids CORS.
+	t.Run("request_post_data_capture", func(t *testing.T) {
+		// Establish a session on the httpbin origin so same-origin fetch is allowed.
+		params, _ := json.Marshal(map[string]any{"url": "https://httpbin.org/forms/post"})
+		resp, err := client.Send(ipc.Request{Cmd: "cdp", Target: "Page.navigate", Params: params})
+		if err != nil {
+			t.Fatalf("navigate failed: %v", err)
+		}
+		if !resp.OK {
+			t.Fatalf("navigate returned error: %s", resp.Error)
+		}
+		time.Sleep(3 * time.Second)
+
+		// Enable Network lazily, then clear so only the fetches below are captured.
+		_, _ = client.SendCmd("network")
+		_, _ = client.Send(ipc.Request{Cmd: "clear", Target: "network"})
+
+		const inlineMarker = "webctl-inline-marker"
+		// Oversize body: larger than networkMaxPostDataSize so postData is omitted
+		// from the event and the fallback fetch is exercised.
+		oversizeLen := networkMaxPostDataSize + 5000
+
+		fetchExpr := `(async () => {
+			await fetch('https://httpbin.org/post', {
+				method: 'POST',
+				headers: {'Content-Type': 'application/json'},
+				body: JSON.stringify({marker: '` + inlineMarker + `'})
+			});
+			await fetch('https://httpbin.org/post', {
+				method: 'POST',
+				headers: {'Content-Type': 'text/plain'},
+				body: 'OVERSIZE' + 'x'.repeat(` + strconv.Itoa(oversizeLen) + `)
+			});
+			return 'done';
+		})()`
+		evalParams, _ := json.Marshal(map[string]any{
+			"expression":    fetchExpr,
+			"awaitPromise":  true,
+			"returnByValue": true,
+		})
+		resp, err = client.Send(ipc.Request{Cmd: "cdp", Target: "Runtime.evaluate", Params: evalParams})
+		if err != nil {
+			t.Fatalf("evaluate fetch failed: %v", err)
+		}
+		if !resp.OK {
+			t.Skipf("fetch evaluate returned error (network may be blocked): %s", resp.Error)
+		}
+
+		// Poll for the captured bodies rather than waiting a fixed interval: the
+		// oversize body arrives via an off-read-loop getRequestPostData fetch
+		// whose timing depends on network latency, so a single fixed sleep races
+		// it. The oversize entry only matches once its body is populated, so its
+		// presence is the signal the async fallback fetch has completed.
+		var data ipc.NetworkData
+		var inlineEntry, oversizeEntry *ipc.NetworkEntry
+		deadline := time.Now().Add(15 * time.Second)
+		for {
+			resp, err = client.SendCmd("network")
+			if err != nil {
+				t.Fatalf("network command failed: %v", err)
+			}
+			data = ipc.NetworkData{}
+			if err := json.Unmarshal(resp.Data, &data); err != nil {
+				t.Fatalf("failed to parse network data: %v", err)
+			}
+
+			inlineEntry, oversizeEntry = nil, nil
+			for i := range data.Entries {
+				e := &data.Entries[i]
+				if e.Method != "POST" || e.URL != "https://httpbin.org/post" {
+					continue
+				}
+				switch {
+				case strings.Contains(e.RequestBody, inlineMarker):
+					inlineEntry = e
+				case strings.HasPrefix(e.RequestBody, "OVERSIZE"):
+					oversizeEntry = e
+				}
+			}
+
+			if oversizeEntry != nil || time.Now().After(deadline) {
+				break
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+
+		if inlineEntry == nil && oversizeEntry == nil {
+			t.Logf("found %d entries:", len(data.Entries))
+			for i := range data.Entries {
+				e := &data.Entries[i]
+				t.Logf("  [%d] %s %s reqBodyLen=%d", i, e.Method, e.URL, len(e.RequestBody))
+			}
+			t.Skip("httpbin POST entries not found (may be blocked by network)")
+		}
+
+		// Inline path: small JSON body present in full.
+		if inlineEntry == nil {
+			t.Error("expected to capture the inline POST request body")
+		} else if !strings.Contains(inlineEntry.RequestBody, inlineMarker) {
+			t.Errorf("inline request body missing marker: %q", inlineEntry.RequestBody)
+		}
+
+		// Fallback path: oversize body captured in full via getRequestPostData.
+		if oversizeEntry == nil {
+			t.Error("expected to capture the oversize POST request body via the fallback fetch")
+		} else if len(oversizeEntry.RequestBody) < oversizeLen {
+			t.Errorf("oversize request body length = %d, want >= %d (fallback fetch should capture full body)",
+				len(oversizeEntry.RequestBody), oversizeLen)
 		}
 	})
 

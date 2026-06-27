@@ -50,8 +50,14 @@ func (d *Daemon) subscribeEvents() {
 	d.cdp.Subscribe("Network.requestWillBeSent", func(evt cdp.Event) {
 		if entry, ok := d.parseRequestEvent(evt); ok {
 			entry.SessionID = evt.SessionID
+			awaiting := entry.AwaitingRequestBody()
 			d.networkBuf.Push(entry)
 			d.debugf(false, "Network.requestWillBeSent: requestId=%s, url=%s, type=%s", entry.RequestID, entry.URL, entry.Type)
+			// Body advertised but omitted from the event (exceeds maxPostDataSize):
+			// fetch it off the read loop, like the response body in handleLoadingFinished.
+			if awaiting {
+				d.fetchRequestPostData(evt.SessionID, entry.RequestID)
+			}
 		}
 	})
 
@@ -236,6 +242,20 @@ func (d *Daemon) parseExceptionEvent(evt cdp.Event) (ipc.ConsoleEntry, bool) {
 	}, true
 }
 
+// networkMaxPostDataSize caps the request-body bytes Chrome includes inline in
+// Network.requestWillBeSent. It is sourced from ipc.DefaultMaxBodySize so it
+// matches the CLI default --max-body-size: a body that survives truncation
+// arrives inline without an extra round trip, and larger bodies fall back to
+// fetchRequestPostData. Without this cap set on Network.enable, Chrome omits
+// postData entirely and only sets hasPostData.
+const networkMaxPostDataSize = ipc.DefaultMaxBodySize
+
+// networkEnableParams builds the Network.enable parameters shared by every
+// enable site, so the inline post-data cap cannot drift between them.
+func networkEnableParams() map[string]any {
+	return map[string]any{"maxPostDataSize": networkMaxPostDataSize}
+}
+
 // parseRequestEvent parses a Network.requestWillBeSent event.
 // Returns the entry and true on success, or zero value and false on parse error.
 func (d *Daemon) parseRequestEvent(evt cdp.Event) (ipc.NetworkEntry, bool) {
@@ -243,9 +263,11 @@ func (d *Daemon) parseRequestEvent(evt cdp.Event) (ipc.NetworkEntry, bool) {
 		RequestID string  `json:"requestId"`
 		WallTime  float64 `json:"wallTime"` // Unix epoch in seconds
 		Request   struct {
-			URL     string            `json:"url"`
-			Method  string            `json:"method"`
-			Headers map[string]string `json:"headers"`
+			URL         string            `json:"url"`
+			Method      string            `json:"method"`
+			Headers     map[string]string `json:"headers"`
+			PostData    string            `json:"postData"`
+			HasPostData bool              `json:"hasPostData"`
 		} `json:"request"`
 		Type string `json:"type"`
 	}
@@ -253,14 +275,84 @@ func (d *Daemon) parseRequestEvent(evt cdp.Event) (ipc.NetworkEntry, bool) {
 		return ipc.NetworkEntry{}, false
 	}
 
-	return ipc.NetworkEntry{
+	entry := ipc.NetworkEntry{
 		RequestID:      params.RequestID,
 		URL:            params.Request.URL,
 		Method:         params.Request.Method,
 		Type:           params.Type,
 		RequestTime:    int64(params.WallTime * 1000), // Convert seconds to milliseconds
 		RequestHeaders: params.Request.Headers,
-	}, true
+		RequestBody:    params.Request.PostData,
+	}
+
+	// hasPostData with no inline postData means the body exceeded maxPostDataSize
+	// and must be fetched separately. Mark the entry so the fetch lands on it
+	// rather than on a later redirect hop that reuses this requestId.
+	if params.Request.HasPostData && params.Request.PostData == "" {
+		entry.AwaitRequestBody()
+	}
+
+	return entry, true
+}
+
+// fetchRequestPostData retrieves a request body that was advertised but omitted
+// from Network.requestWillBeSent and stores it on the awaiting entry.
+//
+// Like handleLoadingFinished, the CDP call runs on its own goroutine: a
+// synchronous call inside an event handler would deadlock, because its response
+// travels back through the read loop that is currently blocked in the handler.
+//
+// The body lands on the newest entry that still carries the awaiting marker for
+// this requestId, not merely the newest entry sharing the id. A non-body redirect
+// hop (for example a POST that 303-redirects to a GET) shares the requestId, is
+// newer, and has an equally empty RequestBody, so matching on emptiness would
+// misroute the body onto it. Matching on the marker prevents that theft.
+func (d *Daemon) fetchRequestPostData(sessionID, requestID string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		clearMarker := func() {
+			d.networkBuf.Update(func(entry *ipc.NetworkEntry) bool {
+				if entry.RequestID == requestID && entry.AwaitingRequestBody() {
+					entry.ClearAwaitingRequestBody()
+					return true
+				}
+				return false
+			})
+		}
+
+		result, err := d.cdp.SendToSession(ctx, sessionID, "Network.getRequestPostData", map[string]any{
+			"requestId": requestID,
+		})
+		if err != nil {
+			// The expected benign case is "No data found for resource with given
+			// identifier" (nothing was sent). Other failures (timeout, closed
+			// session, transport error) also land here; in every case we degrade
+			// gracefully by clearing the marker, but log so the off-read-loop
+			// fetch is diagnosable under --debug.
+			d.debugf(false, "Network.getRequestPostData failed: requestId=%s, err=%v", requestID, err)
+			clearMarker()
+			return
+		}
+
+		var bodyResp struct {
+			PostData string `json:"postData"`
+		}
+		if err := json.Unmarshal(result, &bodyResp); err != nil {
+			d.debugf(false, "Network.getRequestPostData: failed to parse response: requestId=%s, err=%v", requestID, err)
+			clearMarker()
+			return
+		}
+
+		d.networkBuf.Update(func(entry *ipc.NetworkEntry) bool {
+			if entry.RequestID == requestID && entry.AwaitingRequestBody() {
+				entry.SetRequestBody(bodyResp.PostData)
+				return true
+			}
+			return false
+		})
+	}()
 }
 
 // updateResponseEvent updates an existing network entry with response data.

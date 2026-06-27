@@ -160,7 +160,7 @@ list_interactive_tests() {
     local test_name
     test_name=$(basename "${test_file}" .sh | sed 's/^test-//')
     echo "  ${test_name}"
-    ((count++))
+    count=$((count + 1))
   done <<< "${tests}"
   echo "  (${count} tests available)"
 }
@@ -338,10 +338,10 @@ run_all_bash_tests() {
     log_message "Running: ${test_name}..."
     if bash "${test_file}"; then
       log_success "${test_name}"
-      ((passed++))
+      passed=$((passed + 1))
     else
       log_failure "${test_name}"
-      ((failed++))
+      failed=$((failed + 1))
     fi
   done <<< "${tests}"
 

@@ -453,7 +453,7 @@ func (d *Daemon) enableDomainsForSession(sessionID string) error {
 	// claim on failure so a later caller can retry rather than being permanently
 	// marked enabled.
 	if d.sessions.ClaimNetworkEnable(sessionID) {
-		if _, err := d.cdp.SendToSession(context.Background(), sessionID, "Network.enable", nil); err != nil {
+		if _, err := d.cdp.SendToSession(context.Background(), sessionID, "Network.enable", networkEnableParams()); err != nil {
 			d.sessions.ClearNetworkEnabled(sessionID)
 			return fmt.Errorf("failed to enable Network.enable: %w", err)
 		}
