@@ -170,12 +170,12 @@ func TestNetwork(t *testing.T) {
 	entries := []ipc.NetworkEntry{
 		{Method: "GET", URL: "https://api.example.com", Status: 200, Duration: 0.123},
 		{
-			Method:      "POST",
-			URL:         "https://api.example.com",
-			Status:      404,
-			Duration:    0.456,
-			RequestBody: `{"user":"grant"}`,
-			Body:        `{"key":"value"}`,
+			Method:       "POST",
+			URL:          "https://api.example.com",
+			Status:       404,
+			Duration:     0.456,
+			RequestBody:  `{"user":"grant"}`,
+			ResponseBody: `{"key":"value"}`,
 		},
 	}
 
@@ -205,7 +205,7 @@ func TestNetwork_GETResponseBodyPrints(t *testing.T) {
 	// A GET response body must print: dropping the old Method != GET gate means a
 	// GET's payload is shown like any other method's.
 	entries := []ipc.NetworkEntry{
-		{Method: "GET", URL: "https://api.example.com/data", Status: 200, Body: `{"ok":true}`},
+		{Method: "GET", URL: "https://api.example.com/data", Status: 200, ResponseBody: `{"ok":true}`},
 	}
 
 	var buf bytes.Buffer
@@ -248,13 +248,13 @@ func TestNetwork_TruncatedBodyMarker(t *testing.T) {
 	// misled by a payload that silently ends.
 	entries := []ipc.NetworkEntry{
 		{
-			Method:               "POST",
-			URL:                  "https://api.example.com",
-			Status:               200,
-			RequestBody:          `{"chunk":"AAAA`,
-			RequestBodyTruncated: true,
-			Body:                 `{"ok":tr`,
-			BodyTruncated:        true,
+			Method:                "POST",
+			URL:                   "https://api.example.com",
+			Status:                200,
+			RequestBody:           `{"chunk":"AAAA`,
+			RequestBodyTruncated:  true,
+			ResponseBody:          `{"ok":tr`,
+			ResponseBodyTruncated: true,
 		},
 	}
 
@@ -281,6 +281,60 @@ func TestNetwork_NoMarkerWhenNotTruncated(t *testing.T) {
 
 	if strings.Contains(buf.String(), "truncated") {
 		t.Errorf("a body within budget should not print a truncation marker:\n%s", buf.String())
+	}
+}
+
+func TestNetwork_BinaryBodyPathPrints(t *testing.T) {
+	// A binary response body is filed rather than stored on ResponseBody; text
+	// output must point the reader at the saved file instead of printing nothing.
+	entries := []ipc.NetworkEntry{
+		{
+			Method:           "GET",
+			URL:              "https://api.example.com/image.png",
+			Status:           200,
+			ResponseBodyPath: "/tmp/webctl/image.png",
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "  response: [binary saved to /tmp/webctl/image.png]\n") {
+		t.Errorf("binary response body should print its saved path:\n%s", output)
+	}
+	if strings.Count(output, "response:") != 1 {
+		t.Errorf("a filed binary body should print exactly one response line:\n%s", output)
+	}
+}
+
+func TestNetwork_TextBodySuppressesBinaryPath(t *testing.T) {
+	// A text body and a filed binary path are mutually exclusive per entry; if
+	// both were ever set the formatter must print the payload, not a second
+	// response line pointing at a file.
+	entries := []ipc.NetworkEntry{
+		{
+			Method:           "GET",
+			URL:              "https://api.example.com/data",
+			Status:           200,
+			ResponseBody:     `{"ok":true}`,
+			ResponseBodyPath: "/tmp/webctl/data.bin",
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, `  response: {"ok":true}`) {
+		t.Errorf("a text response body should print its payload:\n%s", output)
+	}
+	if strings.Contains(output, "binary saved to") {
+		t.Errorf("a present text body should suppress the binary path line:\n%s", output)
 	}
 }
 

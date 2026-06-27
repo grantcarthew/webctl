@@ -448,7 +448,7 @@ func (d *Daemon) handleLoadingFinished(evt cdp.Event) {
 					// Save binary to file
 					bodyPath, err := saveBinaryBody(params.RequestID, entryURL, mimeType, bodyResp.Body, bodyResp.Base64Encoded)
 					if err == nil {
-						entry.BodyPath = bodyPath
+						entry.ResponseBodyPath = bodyPath
 					}
 				} else {
 					// Store text body directly
@@ -456,10 +456,10 @@ func (d *Daemon) handleLoadingFinished(evt cdp.Event) {
 						// Decode base64 for text content
 						decoded, err := base64.StdEncoding.DecodeString(bodyResp.Body)
 						if err == nil {
-							entry.Body = string(decoded)
+							entry.ResponseBody = string(decoded)
 						}
 					} else {
-						entry.Body = bodyResp.Body
+						entry.ResponseBody = bodyResp.Body
 					}
 				}
 				return true

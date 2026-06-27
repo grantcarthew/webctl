@@ -98,12 +98,15 @@ type NetworkEntry struct {
 	ResponseHeaders map[string]string `json:"responseHeaders,omitempty"`
 	RequestBody     string            `json:"requestBody,omitempty"`
 	// RequestBodyTruncated reports that --max-body-size cut the request body.
-	RequestBodyTruncated bool   `json:"requestBodyTruncated,omitempty"`
-	Body                 string `json:"body,omitempty"`
-	BodyTruncated        bool   `json:"bodyTruncated,omitempty"`
-	BodyPath             string `json:"bodyPath,omitempty"`
-	Failed               bool   `json:"failed"`
-	Error                string `json:"error,omitempty"`
+	RequestBodyTruncated bool `json:"requestBodyTruncated,omitempty"`
+	// ResponseBody holds the response payload returned by the server.
+	ResponseBody string `json:"responseBody,omitempty"`
+	// ResponseBodyTruncated reports that --max-body-size cut the response body.
+	ResponseBodyTruncated bool `json:"responseBodyTruncated,omitempty"`
+	// ResponseBodyPath is the file path of a saved binary response body.
+	ResponseBodyPath string `json:"responseBodyPath,omitempty"`
+	Failed           bool   `json:"failed"`
+	Error            string `json:"error,omitempty"`
 
 	// awaitingRequestBody marks an entry whose request body was advertised
 	// (hasPostData) but omitted from requestWillBeSent, so the daemon is

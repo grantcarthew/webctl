@@ -561,11 +561,11 @@ func TestNetwork_Integration(t *testing.T) {
 		if jsonEntry.MimeType != "application/json" {
 			t.Errorf("expected mimeType application/json, got %s", jsonEntry.MimeType)
 		}
-		// Body should be captured for JSON responses
-		if jsonEntry.Body == "" {
-			t.Log("body was not captured (may be timing issue)")
+		// Response body should be captured for JSON responses
+		if jsonEntry.ResponseBody == "" {
+			t.Log("response body was not captured (may be timing issue)")
 		} else {
-			t.Logf("body length: %d bytes", len(jsonEntry.Body))
+			t.Logf("response body length: %d bytes", len(jsonEntry.ResponseBody))
 		}
 	})
 

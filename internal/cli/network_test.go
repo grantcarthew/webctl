@@ -98,8 +98,8 @@ func isValidUTF8(s string) bool {
 func TestApplyBodyTruncation_RequestAndResponse(t *testing.T) {
 	entries := []ipc.NetworkEntry{
 		{
-			RequestBody: "0123456789",
-			Body:        "abcdefghij",
+			RequestBody:  "0123456789",
+			ResponseBody: "abcdefghij",
 		},
 	}
 	applyBodyTruncation(entries, 4)
@@ -110,19 +110,19 @@ func TestApplyBodyTruncation_RequestAndResponse(t *testing.T) {
 	if !entries[0].RequestBodyTruncated {
 		t.Error("RequestBodyTruncated should be true")
 	}
-	if entries[0].Body != "abcd" {
-		t.Errorf("Body = %q, want %q", entries[0].Body, "abcd")
+	if entries[0].ResponseBody != "abcd" {
+		t.Errorf("ResponseBody = %q, want %q", entries[0].ResponseBody, "abcd")
 	}
-	if !entries[0].BodyTruncated {
-		t.Error("BodyTruncated should be true")
+	if !entries[0].ResponseBodyTruncated {
+		t.Error("ResponseBodyTruncated should be true")
 	}
 }
 
 func TestApplyBodyTruncation_NoFlagWhenWithinBudget(t *testing.T) {
-	entries := []ipc.NetworkEntry{{RequestBody: "tiny", Body: "small"}}
+	entries := []ipc.NetworkEntry{{RequestBody: "tiny", ResponseBody: "small"}}
 	applyBodyTruncation(entries, 1024)
 
-	if entries[0].RequestBodyTruncated || entries[0].BodyTruncated {
+	if entries[0].RequestBodyTruncated || entries[0].ResponseBodyTruncated {
 		t.Error("no truncation flag should be set when bodies fit the budget")
 	}
 }
@@ -130,7 +130,7 @@ func TestApplyBodyTruncation_NoFlagWhenWithinBudget(t *testing.T) {
 func TestFilterNetworkByText_MatchesRequestBody(t *testing.T) {
 	entries := []ipc.NetworkEntry{
 		{URL: "https://api.example.com/login", RequestBody: `{"username":"grant"}`},
-		{URL: "https://api.example.com/other", Body: `{"result":"ok"}`},
+		{URL: "https://api.example.com/other", ResponseBody: `{"result":"ok"}`},
 	}
 
 	matched := filterNetworkByText(entries, "grant")
@@ -145,7 +145,7 @@ func TestFilterNetworkByText_MatchesRequestBody(t *testing.T) {
 func TestFilterNetworkByText_StillMatchesResponseBody(t *testing.T) {
 	entries := []ipc.NetworkEntry{
 		{URL: "https://api.example.com/login", RequestBody: `{"username":"grant"}`},
-		{URL: "https://api.example.com/other", Body: `{"token":"abc123"}`},
+		{URL: "https://api.example.com/other", ResponseBody: `{"token":"abc123"}`},
 	}
 
 	matched := filterNetworkByText(entries, "abc123")

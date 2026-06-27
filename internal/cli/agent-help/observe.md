@@ -86,13 +86,15 @@ webctl network save ./output/
 ```
 
 Request and response bodies. Each entry carries the outgoing request body as
-requestBody (alongside the existing response body field, body) when the request
-sent one (POST, PUT, PATCH, and any request with a payload). GET requests have
-no request body. Typical bodies (JSON, form-encoded) arrive inline; bodies larger
-than the inline cap are fetched separately and still appear in output. Both bodies
-are bounded by --max-body-size; a truncated request body sets requestBodyTruncated.
---find matches the request body as well as the URL and response body, so a request
-can be located by its payload.
+requestBody and the response payload as responseBody when the request sent one
+(POST, PUT, PATCH, and any request with a payload). GET requests have no request
+body. Typical bodies (JSON, form-encoded) arrive inline; bodies larger than the
+inline cap are fetched separately and still appear in output. Both bodies are
+bounded by --max-body-size; a truncated request body sets requestBodyTruncated and
+a truncated response body sets responseBodyTruncated. A binary response body is
+saved to a file whose path appears as responseBodyPath. --find matches the request
+body as well as the URL and response body, so a request can be located by its
+payload.
 
 NOTE: Multipart uploads are captured partially by design. Chrome supplies the form
 fields and boundaries but omits the uploaded file contents, so requestBody holds the

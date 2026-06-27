@@ -370,7 +370,7 @@ func filterNetworkByText(entries []ipc.NetworkEntry, searchText string) []ipc.Ne
 			continue
 		}
 		// Search in response body
-		if strings.Contains(strings.ToLower(entry.Body), searchLower) {
+		if strings.Contains(strings.ToLower(entry.ResponseBody), searchLower) {
 			matchedEntries = append(matchedEntries, entry)
 			continue
 		}
@@ -617,9 +617,9 @@ func applyBodyTruncation(entries []ipc.NetworkEntry, maxBodySize int) {
 			entries[i].RequestBody = truncated
 			entries[i].RequestBodyTruncated = true
 		}
-		if truncated, did := truncateBody(entries[i].Body, maxBodySize); did {
-			entries[i].Body = truncated
-			entries[i].BodyTruncated = true
+		if truncated, did := truncateBody(entries[i].ResponseBody, maxBodySize); did {
+			entries[i].ResponseBody = truncated
+			entries[i].ResponseBodyTruncated = true
 		}
 	}
 }

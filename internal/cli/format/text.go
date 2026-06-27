@@ -259,10 +259,14 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 		// Request body then response body, each printed only when present and
 		// non-empty. Entries arrive already bounded to --max-body-size, so the
 		// bodies are rendered verbatim and a trailing marker flags any that were
-		// cut. Binary response bodies are filed rather than stored on Body, so
-		// nothing prints for them.
+		// cut. A binary response body is filed rather than stored on ResponseBody,
+		// so its saved path prints in place of the payload.
 		printNetworkBody(w, "request:", e.RequestBody, e.RequestBodyTruncated)
-		printNetworkBody(w, "response:", e.Body, e.BodyTruncated)
+		if e.ResponseBody != "" {
+			printNetworkBody(w, "response:", e.ResponseBody, e.ResponseBodyTruncated)
+		} else if e.ResponseBodyPath != "" {
+			_, _ = fmt.Fprintf(w, "  response: [binary saved to %s]\n", e.ResponseBodyPath)
+		}
 	}
 	return nil
 }
