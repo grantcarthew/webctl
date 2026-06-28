@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,7 +25,8 @@ func colorFprintf(w io.Writer, c color.Attribute, format string, args ...interfa
 
 // OutputOptions controls text formatting behavior.
 type OutputOptions struct {
-	UseColor bool // Enable ANSI color codes
+	UseColor    bool // Enable ANSI color codes
+	ShowHeaders bool // Render request/response headers (network text mode)
 }
 
 // NewOutputOptions returns output options based on flags and environment.
@@ -214,54 +216,130 @@ func Console(w io.Writer, entries []ipc.ConsoleEntry, opts OutputOptions) error 
 	return nil
 }
 
+// formatBytes renders a byte count in human-readable form (B, KB, MB, GB, ...)
+// on a 1024 base, with one decimal place above bytes.
+func formatBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%dB", n)
+	}
+	div, exp := int64(unit), 0
+	for x := n / unit; x >= unit; x /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%cB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// printNetworkMethod writes the HTTP method, colourised by method on a TTY.
+func printNetworkMethod(w io.Writer, method string, opts OutputOptions) {
+	if !opts.UseColor {
+		_, _ = fmt.Fprint(w, method)
+		return
+	}
+	switch method {
+	case "GET":
+		colorFprint(w, color.FgGreen, method)
+	case "POST":
+		colorFprint(w, color.FgBlue, method)
+	case "PUT", "PATCH":
+		colorFprint(w, color.FgYellow, method)
+	case "DELETE":
+		colorFprint(w, color.FgRed, method)
+	default:
+		_, _ = fmt.Fprint(w, method)
+	}
+}
+
+// printNetworkStatus writes the HTTP status code, colourised by category on a TTY.
+func printNetworkStatus(w io.Writer, status int, opts OutputOptions) {
+	if !opts.UseColor {
+		_, _ = fmt.Fprintf(w, "%d", status)
+		return
+	}
+	switch {
+	case status >= 200 && status < 300:
+		colorFprintf(w, color.FgGreen, "%d", status)
+	case status >= 300 && status < 400:
+		colorFprintf(w, color.FgCyan, "%d", status)
+	case status >= 400 && status < 500:
+		colorFprintf(w, color.FgYellow, "%d", status)
+	case status >= 500:
+		colorFprintf(w, color.FgRed, "%d", status)
+	default:
+		_, _ = fmt.Fprintf(w, "%d", status)
+	}
+}
+
 // Network outputs network entries in text format.
+//
+// Text is a curated human convenience; JSON carries the full NetworkEntry. The
+// captured fields are classified for the text view as follows:
+//   - Method, URL, Status, Duration: shown on the main line (the core request line).
+//   - Failed/Error: shown — a failed entry renders a FAILED token plus its reason.
+//   - Type: shown — short resource category (xhr, document, image, ...).
+//   - Size: shown when > 0 — human-readable response size.
+//   - MimeType: omitted — overlaps Type and the printed body; the exact
+//     Content-Type stays in JSON and response headers.
+//   - StatusText: omitted — redundant with the numeric status, which is already
+//     shown and colourised; a failure's reason comes from Error, not StatusText.
+//   - RequestHeaders/ResponseHeaders: conditional — high-volume, so kept out of
+//     the default view and shown only when opts.ShowHeaders (the --headers flag),
+//     letting an agent get headers in compact text form without the full JSON.
 func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error {
 	for _, e := range entries {
 		// Format duration
 		durationMs := int(e.Duration * 1000)
 
-		// Main line: METHOD URL STATUS DURATION
-		if opts.UseColor {
-			// Color the HTTP method
-			switch e.Method {
-			case "GET":
-				colorFprint(w, color.FgGreen, e.Method)
-			case "POST":
-				colorFprint(w, color.FgBlue, e.Method)
-			case "PUT", "PATCH":
-				colorFprint(w, color.FgYellow, e.Method)
-			case "DELETE":
-				colorFprint(w, color.FgRed, e.Method)
-			default:
-				_, _ = fmt.Fprint(w, e.Method)
-			}
-
+		// A failed request (loadingFailed) carries no status, so render a distinct
+		// FAILED token plus the captured reason instead of a bare status of 0. The
+		// branch keys on Failed, not status == 0, so a genuine zero-status success
+		// is never mistaken for a failure.
+		if e.Failed {
+			printNetworkMethod(w, e.Method, opts)
 			_, _ = fmt.Fprintf(w, " %s ", e.URL)
-
-			// Color the status code by category
-			if e.Status >= 200 && e.Status < 300 {
-				colorFprintf(w, color.FgGreen, "%d", e.Status)
-			} else if e.Status >= 300 && e.Status < 400 {
-				colorFprintf(w, color.FgCyan, "%d", e.Status)
-			} else if e.Status >= 400 && e.Status < 500 {
-				colorFprintf(w, color.FgYellow, "%d", e.Status)
-			} else if e.Status >= 500 {
-				colorFprintf(w, color.FgRed, "%d", e.Status)
+			if opts.UseColor {
+				colorFprint(w, color.FgRed, "FAILED")
 			} else {
-				_, _ = fmt.Fprintf(w, "%d", e.Status)
+				_, _ = fmt.Fprint(w, "FAILED")
 			}
-
-			_, _ = fmt.Fprintf(w, " %dms\n", durationMs)
-		} else {
-			_, _ = fmt.Fprintf(w, "%s %s %d %dms\n", e.Method, e.URL, e.Status, durationMs)
+			_, _ = fmt.Fprintf(w, " %dms", durationMs)
+			if e.Type != "" {
+				_, _ = fmt.Fprintf(w, " %s", e.Type)
+			}
+			_, _ = fmt.Fprintln(w)
+			if e.Error != "" {
+				_, _ = fmt.Fprintf(w, "  error: %s\n", e.Error)
+			}
+			// A failed request has no response, but its request side is still
+			// captured and diagnostic, so render it as the success path does.
+			printNetworkRequestSide(w, e, opts)
+			continue
 		}
 
-		// Request body then response body, each printed only when present and
-		// non-empty. Entries arrive already bounded to --max-body-size, so the
-		// bodies are rendered verbatim and a trailing marker flags any that were
-		// cut. A binary response body is filed rather than stored on ResponseBody,
-		// so its saved path prints in place of the payload.
-		printNetworkBody(w, "request:", e.RequestBody, e.RequestBodyTruncated)
+		// Main line: METHOD URL STATUS DURATION [TYPE] [SIZE]
+		printNetworkMethod(w, e.Method, opts)
+		_, _ = fmt.Fprintf(w, " %s ", e.URL)
+		printNetworkStatus(w, e.Status, opts)
+		_, _ = fmt.Fprintf(w, " %dms", durationMs)
+		if e.Type != "" {
+			_, _ = fmt.Fprintf(w, " %s", e.Type)
+		}
+		if e.Size > 0 {
+			_, _ = fmt.Fprintf(w, " %s", formatBytes(e.Size))
+		}
+		_, _ = fmt.Fprintln(w)
+
+		// Subordinate detail: the request side (headers when --headers, then body)
+		// followed by the response side, each part printed only when present.
+		// Bodies arrive already bounded to --max-body-size, so they render verbatim
+		// and a trailing marker flags any that were cut. A binary response body is
+		// filed rather than stored on ResponseBody, so its saved path prints in
+		// place of the payload.
+		printNetworkRequestSide(w, e, opts)
+		if opts.ShowHeaders {
+			printNetworkHeaders(w, "response-headers:", e.ResponseHeaders)
+		}
 		if e.ResponseBody != "" {
 			printNetworkBody(w, "response:", e.ResponseBody, e.ResponseBodyTruncated)
 		} else if e.ResponseBodyPath != "" {
@@ -269,6 +347,33 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 		}
 	}
 	return nil
+}
+
+// printNetworkRequestSide renders the request half of an entry — headers when
+// opts.ShowHeaders, then the request body — so the failed and success paths emit
+// an identical request section. Each part prints only when present.
+func printNetworkRequestSide(w io.Writer, e ipc.NetworkEntry, opts OutputOptions) {
+	if opts.ShowHeaders {
+		printNetworkHeaders(w, "request-headers:", e.RequestHeaders)
+	}
+	printNetworkBody(w, "request:", e.RequestBody, e.RequestBodyTruncated)
+}
+
+// printNetworkHeaders renders a labeled header map as indented subordinate
+// lines, keys sorted for stable output. Nothing prints for an empty map.
+func printNetworkHeaders(w io.Writer, label string, headers map[string]string) {
+	if len(headers) == 0 {
+		return
+	}
+	keys := make([]string, 0, len(headers))
+	for k := range headers {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	_, _ = fmt.Fprintf(w, "  %s\n", label)
+	for _, k := range keys {
+		_, _ = fmt.Fprintf(w, "    %s: %s\n", k, headers[k])
+	}
 }
 
 // printNetworkBody renders a labeled network body. A single-line body follows

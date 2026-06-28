@@ -75,6 +75,7 @@ webctl network --mime "application/json"
 webctl network --min-duration 1s
 webctl network --min-size 1000
 webctl network --failed
+webctl network --headers
 webctl network --find "error"
 webctl network --head 10
 webctl network --tail 20
@@ -99,6 +100,13 @@ payload.
 NOTE: Multipart uploads are captured partially by design. Chrome supplies the form
 fields and boundaries but omits the uploaded file contents, so requestBody holds the
 partial body, not the files. requestBody is empty only when no data was sent.
+
+Text view fields. The default text line is METHOD URL STATUS DURATIONms followed by
+the resource type and the human-readable response size when present. A failed request
+renders a FAILED token plus its reason instead of a status. Headers are omitted from
+the default text view to keep it compact; pass --headers to print request and response
+headers as indented lines in text mode. JSON output always carries the full entry,
+including headers, mimeType, and statusText.
 
 ## cookies
 

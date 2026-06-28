@@ -70,3 +70,11 @@ The CDP `Network.Response` object carries many fields webctl ignores: `remoteIPA
 - The network integration test asserts at least one newly captured field against live Chrome traffic.
 - The enumeration of all considered fields, each marked captured or rejected with a reason, is recorded in the project's closing notes or as comments at the capture site.
 - No existing `NetworkEntry` JSON field name or behaviour changes.
+
+## Follow-ups
+
+Once this project is complete, the newly captured fields land in `webctl network --json` but not in the text formatter; this project deliberately leaves text rendering out of scope. Create a new project to close that gap across both output modes.
+
+- Surface the new fields in the text view. This is a repeat of `03-network-text-view.md`: classify each field captured here as shown by default, shown conditionally (for example behind `--headers` or a new flag), or deliberately omitted, with a recorded reason. Likely text candidates are the `timing` breakdown, `remoteIPAddress`/`remotePort`, and `protocol`; low-value-in-text fields such as `connectionId` or `securityState` likely stay JSON-only. The classification block in the `Network` doc comment in `internal/cli/format/text.go` is the seam to extend.
+- Audit JSON completeness. Confirm every field this project captures is serialised, and check for any remaining captured-but-unexposed data before declaring the network output complete.
+- Update `internal/cli/agent-help/observe.md` for any new text-view behaviour or flags, as `03` did.

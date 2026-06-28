@@ -29,6 +29,7 @@ Subcommands:
 
 Universal flags (work with all modes):
   --find, -f        Search for text within URLs and bodies
+  --headers         Show request and response headers (text mode)
   --raw             Skip formatting (return raw JSON)
   --json            Output in JSON format (global flag)
 
@@ -64,7 +65,9 @@ Save mode (file):
   network save --status 5xx --tail 50
 
 Response formats:
-  Default:  GET https://example.com 200 45ms (to stdout)
+  Default:  GET https://example.com 200 45ms xhr 3.4KB (to stdout)
+            resource type and size append when captured; a failed request shows
+            FAILED plus its reason instead of a status; --headers adds headers
   Save:     /tmp/webctl-network/25-12-28-143052-123-network.json
 
 Error cases:
@@ -105,6 +108,7 @@ func init() {
 	networkCmd.PersistentFlags().Duration("min-duration", 0, "Filter by minimum request duration")
 	networkCmd.PersistentFlags().Int64("min-size", 0, "Filter by minimum response size in bytes")
 	networkCmd.PersistentFlags().Bool("failed", false, "Show only failed requests")
+	networkCmd.PersistentFlags().Bool("headers", false, "Show request and response headers (text mode)")
 	networkCmd.PersistentFlags().Int("max-body-size", ipc.DefaultMaxBodySize, "Maximum body size in bytes before truncation (default 100KB; 0 suppresses all body content)")
 	networkCmd.PersistentFlags().Int("head", 0, "Return first N entries")
 	networkCmd.PersistentFlags().Int("tail", 0, "Return last N entries")
@@ -159,7 +163,9 @@ func runNetworkDefault(cmd *cobra.Command, args []string) error {
 	// Text mode: bound bodies to --max-body-size before rendering, then format.
 	// The formatter prints the already-bounded text and does not truncate itself.
 	applyBodyTruncation(entries, resolveMaxBodySize(cmd))
-	return format.Network(os.Stdout, entries, format.NewOutputOptions(JSONOutput, NoColor))
+	opts := format.NewOutputOptions(JSONOutput, NoColor)
+	opts.ShowHeaders = resolveHeadersFlag(cmd)
+	return format.Network(os.Stdout, entries, opts)
 }
 
 // runNetworkSave handles save subcommand: save to file
@@ -204,6 +210,16 @@ func resolveMaxBodySize(cmd *cobra.Command) int {
 		return maxBodySize
 	}
 	return ipc.DefaultMaxBodySize
+}
+
+// resolveHeadersFlag reads the --headers flag, falling back to the parent
+// command's persistent flag so the default and save subcommands agree.
+func resolveHeadersFlag(cmd *cobra.Command) bool {
+	headers, _ := cmd.Flags().GetBool("headers")
+	if !headers && cmd.Parent() != nil {
+		headers, _ = cmd.Parent().PersistentFlags().GetBool("headers")
+	}
+	return headers
 }
 
 // getNetworkFromDaemon fetches network entries from daemon, applying filters

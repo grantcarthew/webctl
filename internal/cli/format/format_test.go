@@ -201,6 +201,218 @@ func TestNetwork(t *testing.T) {
 	}
 }
 
+func TestNetwork_HeadersShownWhenEnabled(t *testing.T) {
+	// With ShowHeaders set, request and response headers render as indented
+	// subordinate lines with keys sorted for stable output.
+	entries := []ipc.NetworkEntry{
+		{
+			Method: "GET", URL: "https://api.example.com/users", Status: 200, Duration: 0.045,
+			RequestHeaders:  map[string]string{"accept": "application/json", "authorization": "Bearer x"},
+			ResponseHeaders: map[string]string{"content-type": "application/json", "cache-control": "no-store"},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false, ShowHeaders: true}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "  request-headers:\n    accept: application/json\n    authorization: Bearer x\n") {
+		t.Errorf("request headers should render sorted under a label:\n%s", output)
+	}
+	if !strings.Contains(output, "  response-headers:\n    cache-control: no-store\n    content-type: application/json\n") {
+		t.Errorf("response headers should render sorted under a label:\n%s", output)
+	}
+}
+
+func TestNetwork_HeadersHiddenByDefault(t *testing.T) {
+	// Without ShowHeaders, headers stay out of the default text view.
+	entries := []ipc.NetworkEntry{
+		{
+			Method: "GET", URL: "https://api.example.com/users", Status: 200, Duration: 0.045,
+			RequestHeaders:  map[string]string{"authorization": "Bearer x"},
+			ResponseHeaders: map[string]string{"content-type": "application/json"},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if strings.Contains(output, "headers:") || strings.Contains(output, "authorization") {
+		t.Errorf("headers must not appear in the default text view:\n%s", output)
+	}
+}
+
+func TestFormatBytes(t *testing.T) {
+	cases := []struct {
+		in   int64
+		want string
+	}{
+		{0, "0B"},
+		{512, "512B"},
+		{1024, "1.0KB"},
+		{3486, "3.4KB"},
+		{1048576, "1.0MB"},
+		{1073741824, "1.0GB"},
+	}
+	for _, c := range cases {
+		if got := formatBytes(c.in); got != c.want {
+			t.Errorf("formatBytes(%d) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestNetwork_SizeShownHumanReadable(t *testing.T) {
+	// Response size appends to the main line in human-readable form; an entry with
+	// no captured size (Size == 0) omits the token.
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "https://api.example.com/data", Status: 200, Duration: 0.045, Type: "xhr", Size: 3486},
+		{Method: "GET", URL: "https://api.example.com/empty", Status: 204, Duration: 0.010},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "200 45ms xhr 3.4KB") {
+		t.Errorf("response size should append to the main line, human-readable:\n%s", output)
+	}
+	if !strings.Contains(output, "https://api.example.com/empty 204 10ms\n") {
+		t.Errorf("an entry with no size should omit the size token:\n%s", output)
+	}
+}
+
+func TestNetwork_TypeShownOnMainLine(t *testing.T) {
+	// The CDP resource type appends to the main line so a reader can tell an xhr
+	// from a document or image at a glance.
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "https://api.example.com/data", Status: 200, Duration: 0.045, Type: "xhr"},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "GET https://api.example.com/data 200 45ms xhr") {
+		t.Errorf("resource type should append to the main line:\n%s", output)
+	}
+}
+
+func TestNetwork_FailedRequestShowsReason(t *testing.T) {
+	// A failed request must surface its reason and a distinct FAILED token rather
+	// than a bare status of 0.
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "https://example.com/x", Failed: true, Error: "net::ERR_NAME_NOT_RESOLVED", Duration: 0.012, Type: "document"},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "GET https://example.com/x FAILED 12ms document") {
+		t.Errorf("failed request should show a FAILED token and resource type, not a bare status:\n%s", output)
+	}
+	if !strings.Contains(output, "  error: net::ERR_NAME_NOT_RESOLVED") {
+		t.Errorf("failed request should show its reason on an indented error line:\n%s", output)
+	}
+}
+
+func TestNetwork_FailedRequestShowsRequestBody(t *testing.T) {
+	// A failed request has no response, but its outgoing body is diagnostic and
+	// must still render, as it does on the success path.
+	entries := []ipc.NetworkEntry{
+		{Method: "POST", URL: "https://example.com/submit", Failed: true, Error: "canceled", RequestBody: `{"user":"grant"}`},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, `  request: {"user":"grant"}`) {
+		t.Errorf("a failed request should still show its request body:\n%s", output)
+	}
+}
+
+func TestNetwork_FailedRequestShowsRequestHeaders(t *testing.T) {
+	// With ShowHeaders set, a failed request renders its request headers, since the
+	// request side is captured and diagnostic. It has no response, so response
+	// headers must never appear even when ShowHeaders is set.
+	entries := []ipc.NetworkEntry{
+		{
+			Method: "GET", URL: "https://example.com/x", Failed: true, Error: "canceled",
+			RequestHeaders:  map[string]string{"accept": "application/json"},
+			ResponseHeaders: map[string]string{"content-type": "text/html"},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false, ShowHeaders: true}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "  request-headers:\n    accept: application/json\n") {
+		t.Errorf("a failed request should render its request headers under --headers:\n%s", output)
+	}
+	if strings.Contains(output, "response-headers:") {
+		t.Errorf("a failed request has no response, so response headers must not render:\n%s", output)
+	}
+}
+
+func TestNetwork_FailedWithoutReasonStillDistinct(t *testing.T) {
+	// A failed entry with no captured reason must still render FAILED and must not
+	// print an empty error line.
+	entries := []ipc.NetworkEntry{
+		{Method: "POST", URL: "https://example.com/y", Failed: true, Duration: 0.001},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "POST https://example.com/y FAILED 1ms") {
+		t.Errorf("a failed entry with no reason should still show FAILED:\n%s", output)
+	}
+	if strings.Contains(output, "error:") {
+		t.Errorf("no error line should print when Error is empty:\n%s", output)
+	}
+}
+
+func TestNetwork_ZeroStatusNotFailed(t *testing.T) {
+	// The failure branch keys on Failed, not status == 0; a non-failed entry with
+	// status 0 must render its bare status, never FAILED.
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "https://example.com/pending", Status: 0, Duration: 0.005},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if strings.Contains(output, "FAILED") {
+		t.Errorf("a zero-status non-failed entry must not render as FAILED:\n%s", output)
+	}
+	if !strings.Contains(output, "GET https://example.com/pending 0 5ms") {
+		t.Errorf("a zero-status non-failed entry should render its bare status:\n%s", output)
+	}
+}
+
 func TestNetwork_GETResponseBodyPrints(t *testing.T) {
 	// A GET response body must print: dropping the old Method != GET gate means a
 	// GET's payload is shown like any other method's.
