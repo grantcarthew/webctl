@@ -162,6 +162,129 @@ func TestDaemon_parseRequestEvent_noPostData(t *testing.T) {
 	}
 }
 
+func TestDaemon_parseRequestEvent_initiatorParser(t *testing.T) {
+	d := New(DefaultConfig())
+
+	// Parser initiators (the common <img>/<script>/<link> case) carry the
+	// location directly on the initiator object, not in a stack.
+	params := map[string]any{
+		"requestId": "req-init-1",
+		"wallTime":  float64(time.Now().Unix()),
+		"request": map[string]any{
+			"url":    "https://example.com/app.js",
+			"method": "GET",
+		},
+		"type": "Script",
+		"initiator": map[string]any{
+			"type":       "parser",
+			"url":        "https://example.com/",
+			"lineNumber": 42,
+		},
+	}
+	paramsJSON, _ := json.Marshal(params)
+
+	entry, ok := d.parseRequestEvent(cdp.Event{
+		Method: "Network.requestWillBeSent",
+		Params: json.RawMessage(paramsJSON),
+	})
+	if !ok {
+		t.Fatal("parseRequestEvent returned false")
+	}
+	if entry.Initiator == nil {
+		t.Fatal("Initiator should be populated")
+	}
+	if entry.Initiator.Type != "parser" {
+		t.Errorf("Initiator.Type = %q, want 'parser'", entry.Initiator.Type)
+	}
+	if entry.Initiator.URL != "https://example.com/" {
+		t.Errorf("Initiator.URL = %q, want 'https://example.com/'", entry.Initiator.URL)
+	}
+	if entry.Initiator.Line != 42 {
+		t.Errorf("Initiator.Line = %d, want 42", entry.Initiator.Line)
+	}
+}
+
+func TestDaemon_parseRequestEvent_initiatorScriptStackFallback(t *testing.T) {
+	d := New(DefaultConfig())
+
+	// Script initiators carry no url/lineNumber of their own; the location must
+	// be read from the top stack call frame.
+	params := map[string]any{
+		"requestId": "req-init-2",
+		"wallTime":  float64(time.Now().Unix()),
+		"request": map[string]any{
+			"url":    "https://api.example.com/data",
+			"method": "GET",
+		},
+		"type": "XHR",
+		"initiator": map[string]any{
+			"type": "script",
+			"stack": map[string]any{
+				"callFrames": []map[string]any{
+					{"url": "https://example.com/app.js", "lineNumber": 100},
+					{"url": "https://example.com/vendor.js", "lineNumber": 5},
+				},
+			},
+		},
+	}
+	paramsJSON, _ := json.Marshal(params)
+
+	entry, ok := d.parseRequestEvent(cdp.Event{
+		Method: "Network.requestWillBeSent",
+		Params: json.RawMessage(paramsJSON),
+	})
+	if !ok {
+		t.Fatal("parseRequestEvent returned false")
+	}
+	if entry.Initiator == nil {
+		t.Fatal("Initiator should be populated")
+	}
+	if entry.Initiator.Type != "script" {
+		t.Errorf("Initiator.Type = %q, want 'script'", entry.Initiator.Type)
+	}
+	if entry.Initiator.URL != "https://example.com/app.js" {
+		t.Errorf("Initiator.URL = %q, want top stack frame 'https://example.com/app.js'", entry.Initiator.URL)
+	}
+	if entry.Initiator.Line != 100 {
+		t.Errorf("Initiator.Line = %d, want 100", entry.Initiator.Line)
+	}
+}
+
+func TestDaemon_parseRequestEvent_initiatorTypeOnly(t *testing.T) {
+	d := New(DefaultConfig())
+
+	// An initiator with a type but no location (for example "other") still
+	// records the type and leaves the location empty.
+	params := map[string]any{
+		"requestId": "req-init-3",
+		"wallTime":  float64(time.Now().Unix()),
+		"request": map[string]any{
+			"url":    "https://example.com/",
+			"method": "GET",
+		},
+		"type":      "Document",
+		"initiator": map[string]any{"type": "other"},
+	}
+	paramsJSON, _ := json.Marshal(params)
+
+	entry, ok := d.parseRequestEvent(cdp.Event{
+		Method: "Network.requestWillBeSent",
+		Params: json.RawMessage(paramsJSON),
+	})
+	if !ok {
+		t.Fatal("parseRequestEvent returned false")
+	}
+	if entry.Initiator == nil {
+		t.Fatal("Initiator should be populated")
+	}
+	if entry.Initiator.Type != "other" {
+		t.Errorf("Initiator.Type = %q, want 'other'", entry.Initiator.Type)
+	}
+	if entry.Initiator.URL != "" || entry.Initiator.Line != 0 {
+		t.Errorf("Initiator location should be empty, got URL=%q Line=%d", entry.Initiator.URL, entry.Initiator.Line)
+	}
+}
+
 func TestDaemon_parseConsoleEvent(t *testing.T) {
 	d := New(DefaultConfig())
 
@@ -398,7 +521,9 @@ func TestDaemon_updateResponseEvent(t *testing.T) {
 	}
 	d.networkBuf.Push(requestEntry)
 
-	// Now simulate a response event
+	// Now simulate a response event carrying the full transport telemetry:
+	// remote endpoint, protocol, cache origin, connection id, security state,
+	// and a ResourceTiming breakdown.
 	params := map[string]any{
 		"requestId": "req-123",
 		"response": map[string]any{
@@ -407,6 +532,25 @@ func TestDaemon_updateResponseEvent(t *testing.T) {
 			"mimeType":   "application/json",
 			"headers": map[string]string{
 				"Content-Type": "application/json",
+			},
+			"remoteIPAddress":   "93.184.216.34",
+			"remotePort":        443,
+			"protocol":          "h2",
+			"fromDiskCache":     false,
+			"fromServiceWorker": false,
+			"fromPrefetchCache": false,
+			"connectionId":      float64(17),
+			"securityState":     "secure",
+			"timing": map[string]any{
+				"dnsStart":          1.0,
+				"dnsEnd":            6.0,
+				"connectStart":      6.0,
+				"connectEnd":        26.0,
+				"sslStart":          10.0,
+				"sslEnd":            25.0,
+				"sendStart":         26.0,
+				"sendEnd":           27.0,
+				"receiveHeadersEnd": 57.0,
 			},
 		},
 	}
@@ -444,6 +588,92 @@ func TestDaemon_updateResponseEvent(t *testing.T) {
 	if entry.Duration <= 0 {
 		t.Error("Duration should be positive")
 	}
+	if entry.RemoteIPAddress != "93.184.216.34" {
+		t.Errorf("RemoteIPAddress = %q, want '93.184.216.34'", entry.RemoteIPAddress)
+	}
+	if entry.RemotePort != 443 {
+		t.Errorf("RemotePort = %d, want 443", entry.RemotePort)
+	}
+	if entry.Protocol != "h2" {
+		t.Errorf("Protocol = %q, want 'h2'", entry.Protocol)
+	}
+	if entry.ConnectionID != 17 {
+		t.Errorf("ConnectionID = %v, want 17", entry.ConnectionID)
+	}
+	if entry.SecurityState != "secure" {
+		t.Errorf("SecurityState = %q, want 'secure'", entry.SecurityState)
+	}
+	if entry.Timing == nil {
+		t.Fatal("Timing should be populated")
+	}
+	if entry.Timing.DNSMs != 5 {
+		t.Errorf("Timing.DNSMs = %v, want 5", entry.Timing.DNSMs)
+	}
+	// Connect is the TCP-only portion (connectStart 6 -> sslStart 10); the TLS
+	// handshake (sslStart 10 -> sslEnd 25) is reported separately as TLSMs.
+	if entry.Timing.ConnectMs != 4 {
+		t.Errorf("Timing.ConnectMs = %v, want 4", entry.Timing.ConnectMs)
+	}
+	if entry.Timing.TLSMs != 15 {
+		t.Errorf("Timing.TLSMs = %v, want 15", entry.Timing.TLSMs)
+	}
+	if entry.Timing.SendMs != 1 {
+		t.Errorf("Timing.SendMs = %v, want 1", entry.Timing.SendMs)
+	}
+	if entry.Timing.WaitMs != 30 {
+		t.Errorf("Timing.WaitMs = %v, want 30", entry.Timing.WaitMs)
+	}
+}
+
+func TestDeriveNetworkTiming(t *testing.T) {
+	t.Run("nil timing yields nil", func(t *testing.T) {
+		if got := deriveNetworkTiming(nil); got != nil {
+			t.Errorf("deriveNetworkTiming(nil) = %+v, want nil", got)
+		}
+	})
+
+	t.Run("absent phases marked negative are omitted", func(t *testing.T) {
+		// A reused connection skips DNS/connect/TLS: CDP marks those boundaries
+		// negative, so only the send and wait phases should survive.
+		timing := deriveNetworkTiming(&cdpResourceTiming{
+			DNSStart:          -1,
+			DNSEnd:            -1,
+			ConnectStart:      -1,
+			ConnectEnd:        -1,
+			SSLStart:          -1,
+			SSLEnd:            -1,
+			SendStart:         0,
+			SendEnd:           1,
+			ReceiveHeadersEnd: 11,
+		})
+		if timing == nil {
+			t.Fatal("timing should be populated when send/wait phases are present")
+		}
+		if timing.DNSMs != 0 || timing.ConnectMs != 0 || timing.TLSMs != 0 {
+			t.Errorf("absent phases should be 0, got DNS=%v Connect=%v TLS=%v", timing.DNSMs, timing.ConnectMs, timing.TLSMs)
+		}
+		if timing.SendMs != 1 {
+			t.Errorf("SendMs = %v, want 1", timing.SendMs)
+		}
+		if timing.WaitMs != 10 {
+			t.Errorf("WaitMs = %v, want 10", timing.WaitMs)
+		}
+	})
+
+	t.Run("all phases absent yields nil", func(t *testing.T) {
+		// Disk-cache responses may carry a timing object with every boundary
+		// unset; an all-zero breakdown must collapse to nil so JSON omits it.
+		timing := deriveNetworkTiming(&cdpResourceTiming{
+			DNSStart: -1, DNSEnd: -1,
+			ConnectStart: -1, ConnectEnd: -1,
+			SSLStart: -1, SSLEnd: -1,
+			SendStart: -1, SendEnd: -1,
+			ReceiveHeadersEnd: -1,
+		})
+		if timing != nil {
+			t.Errorf("deriveNetworkTiming with all phases absent = %+v, want nil", timing)
+		}
+	})
 }
 
 func TestDaemon_handleLoadingFailed(t *testing.T) {

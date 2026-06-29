@@ -108,6 +108,28 @@ type NetworkEntry struct {
 	Failed           bool   `json:"failed"`
 	Error            string `json:"error,omitempty"`
 
+	// RemoteIPAddress is the server IP that served the response.
+	RemoteIPAddress string `json:"remoteIPAddress,omitempty"`
+	// RemotePort is the server port that served the response.
+	RemotePort int `json:"remotePort,omitempty"`
+	// Protocol is the negotiated network protocol (for example h2, http/1.1, h3).
+	Protocol string `json:"protocol,omitempty"`
+	// FromDiskCache reports the response was served from the disk cache.
+	FromDiskCache bool `json:"fromDiskCache,omitempty"`
+	// FromServiceWorker reports the response was served by a service worker.
+	FromServiceWorker bool `json:"fromServiceWorker,omitempty"`
+	// FromPrefetchCache reports the response was served from the prefetch cache.
+	FromPrefetchCache bool `json:"fromPrefetchCache,omitempty"`
+	// ConnectionID identifies the physical connection that served the response,
+	// so requests sharing a connection can be correlated.
+	ConnectionID float64 `json:"connectionId,omitempty"`
+	// SecurityState is the transport security posture (secure, insecure, neutral, unknown).
+	SecurityState string `json:"securityState,omitempty"`
+	// Timing is the per-phase latency breakdown derived from the CDP ResourceTiming.
+	Timing *NetworkTiming `json:"timing,omitempty"`
+	// Initiator records what caused the request: its type and a single source location.
+	Initiator *NetworkInitiator `json:"initiator,omitempty"`
+
 	// awaitingRequestBody marks an entry whose request body was advertised
 	// (hasPostData) but omitted from requestWillBeSent, so the daemon is
 	// fetching it via Network.getRequestPostData off the read loop. It travels
@@ -142,6 +164,40 @@ func (e *NetworkEntry) SetRequestBody(body string) {
 // used when the fetch returns no data or fails.
 func (e *NetworkEntry) ClearAwaitingRequestBody() {
 	e.awaitingRequestBody = false
+}
+
+// NetworkTiming is a per-phase latency breakdown of a network request, in
+// milliseconds. The daemon derives each phase from the CDP ResourceTiming
+// offsets (which are relative to a requestTime baseline) so callers read
+// durations directly rather than subtracting offsets. A phase that did not
+// occur (for example DNS on a reused connection) is omitted.
+type NetworkTiming struct {
+	// DNSMs is the DNS resolution time (dnsEnd - dnsStart).
+	DNSMs float64 `json:"dnsMs,omitempty"`
+	// ConnectMs is the TCP connection setup time, excluding the TLS handshake
+	// which is reported separately as TLSMs (sslStart - connectStart when a
+	// handshake occurred, otherwise connectEnd - connectStart).
+	ConnectMs float64 `json:"connectMs,omitempty"`
+	// TLSMs is the TLS handshake time (sslEnd - sslStart).
+	TLSMs float64 `json:"tlsMs,omitempty"`
+	// SendMs is the request send time (sendEnd - sendStart).
+	SendMs float64 `json:"sendMs,omitempty"`
+	// WaitMs is the time to first byte, from request sent to response headers
+	// received (receiveHeadersEnd - sendEnd).
+	WaitMs float64 `json:"waitMs,omitempty"`
+}
+
+// NetworkInitiator records why a request was made: its initiator type and a
+// single source location. The full Runtime.StackTrace parent chain that CDP
+// carries for script initiators is deliberately not stored.
+type NetworkInitiator struct {
+	// Type is the initiator category (parser, script, preload, ...).
+	Type string `json:"type,omitempty"`
+	// URL is the source location that issued the request, taken from the CDP
+	// Initiator's own url or, for script initiators, its top stack frame.
+	URL string `json:"url,omitempty"`
+	// Line is the 0-based line number within URL.
+	Line int `json:"line,omitempty"`
 }
 
 // ConsoleData is the response data for the "console" command.

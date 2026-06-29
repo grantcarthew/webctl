@@ -2,6 +2,7 @@ package ipc
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -153,5 +154,68 @@ func TestNetworkEntry_JSON(t *testing.T) {
 
 	if got.RequestID != entry.RequestID || got.Status != entry.Status || got.Duration != entry.Duration {
 		t.Errorf("round-trip mismatch: got %+v", got)
+	}
+}
+
+func TestNetworkEntry_TelemetryJSON(t *testing.T) {
+	entry := NetworkEntry{
+		RequestID:         "req-456",
+		URL:               "https://example.com/app.js",
+		Method:            "GET",
+		RemoteIPAddress:   "93.184.216.34",
+		RemotePort:        443,
+		Protocol:          "h2",
+		FromDiskCache:     true,
+		FromServiceWorker: true,
+		FromPrefetchCache: true,
+		ConnectionID:      17,
+		SecurityState:     "secure",
+		Timing:            &NetworkTiming{DNSMs: 5, ConnectMs: 20, TLSMs: 15, SendMs: 1, WaitMs: 30},
+		Initiator:         &NetworkInitiator{Type: "parser", URL: "https://example.com/", Line: 42},
+	}
+
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	var got NetworkEntry
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	if got.RemoteIPAddress != entry.RemoteIPAddress || got.RemotePort != entry.RemotePort {
+		t.Errorf("remote endpoint round-trip mismatch: got IP=%q port=%d", got.RemoteIPAddress, got.RemotePort)
+	}
+	if got.Protocol != "h2" || got.ConnectionID != 17 || got.SecurityState != "secure" {
+		t.Errorf("transport fields round-trip mismatch: got %+v", got)
+	}
+	if !got.FromDiskCache || !got.FromServiceWorker || !got.FromPrefetchCache {
+		t.Errorf("cache-origin flags round-trip mismatch: got %+v", got)
+	}
+	if got.Timing == nil || *got.Timing != *entry.Timing {
+		t.Errorf("timing round-trip mismatch: got %+v", got.Timing)
+	}
+	if got.Initiator == nil || *got.Initiator != *entry.Initiator {
+		t.Errorf("initiator round-trip mismatch: got %+v", got.Initiator)
+	}
+}
+
+func TestNetworkEntry_TelemetryOmitEmpty(t *testing.T) {
+	// A bare entry (request seen, no response yet) must not emit any of the new
+	// transport keys, keeping JSON output lean for the common in-flight case.
+	data, err := json.Marshal(NetworkEntry{RequestID: "req-789", URL: "https://example.com/"})
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	for _, key := range []string{
+		"remoteIPAddress", "remotePort", "protocol", "fromDiskCache",
+		"fromServiceWorker", "fromPrefetchCache", "connectionId",
+		"securityState", "timing", "initiator",
+	} {
+		if strings.Contains(string(data), key) {
+			t.Errorf("empty entry JSON should omit %q, got %s", key, data)
+		}
 	}
 }

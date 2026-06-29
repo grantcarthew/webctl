@@ -108,6 +108,16 @@ the default text view to keep it compact; pass --headers to print request and re
 headers as indented lines in text mode. JSON output always carries the full entry,
 including headers, mimeType, and statusText.
 
+Transport and origin detail. A cached response is tagged on the main line with its
+origin: (disk), (service-worker), or (prefetch). When captured, indented lines follow
+each entry. A remote: line shows the contacted endpoint and negotiated protocol, the
+connection id as conn:N (shared ids reveal HTTP/2 multiplexing and keep-alive reuse),
+and a non-secure security state (insecure, neutral, unknown) when present; a secure
+state is omitted. A timing: line shows per-phase latency in milliseconds (dns, connect,
+tls, send, wait), dropping phases under half a millisecond. An initiator: line names
+what triggered the request as type url:line for parser and script initiators; the
+locationless other initiator is omitted. Every field is always present in --json.
+
 ## cookies
 
 ```

@@ -286,6 +286,22 @@ func printNetworkStatus(w io.Writer, status int, opts OutputOptions) {
 //   - RequestHeaders/ResponseHeaders: conditional — high-volume, so kept out of
 //     the default view and shown only when opts.ShowHeaders (the --headers flag),
 //     letting an agent get headers in compact text form without the full JSON.
+//   - RemoteIPAddress/RemotePort/Protocol/ConnectionID: shown on a subordinate
+//     "remote:" line when captured — the endpoint actually contacted, the
+//     negotiated wire protocol, and the connection id (conn:N) that exposes
+//     HTTP/2 multiplexing and keep-alive reuse across entries.
+//   - SecurityState: shown on the same "remote:" line only when not "secure",
+//     so a non-secure posture (insecure, neutral, unknown) stands out as a
+//     signal while the common secure case stays silent.
+//   - Timing: shown on a subordinate "timing:" line as integer-millisecond
+//     phase durations (dns, connect, tls, send, wait) so a slow request reveals
+//     where the time went. Phases under half a millisecond are dropped.
+//   - Initiator: shown on a subordinate "initiator:" line as "type url:line"
+//     when a location was captured (parser and script initiators), naming what
+//     triggered the request. The bare "other" initiator is omitted as noise.
+//   - FromDiskCache/FromServiceWorker/FromPrefetchCache: shown as a single
+//     self-describing main-line token (disk, service-worker, prefetch) naming
+//     which cache served the response. The origins are mutually exclusive.
 func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error {
 	for _, e := range entries {
 		// Format duration
@@ -308,16 +324,21 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 				_, _ = fmt.Fprintf(w, " %s", e.Type)
 			}
 			_, _ = fmt.Fprintln(w)
+			// The failure reason leads the detail block: it is the point of a
+			// failed entry, so it comes before the transport/initiator metadata.
 			if e.Error != "" {
 				_, _ = fmt.Fprintf(w, "  error: %s\n", e.Error)
 			}
+			printNetworkRemote(w, e)
+			printNetworkTiming(w, e)
+			printNetworkInitiator(w, e)
 			// A failed request has no response, but its request side is still
 			// captured and diagnostic, so render it as the success path does.
 			printNetworkRequestSide(w, e, opts)
 			continue
 		}
 
-		// Main line: METHOD URL STATUS DURATION [TYPE] [SIZE]
+		// Main line: METHOD URL STATUS DURATION [TYPE] [SIZE] [(CACHE)]
 		printNetworkMethod(w, e.Method, opts)
 		_, _ = fmt.Fprintf(w, " %s ", e.URL)
 		printNetworkStatus(w, e.Status, opts)
@@ -328,7 +349,13 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 		if e.Size > 0 {
 			_, _ = fmt.Fprintf(w, " %s", formatBytes(e.Size))
 		}
+		if tok := networkCacheToken(e); tok != "" {
+			_, _ = fmt.Fprintf(w, " (%s)", tok)
+		}
 		_, _ = fmt.Fprintln(w)
+		printNetworkRemote(w, e)
+		printNetworkTiming(w, e)
+		printNetworkInitiator(w, e)
 
 		// Subordinate detail: the request side (headers when --headers, then body)
 		// followed by the response side, each part printed only when present.
@@ -347,6 +374,102 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 		}
 	}
 	return nil
+}
+
+// networkCacheToken returns the self-describing cache-origin token for an entry,
+// or "" when the response came over the network. The origins are mutually
+// exclusive; the token names which cache answered so a human need not drop to
+// JSON to tell a stale disk cache from a service-worker interception.
+func networkCacheToken(e ipc.NetworkEntry) string {
+	switch {
+	case e.FromServiceWorker:
+		return "service-worker"
+	case e.FromDiskCache:
+		return "disk"
+	case e.FromPrefetchCache:
+		return "prefetch"
+	default:
+		return ""
+	}
+}
+
+// printNetworkRemote renders the transport line for an entry: the remote
+// endpoint and the negotiated protocol. It prints only when the protocol or
+// address was captured, so request-only and failed entries (which carry no
+// response) stay quiet.
+func printNetworkRemote(w io.Writer, e ipc.NetworkEntry) {
+	if e.Protocol == "" && e.RemoteIPAddress == "" {
+		return
+	}
+	parts := make([]string, 0, 4)
+	if e.RemoteIPAddress != "" {
+		if e.RemotePort > 0 {
+			parts = append(parts, fmt.Sprintf("%s:%d", e.RemoteIPAddress, e.RemotePort))
+		} else {
+			parts = append(parts, e.RemoteIPAddress)
+		}
+	}
+	if e.Protocol != "" {
+		parts = append(parts, e.Protocol)
+	}
+	if e.ConnectionID > 0 {
+		parts = append(parts, fmt.Sprintf("conn:%d", int64(e.ConnectionID)))
+	}
+	// Only surface a non-secure posture; "secure" is the norm on HTTPS and would
+	// be noise on nearly every row, so its absence here means the request is fine.
+	if e.SecurityState != "" && e.SecurityState != "secure" {
+		parts = append(parts, e.SecurityState)
+	}
+	_, _ = fmt.Fprintf(w, "  remote: %s\n", strings.Join(parts, " "))
+}
+
+// printNetworkTiming renders the per-phase latency line for an entry. Phases are
+// listed in request order and shown as integer milliseconds; a phase under half
+// a millisecond rounds to zero and is dropped, so negligible phases (usually the
+// request send) fall away and the line carries only meaningful time. Nothing
+// prints when no timing was captured or every phase is negligible.
+func printNetworkTiming(w io.Writer, e ipc.NetworkEntry) {
+	if e.Timing == nil {
+		return
+	}
+	phases := []struct {
+		name string
+		ms   float64
+	}{
+		{"dns", e.Timing.DNSMs},
+		{"connect", e.Timing.ConnectMs},
+		{"tls", e.Timing.TLSMs},
+		{"send", e.Timing.SendMs},
+		{"wait", e.Timing.WaitMs},
+	}
+	parts := make([]string, 0, len(phases))
+	for _, p := range phases {
+		if rounded := int(p.ms + 0.5); rounded >= 1 {
+			parts = append(parts, fmt.Sprintf("%s %dms", p.name, rounded))
+		}
+	}
+	if len(parts) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "  timing: %s\n", strings.Join(parts, " "))
+}
+
+// printNetworkInitiator renders what triggered the request as a subordinate
+// "initiator:" line: the initiator type and the source location that issued it,
+// in the same url:line form the console formatter uses. It prints only when a
+// location was captured (the parser and script cases) and stays silent for the
+// bare "other" initiator, which carries no location and would only add noise.
+func printNetworkInitiator(w io.Writer, e ipc.NetworkEntry) {
+	if e.Initiator == nil || e.Initiator.URL == "" {
+		return
+	}
+	// Mirror the console formatter: append the line only when it is meaningful,
+	// since CDP line numbers are 0-based and line 0 would render a bare ":0".
+	if e.Initiator.Line > 0 {
+		_, _ = fmt.Fprintf(w, "  initiator: %s %s:%d\n", e.Initiator.Type, e.Initiator.URL, e.Initiator.Line)
+	} else {
+		_, _ = fmt.Fprintf(w, "  initiator: %s %s\n", e.Initiator.Type, e.Initiator.URL)
+	}
 }
 
 // printNetworkRequestSide renders the request half of an entry — headers when

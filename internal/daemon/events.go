@@ -269,7 +269,18 @@ func (d *Daemon) parseRequestEvent(evt cdp.Event) (ipc.NetworkEntry, bool) {
 			PostData    string            `json:"postData"`
 			HasPostData bool              `json:"hasPostData"`
 		} `json:"request"`
-		Type string `json:"type"`
+		Type      string `json:"type"`
+		Initiator struct {
+			Type       string `json:"type"`
+			URL        string `json:"url"`
+			LineNumber int    `json:"lineNumber"`
+			Stack      *struct {
+				CallFrames []struct {
+					URL        string `json:"url"`
+					LineNumber int    `json:"lineNumber"`
+				} `json:"callFrames"`
+			} `json:"stack"`
+		} `json:"initiator"`
 	}
 	if err := json.Unmarshal(evt.Params, &params); err != nil {
 		return ipc.NetworkEntry{}, false
@@ -283,6 +294,23 @@ func (d *Daemon) parseRequestEvent(evt cdp.Event) (ipc.NetworkEntry, bool) {
 		RequestTime:    int64(params.WallTime * 1000), // Convert seconds to milliseconds
 		RequestHeaders: params.Request.Headers,
 		RequestBody:    params.Request.PostData,
+	}
+
+	// Capture the initiator type plus a single source location. CDP carries the
+	// location on the Initiator object itself for parser-initiated requests (the
+	// common <img>/<script>/<link> case) and only in the stack for script
+	// initiators, so read the Initiator's own url/lineNumber first and fall back
+	// to the top stack frame. The nested StackTrace parent chain is dropped.
+	if params.Initiator.Type != "" {
+		init := &ipc.NetworkInitiator{Type: params.Initiator.Type}
+		if params.Initiator.URL != "" {
+			init.URL = params.Initiator.URL
+			init.Line = params.Initiator.LineNumber
+		} else if params.Initiator.Stack != nil && len(params.Initiator.Stack.CallFrames) > 0 {
+			init.URL = params.Initiator.Stack.CallFrames[0].URL
+			init.Line = params.Initiator.Stack.CallFrames[0].LineNumber
+		}
+		entry.Initiator = init
 	}
 
 	// hasPostData with no inline postData means the body exceeded maxPostDataSize
@@ -360,15 +388,26 @@ func (d *Daemon) updateResponseEvent(evt cdp.Event) {
 	var params struct {
 		RequestID string `json:"requestId"`
 		Response  struct {
-			Status     int               `json:"status"`
-			StatusText string            `json:"statusText"`
-			MimeType   string            `json:"mimeType"`
-			Headers    map[string]string `json:"headers"`
+			Status            int                `json:"status"`
+			StatusText        string             `json:"statusText"`
+			MimeType          string             `json:"mimeType"`
+			Headers           map[string]string  `json:"headers"`
+			RemoteIPAddress   string             `json:"remoteIPAddress"`
+			RemotePort        int                `json:"remotePort"`
+			Protocol          string             `json:"protocol"`
+			FromDiskCache     bool               `json:"fromDiskCache"`
+			FromServiceWorker bool               `json:"fromServiceWorker"`
+			FromPrefetchCache bool               `json:"fromPrefetchCache"`
+			ConnectionID      float64            `json:"connectionId"`
+			SecurityState     string             `json:"securityState"`
+			Timing            *cdpResourceTiming `json:"timing"`
 		} `json:"response"`
 	}
 	if err := json.Unmarshal(evt.Params, &params); err != nil {
 		return
 	}
+
+	timing := deriveNetworkTiming(params.Response.Timing)
 
 	// Use current wall time for response timestamp since CDP's Network.responseReceived
 	// only provides monotonic timestamp, not wallTime. This is accurate because events
@@ -384,6 +423,15 @@ func (d *Daemon) updateResponseEvent(evt cdp.Event) {
 			entry.StatusText = params.Response.StatusText
 			entry.MimeType = params.Response.MimeType
 			entry.ResponseHeaders = params.Response.Headers
+			entry.RemoteIPAddress = params.Response.RemoteIPAddress
+			entry.RemotePort = params.Response.RemotePort
+			entry.Protocol = params.Response.Protocol
+			entry.FromDiskCache = params.Response.FromDiskCache
+			entry.FromServiceWorker = params.Response.FromServiceWorker
+			entry.FromPrefetchCache = params.Response.FromPrefetchCache
+			entry.ConnectionID = params.Response.ConnectionID
+			entry.SecurityState = params.Response.SecurityState
+			entry.Timing = timing
 			entry.ResponseTime = responseTime
 			if entry.RequestTime > 0 {
 				entry.Duration = float64(entry.ResponseTime-entry.RequestTime) / 1000.0
@@ -392,6 +440,60 @@ func (d *Daemon) updateResponseEvent(evt cdp.Event) {
 		}
 		return false
 	})
+}
+
+// cdpResourceTiming mirrors the subset of CDP's Network.ResourceTiming the
+// daemon consumes. Offsets are milliseconds relative to a requestTime baseline;
+// a negative value marks a phase boundary that did not occur.
+type cdpResourceTiming struct {
+	DNSStart          float64 `json:"dnsStart"`
+	DNSEnd            float64 `json:"dnsEnd"`
+	ConnectStart      float64 `json:"connectStart"`
+	ConnectEnd        float64 `json:"connectEnd"`
+	SSLStart          float64 `json:"sslStart"`
+	SSLEnd            float64 `json:"sslEnd"`
+	SendStart         float64 `json:"sendStart"`
+	SendEnd           float64 `json:"sendEnd"`
+	ReceiveHeadersEnd float64 `json:"receiveHeadersEnd"`
+}
+
+// deriveNetworkTiming converts the CDP ResourceTiming offsets into per-phase
+// durations. A phase is reported only when both its start and end are present
+// and ordered. Returns nil when no phase has a duration, so the entry omits an
+// empty timing object.
+func deriveNetworkTiming(t *cdpResourceTiming) *ipc.NetworkTiming {
+	if t == nil {
+		return nil
+	}
+	// The TLS handshake falls within the connect window, so the raw connect span
+	// (connectStart..connectEnd) double-counts the TLS time. When a handshake
+	// occurred, narrow connect to its TCP portion (connectStart..sslStart) and
+	// report TLS separately, so the phases are disjoint and partition the time.
+	connectMs := phaseDuration(t.ConnectStart, t.ConnectEnd)
+	if phaseDuration(t.SSLStart, t.SSLEnd) > 0 {
+		connectMs = phaseDuration(t.ConnectStart, t.SSLStart)
+	}
+	timing := ipc.NetworkTiming{
+		DNSMs:     phaseDuration(t.DNSStart, t.DNSEnd),
+		ConnectMs: connectMs,
+		TLSMs:     phaseDuration(t.SSLStart, t.SSLEnd),
+		SendMs:    phaseDuration(t.SendStart, t.SendEnd),
+		WaitMs:    phaseDuration(t.SendEnd, t.ReceiveHeadersEnd),
+	}
+	if timing == (ipc.NetworkTiming{}) {
+		return nil
+	}
+	return &timing
+}
+
+// phaseDuration returns end-start when both offsets are present (non-negative)
+// and ordered, or 0 when the phase did not occur. CDP marks an absent phase
+// boundary with a negative offset.
+func phaseDuration(start, end float64) float64 {
+	if start < 0 || end < 0 || end < start {
+		return 0
+	}
+	return end - start
 }
 
 // handleLoadingFinished handles the Network.loadingFinished event.

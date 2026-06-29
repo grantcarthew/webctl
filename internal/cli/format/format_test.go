@@ -288,6 +288,186 @@ func TestNetwork_SizeShownHumanReadable(t *testing.T) {
 	}
 }
 
+func TestNetwork_RemoteLineShown(t *testing.T) {
+	// The contacted endpoint and negotiated protocol render on a subordinate
+	// remote: line when captured; an entry with neither stays quiet.
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "https://example.com/", Status: 200, Duration: 0.045,
+			Type: "document", RemoteIPAddress: "93.184.216.34", RemotePort: 443, Protocol: "h2", ConnectionID: 1186},
+		{Method: "GET", URL: "https://example.com/bare", Status: 200, Duration: 0.010},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "  remote: 93.184.216.34:443 h2 conn:1186\n") {
+		t.Errorf("remote line should show endpoint, protocol, and connection id:\n%s", output)
+	}
+	if strings.Contains(output, "/bare 200 10ms\n  remote:") {
+		t.Errorf("an entry without transport data should omit the remote line:\n%s", output)
+	}
+}
+
+func TestNetwork_SecurityStateShownOnlyWhenNotSecure(t *testing.T) {
+	// A non-secure posture surfaces on the remote: line; the common "secure"
+	// state stays silent so it does not clutter every HTTPS row.
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "http://img.example.com/x.png", Status: 200,
+			RemoteIPAddress: "203.0.113.9", RemotePort: 80, Protocol: "http/1.1", SecurityState: "insecure"},
+		{Method: "GET", URL: "https://example.com/", Status: 200,
+			RemoteIPAddress: "93.184.216.34", RemotePort: 443, Protocol: "h2", SecurityState: "secure"},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "203.0.113.9:80 http/1.1 insecure\n") {
+		t.Errorf("non-secure state should show on the remote line:\n%s", output)
+	}
+	if strings.Contains(output, "secure\n") && strings.Contains(output, "93.184.216.34:443 h2 secure") {
+		t.Errorf("the secure state should be omitted from the remote line:\n%s", output)
+	}
+}
+
+func TestNetwork_RemoteLineOmitsPortWhenAbsent(t *testing.T) {
+	// A captured address with no port (cached/local responses) renders the IP
+	// alone rather than a dangling ":0".
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "https://example.com/", Status: 200, RemoteIPAddress: "93.184.216.34", Protocol: "h2"},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if out := buf.String(); !strings.Contains(out, "  remote: 93.184.216.34 h2\n") {
+		t.Errorf("remote line should omit a zero port:\n%s", out)
+	}
+}
+
+func TestNetwork_CacheOriginToken(t *testing.T) {
+	// Each cache origin renders as a single self-describing main-line token; an
+	// uncached response carries none.
+	cases := []struct {
+		name  string
+		entry ipc.NetworkEntry
+		token string
+	}{
+		{"disk", ipc.NetworkEntry{Method: "GET", URL: "https://example.com/a", Status: 200, FromDiskCache: true}, "(disk)"},
+		{"service worker", ipc.NetworkEntry{Method: "GET", URL: "https://example.com/b", Status: 200, FromServiceWorker: true}, "(service-worker)"},
+		{"prefetch", ipc.NetworkEntry{Method: "GET", URL: "https://example.com/c", Status: 200, FromPrefetchCache: true}, "(prefetch)"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := Network(&buf, []ipc.NetworkEntry{tc.entry}, OutputOptions{UseColor: false}); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if out := buf.String(); !strings.Contains(out, tc.token) {
+				t.Errorf("expected cache token %q in:\n%s", tc.token, out)
+			}
+		})
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, []ipc.NetworkEntry{{Method: "GET", URL: "https://example.com/net", Status: 200}}, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out := buf.String(); strings.Contains(out, "(disk)") || strings.Contains(out, "(service-worker)") || strings.Contains(out, "(prefetch)") {
+		t.Errorf("an uncached response should carry no cache token:\n%s", out)
+	}
+}
+
+func TestNetwork_TimingLine(t *testing.T) {
+	// Present phases render as integer ms in request order; a sub-millisecond
+	// phase (send) rounds to zero and is dropped.
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "https://example.com/", Status: 200, Duration: 0.962,
+			Timing: &ipc.NetworkTiming{DNSMs: 122.188, ConnectMs: 420.256, TLSMs: 213.257, SendMs: 0.296, WaitMs: 206.64}},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "  timing: dns 122ms connect 420ms tls 213ms wait 207ms\n") {
+		t.Errorf("timing line should list present phases as integer ms, dropping sub-ms send:\n%s", output)
+	}
+}
+
+func TestNetwork_InitiatorLine(t *testing.T) {
+	// An initiator with a location renders "type url:line"; a bare "other"
+	// initiator with no location is omitted.
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "https://example.com/app.js", Status: 200,
+			Initiator: &ipc.NetworkInitiator{Type: "parser", URL: "https://example.com/", Line: 5}},
+		{Method: "GET", URL: "https://example.com/", Status: 200, Type: "Document",
+			Initiator: &ipc.NetworkInitiator{Type: "other"}},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "  initiator: parser https://example.com/:5\n") {
+		t.Errorf("initiator line should render type and location:\n%s", output)
+	}
+	if strings.Contains(output, "initiator: other") {
+		t.Errorf("a locationless 'other' initiator should be omitted:\n%s", output)
+	}
+}
+
+func TestNetwork_InitiatorLineOmitsZeroLine(t *testing.T) {
+	// CDP line numbers are 0-based, so line 0 is the top of a document. The
+	// initiator line drops the ":line" suffix in that case, matching the console
+	// formatter, rather than rendering a dangling ":0".
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "https://example.com/", Status: 200, Type: "Document",
+			Initiator: &ipc.NetworkInitiator{Type: "parser", URL: "https://example.com/", Line: 0}},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "  initiator: parser https://example.com/\n") {
+		t.Errorf("line-0 initiator should render the URL without a line suffix:\n%s", output)
+	}
+	if strings.Contains(output, "https://example.com/:0") {
+		t.Errorf("line-0 initiator should not render a dangling ':0':\n%s", output)
+	}
+}
+
+func TestNetwork_TimingLineOmittedWhenAbsent(t *testing.T) {
+	// No timing captured: no timing line.
+	entries := []ipc.NetworkEntry{
+		{Method: "GET", URL: "https://example.com/", Status: 200, Duration: 0.045},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strings.Contains(buf.String(), "timing:") {
+		t.Errorf("an entry with no timing should omit the timing line:\n%s", buf.String())
+	}
+}
+
 func TestNetwork_TypeShownOnMainLine(t *testing.T) {
 	// The CDP resource type appends to the main line so a reader can tell an xhr
 	// from a document or image at a glance.
@@ -310,7 +490,8 @@ func TestNetwork_FailedRequestShowsReason(t *testing.T) {
 	// A failed request must surface its reason and a distinct FAILED token rather
 	// than a bare status of 0.
 	entries := []ipc.NetworkEntry{
-		{Method: "GET", URL: "https://example.com/x", Failed: true, Error: "net::ERR_NAME_NOT_RESOLVED", Duration: 0.012, Type: "document"},
+		{Method: "GET", URL: "https://example.com/x", Failed: true, Error: "net::ERR_NAME_NOT_RESOLVED", Duration: 0.012, Type: "document",
+			Initiator: &ipc.NetworkInitiator{Type: "script", URL: "https://example.com/app.js", Line: 1}},
 	}
 
 	var buf bytes.Buffer
@@ -324,6 +505,10 @@ func TestNetwork_FailedRequestShowsReason(t *testing.T) {
 	}
 	if !strings.Contains(output, "  error: net::ERR_NAME_NOT_RESOLVED") {
 		t.Errorf("failed request should show its reason on an indented error line:\n%s", output)
+	}
+	// The error reason leads the detail block, before any initiator metadata.
+	if errIdx, initIdx := strings.Index(output, "  error:"), strings.Index(output, "  initiator:"); errIdx == -1 || initIdx == -1 || errIdx > initIdx {
+		t.Errorf("error line should precede the initiator line on a failed entry:\n%s", output)
 	}
 }
 

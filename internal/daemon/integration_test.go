@@ -503,6 +503,19 @@ func TestNetwork_Integration(t *testing.T) {
 		if docEntry.SessionID == "" {
 			t.Error("expected SessionID to be set")
 		}
+
+		// Newly captured CDP transport telemetry, asserted against live traffic.
+		// A non-cached document over the network carries a remote endpoint and a
+		// negotiated protocol; these are the highest-confidence new fields.
+		if docEntry.Protocol == "" {
+			t.Error("expected Protocol to be set from live traffic")
+		}
+		if docEntry.RemoteIPAddress == "" {
+			t.Error("expected RemoteIPAddress to be set from live traffic")
+		}
+		if docEntry.Timing == nil {
+			t.Error("expected Timing breakdown to be set from live traffic")
+		}
 	})
 
 	// Test: Fetch request captures XHR/fetch type and body
