@@ -30,7 +30,6 @@ Subcommands:
 Universal flags (work with all modes):
   --find, -f        Search for text within URLs and bodies
   --headers         Show request and response headers (text mode)
-  --raw             Skip formatting (return raw JSON)
   --json            Output in JSON format (global flag)
 
 Network-specific filter flags:
@@ -97,7 +96,6 @@ Examples:
 func init() {
 	// Universal flags on root command (inherited by default/save subcommands)
 	networkCmd.PersistentFlags().StringP("find", "f", "", "Search for text within URLs and bodies")
-	networkCmd.PersistentFlags().Bool("raw", false, "Skip formatting (return raw JSON)")
 
 	// Network-specific filter flags
 	networkCmd.PersistentFlags().StringSlice("type", nil, "Filter by CDP resource type (repeatable, CSV-supported)")
@@ -146,17 +144,6 @@ func runNetworkDefault(cmd *cobra.Command, args []string) error {
 
 	// JSON mode: output JSON
 	if JSONOutput {
-		return outputNetworkJSON(entries, resolveMaxBodySize(cmd))
-	}
-
-	// Check --raw flag
-	raw, _ := cmd.Flags().GetBool("raw")
-	if !raw && cmd.Parent() != nil {
-		raw, _ = cmd.Parent().PersistentFlags().GetBool("raw")
-	}
-
-	if raw {
-		// Raw mode: output as JSON
 		return outputNetworkJSON(entries, resolveMaxBodySize(cmd))
 	}
 

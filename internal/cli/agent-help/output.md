@@ -28,10 +28,10 @@ webctl <command> save ./dir/
 
 ```
 webctl --json <command>
-webctl <command> --raw
+webctl <html|css> --raw
 ```
 
---raw applies to html, css, console, network, cookies (not markdown).
+--raw applies to html and css only.
 
 ## Screenshot
 

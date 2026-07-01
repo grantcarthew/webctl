@@ -27,7 +27,6 @@ Subcommands:
 
 Universal flags (work with all modes):
   --find, -f        Search for text within log messages
-  --raw             Skip formatting (return raw JSON)
   --json            Output in JSON format (global flag)
 
 Console-specific filter flags:
@@ -82,7 +81,6 @@ Examples:
 func init() {
 	// Universal flags on root command (inherited by default/save subcommands)
 	consoleCmd.PersistentFlags().StringP("find", "f", "", "Search for text within log messages")
-	consoleCmd.PersistentFlags().Bool("raw", false, "Skip formatting (return raw JSON)")
 
 	// Console-specific filter flags
 	consoleCmd.PersistentFlags().StringSlice("type", nil, "Filter by entry type (repeatable, CSV-supported)")
@@ -126,22 +124,6 @@ func runConsoleDefault(cmd *cobra.Command, args []string) error {
 
 	// JSON mode: output JSON
 	if JSONOutput {
-		result := map[string]any{
-			"ok":    true,
-			"logs":  entries,
-			"count": len(entries),
-		}
-		return outputJSON(os.Stdout, result)
-	}
-
-	// Check --raw flag
-	raw, _ := cmd.Flags().GetBool("raw")
-	if !raw && cmd.Parent() != nil {
-		raw, _ = cmd.Parent().PersistentFlags().GetBool("raw")
-	}
-
-	if raw {
-		// Raw mode: output as JSON array
 		result := map[string]any{
 			"ok":    true,
 			"logs":  entries,

@@ -167,23 +167,6 @@ echo ""
 echo "Verify: GitHub cookies containing 'git'"
 read -p "Press Enter to continue..."
 
-# Raw flag tests
-title "Raw Flag Tests"
-
-heading "Raw output (JSON format)"
-cmd "webctl cookies --raw"
-
-echo ""
-echo "Verify: Raw JSON output instead of formatted text"
-read -p "Press Enter to continue..."
-
-heading "Raw with filters"
-cmd "webctl cookies --raw --domain \".github.com\""
-
-echo ""
-echo "Verify: Raw JSON with filtered cookies"
-read -p "Press Enter to continue..."
-
 # Set subcommand tests
 title "Set Subcommand - Session Cookies"
 
@@ -424,6 +407,13 @@ cmd "webctl cookies --json"
 
 echo ""
 echo "Verify: JSON formatted output"
+read -p "Press Enter to continue..."
+
+heading "JSON with filters"
+cmd "webctl cookies --json --domain \".github.com\""
+
+echo ""
+echo "Verify: JSON with filtered cookies"
 read -p "Press Enter to continue..."
 
 heading "No color output"

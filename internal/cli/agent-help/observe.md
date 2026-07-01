@@ -54,7 +54,6 @@ webctl console --find "undefined"
 webctl console --head 10
 webctl console --tail 20
 webctl console --range 5-15
-webctl console --raw
 webctl console save
 webctl console save ./logs.json
 webctl console save ./output/
@@ -80,7 +79,6 @@ webctl network --find "error"
 webctl network --head 10
 webctl network --tail 20
 webctl network --range 5-15
-webctl network --raw
 webctl network save
 webctl network save ./requests.json
 webctl network save ./output/
@@ -125,7 +123,6 @@ webctl cookies
 webctl cookies --domain ".example.com"
 webctl cookies --name "session"
 webctl cookies --find "auth"
-webctl cookies --raw
 webctl cookies save
 webctl cookies save ./cookies.json
 webctl cookies save ./output/

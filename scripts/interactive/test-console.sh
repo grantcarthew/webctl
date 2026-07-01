@@ -291,23 +291,6 @@ echo ""
 echo "Verify: Error message about mutually exclusive flags"
 read -p "Press Enter to continue..."
 
-# Raw flag tests
-title "Raw Flag Tests"
-
-heading "Raw output (JSON format)"
-cmd "webctl console --raw"
-
-echo ""
-echo "Verify: Raw JSON output instead of formatted text"
-read -p "Press Enter to continue..."
-
-heading "Raw with filters"
-cmd "webctl console --raw --type error --tail 10"
-
-echo ""
-echo "Verify: Raw JSON with filtered results"
-read -p "Press Enter to continue..."
-
 # Output format tests
 title "Output Format Tests"
 
@@ -316,6 +299,13 @@ cmd "webctl console --json"
 
 echo ""
 echo "Verify: JSON formatted output"
+read -p "Press Enter to continue..."
+
+heading "JSON with filters"
+cmd "webctl console --json --type error --tail 10"
+
+echo ""
+echo "Verify: JSON with filtered results"
 read -p "Press Enter to continue..."
 
 heading "No color output"

@@ -443,23 +443,6 @@ echo ""
 echo "Verify: Error message about mutually exclusive flags"
 read -p "Press Enter to continue..."
 
-# Raw flag tests
-title "Raw Flag Tests"
-
-heading "Raw output (JSON format)"
-cmd "webctl network --raw"
-
-echo ""
-echo "Verify: Raw JSON output instead of formatted text"
-read -p "Press Enter to continue..."
-
-heading "Raw with filters"
-cmd "webctl network --raw --status 200 --tail 10"
-
-echo ""
-echo "Verify: Raw JSON with filtered results"
-read -p "Press Enter to continue..."
-
 # Max body size tests
 title "Max Body Size Tests"
 
@@ -502,6 +485,13 @@ cmd "webctl network --json"
 
 echo ""
 echo "Verify: JSON formatted output"
+read -p "Press Enter to continue..."
+
+heading "JSON with filters"
+cmd "webctl network --json --status 200 --tail 10"
+
+echo ""
+echo "Verify: JSON with filtered results"
 read -p "Press Enter to continue..."
 
 heading "No color output"

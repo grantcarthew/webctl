@@ -28,7 +28,6 @@ Subcommands:
 
 Universal flags (work with default/save modes):
   --find, -f        Search for text within cookie names and values
-  --raw             Skip formatting (return raw JSON)
   --json            Output in JSON format (global flag)
 
 Cookies-specific filter flags (observation only):
@@ -187,7 +186,6 @@ Common patterns:
 func init() {
 	// Universal flags on root command (inherited by default/save subcommands)
 	cookiesCmd.PersistentFlags().StringP("find", "f", "", "Search for text within cookie names and values")
-	cookiesCmd.PersistentFlags().Bool("raw", false, "Skip formatting (return raw JSON)")
 
 	// Cookies-specific filter flags (observation only)
 	cookiesCmd.PersistentFlags().String("domain", "", "Filter by cookie domain")
@@ -235,22 +233,6 @@ func runCookiesDefault(cmd *cobra.Command, args []string) error {
 
 	// JSON mode: output JSON
 	if JSONOutput {
-		result := map[string]any{
-			"ok":      true,
-			"cookies": cookies,
-			"count":   len(cookies),
-		}
-		return outputJSON(os.Stdout, result)
-	}
-
-	// Check --raw flag
-	raw, _ := cmd.Flags().GetBool("raw")
-	if !raw && cmd.Parent() != nil {
-		raw, _ = cmd.Parent().PersistentFlags().GetBool("raw")
-	}
-
-	if raw {
-		// Raw mode: output as JSON
 		result := map[string]any{
 			"ok":      true,
 			"cookies": cookies,
