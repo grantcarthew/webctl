@@ -9,17 +9,28 @@ type RingBuffer[T any] struct {
 	head  int // next write position
 	count int // number of items currently in buffer
 	cap   int // maximum capacity
+	// seq is the last assigned sequence number. It increments before each
+	// stamp, so the first push after construction or Clear assigns 1 and 0
+	// remains reserved for entries that never passed through Push.
+	seq uint64
+	// stamp records an entry's assigned sequence number as it is pushed, or is
+	// nil for element types without sequence identity. A function rather than a
+	// setter constraint so the buffer stays generic over T (RingBuffer[int]).
+	stamp func(*T, uint64)
 	mu    sync.RWMutex
 }
 
-// NewRingBuffer creates a new ring buffer with the specified capacity.
-func NewRingBuffer[T any](capacity int) *RingBuffer[T] {
+// NewRingBuffer creates a new ring buffer with the specified capacity. stamp,
+// if non-nil, is invoked under the write lock in Push to record each entry's
+// assigned sequence number; pass nil for element types without a seq field.
+func NewRingBuffer[T any](capacity int, stamp func(*T, uint64)) *RingBuffer[T] {
 	if capacity <= 0 {
 		capacity = 1
 	}
 	return &RingBuffer[T]{
 		items: make([]T, capacity),
 		cap:   capacity,
+		stamp: stamp,
 	}
 }
 
@@ -30,6 +41,10 @@ func (b *RingBuffer[T]) Push(item T) {
 	defer b.mu.Unlock()
 
 	b.items[b.head] = item
+	if b.stamp != nil {
+		b.seq++
+		b.stamp(&b.items[b.head], b.seq)
+	}
 	b.head = (b.head + 1) % b.cap
 
 	if b.count < b.cap {
@@ -109,6 +124,7 @@ func (b *RingBuffer[T]) Clear() {
 
 	b.head = 0
 	b.count = 0
+	b.seq = 0
 }
 
 // RemoveIf removes all items for which fn returns true.

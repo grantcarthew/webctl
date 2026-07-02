@@ -201,6 +201,39 @@ func TestNetworkEntry_TelemetryJSON(t *testing.T) {
 	}
 }
 
+func TestEntrySeq_AlwaysPresentInJSON(t *testing.T) {
+	// seq is a primary identifier agents address entries by, so it must appear
+	// in JSON even at the reserved zero value, unlike the omitempty telemetry.
+	consoleData, err := json.Marshal(ConsoleEntry{Type: "log", Text: "hi"})
+	if err != nil {
+		t.Fatalf("failed to marshal ConsoleEntry: %v", err)
+	}
+	if !strings.Contains(string(consoleData), `"seq":0`) {
+		t.Errorf("ConsoleEntry JSON must include seq even when zero, got %s", consoleData)
+	}
+
+	networkData, err := json.Marshal(NetworkEntry{RequestID: "req-1", URL: "https://example.com/"})
+	if err != nil {
+		t.Fatalf("failed to marshal NetworkEntry: %v", err)
+	}
+	if !strings.Contains(string(networkData), `"seq":0`) {
+		t.Errorf("NetworkEntry JSON must include seq even when zero, got %s", networkData)
+	}
+
+	// A stamped value must round-trip.
+	stamped, err := json.Marshal(ConsoleEntry{Seq: 42, Type: "log"})
+	if err != nil {
+		t.Fatalf("failed to marshal stamped ConsoleEntry: %v", err)
+	}
+	var got ConsoleEntry
+	if err := json.Unmarshal(stamped, &got); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if got.Seq != 42 {
+		t.Errorf("expected seq 42 after round-trip, got %d", got.Seq)
+	}
+}
+
 func TestNetworkEntry_TelemetryOmitEmpty(t *testing.T) {
 	// A bare entry (request seen, no response yet) must not emit any of the new
 	// transport keys, keeping JSON output lean for the common in-flight case.

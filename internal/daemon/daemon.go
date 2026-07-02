@@ -168,8 +168,8 @@ func New(cfg Config) *Daemon {
 	return &Daemon{
 		config:     cfg,
 		sessions:   NewSessionManager(),
-		consoleBuf: NewRingBuffer[ipc.ConsoleEntry](cfg.BufferSize),
-		networkBuf: NewRingBuffer[ipc.NetworkEntry](cfg.BufferSize),
+		consoleBuf: NewRingBuffer(cfg.BufferSize, func(e *ipc.ConsoleEntry, s uint64) { e.Seq = s }),
+		networkBuf: NewRingBuffer(cfg.BufferSize, func(e *ipc.NetworkEntry, s uint64) { e.Seq = s }),
 		shutdown:   make(chan struct{}),
 		debug:      cfg.Debug,
 		navTracker: newNavTracker(),

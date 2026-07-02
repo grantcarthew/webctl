@@ -40,6 +40,10 @@ type StatusData struct {
 
 // ConsoleEntry represents a console log entry.
 type ConsoleEntry struct {
+	// Seq is the buffer-assigned sequence number, a stable identifier for the
+	// entry across daemon round-trips. Always present in JSON (0 means the
+	// entry was never buffered) because agents address entries by it.
+	Seq       uint64   `json:"seq"`
 	SessionID string   `json:"sessionId,omitempty"`
 	Type      string   `json:"type"`
 	Text      string   `json:"text"`
@@ -82,6 +86,11 @@ const DefaultMaxBodySize = 102400
 
 // NetworkEntry represents a network request/response entry.
 type NetworkEntry struct {
+	// Seq is the buffer-assigned sequence number, a stable identifier for the
+	// entry across daemon round-trips. Always present in JSON (0 means the
+	// entry was never buffered). Redirect hops share a CDP RequestID but each
+	// is a separate push, so seq is the unambiguous address RequestID is not.
+	Seq             uint64            `json:"seq"`
 	SessionID       string            `json:"sessionId,omitempty"`
 	RequestID       string            `json:"requestId"`
 	URL             string            `json:"url"`
