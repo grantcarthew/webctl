@@ -10,19 +10,19 @@ In scope:
 
 - Capture the full stack trace (all call frames with function name, url, line, column) for console API calls and for exceptions, replacing the current top-frame-only capture.
 - Capture the exception class and subtype for thrown exceptions.
-- Capture argument fidelity: for non-primitive console arguments, capture a representation that does not collapse to null.
-- Enable the Log domain and capture its entries (source, level, text, url, line, stack trace, network request id, worker id).
-- Extend `ConsoleEntry` and its JSON with the new fields.
+- Capture argument fidelity: represent each console argument as a structured value (type, subtype, primitive value, non-primitive description, shallow preview) instead of a string, so non-primitives no longer collapse to null.
+- Enable the Log domain and capture its entries (source, severity mapped onto the shared `Type`, text, url, line, stack trace, network request id, worker id).
+- Redesign `ConsoleEntry` and its JSON around the enriched, structured fields.
 
 Out of scope:
 
 - Console presentation: list display, the sequence index, and drill-down belong to 06-console-index-and-drilldown.md. This project captures data; it does not change the formatter or command surface.
-- The `seq` field, which is added by 03-buffer-sequence-index.md.
+- The `seq` field, added by 03-buffer-sequence-index.md (already landed; preserve it).
 - Any network command or capture changes.
 
 ## Dependencies
 
-None blocking. Shares the `ConsoleEntry` struct with 03-buffer-sequence-index.md (which adds `seq`). The two projects both extend `ConsoleEntry` additively; land them in sequence rather than in parallel to avoid a struct merge conflict.
+None blocking. 03-buffer-sequence-index.md has landed; `ConsoleEntry` already carries `seq`. This project reshapes the other `ConsoleEntry` fields and is free to change their types; preserve the `seq` field and its semantics.
 
 ## References
 
@@ -36,20 +36,20 @@ Console capture lives in internal/daemon/events.go.
 - parseConsoleEvent handles Runtime.consoleAPICalled. It reads `type`, `timestamp`, and `args` (each as `{type, value}`; string values pass through, non-strings are `json.Marshal`ed; `Text` becomes the first arg). It reads only `stackTrace.callFrames[0]` and stores that frame's url, line, and column. It does not read `functionName` on any frame.
 - parseExceptionEvent handles Runtime.exceptionThrown. It reads `exceptionDetails.text`, `url`, `lineNumber`, `columnNumber`, and `exception.description` (preferred over text). It does not read the exception stack trace or the exception class name.
 - Domains enabled at startup are Runtime.enable, Page.enable, and DOM.enable. The Log domain is not enabled, so Log.entryAdded is never received. That event carries an entire class of browser messages that consoleAPICalled never delivers: deprecation warnings, security and CSP violations, blocked or failed network resources, interventions. It also carries `networkRequestId`, which links a log entry to a specific network request.
-- ConsoleEntry (internal/ipc/protocol.go) has SessionID, Type, Text, Args, Timestamp, URL, Line, Column. Project 03 adds `seq`.
+- ConsoleEntry (internal/ipc/protocol.go) has Seq (from project 03, already landed), SessionID, Type, Text, Args (currently `[]string`), Timestamp, URL, Line, Column.
 - consoleBuf is a `RingBuffer[ipc.ConsoleEntry]` in the daemon, pushed from the event handlers.
 
 Two losses are notable. First, a deep error stack is reduced to a single location with no function name, so the call chain behind an error is gone. Second, a logged object's RemoteObject usually carries no `value` (it has objectId, className, description, and a shallow preview instead), so `console.log(someObject)` currently records null or an empty value rather than anything meaningful.
 
 ## Requirements
 
-1. Full stack trace. For both console API calls and exceptions, capture every call frame in the order CDP provides, each with function name, url, line, and column. Keep populating the existing top-level URL, Line, and Column (from the first frame) for backward compatibility, and add the full frame list as a new field.
+1. Full stack trace. For both console API calls and exceptions, capture every call frame in the order CDP provides, each with function name, url, line, and column. Keep populating the top-level URL, Line, and Column (from the first frame) as a convenience summary locator, and add the full frame list as a new field.
 2. Function name. Capture the function name for each frame. An anonymous frame (empty function name) is represented as such, not dropped.
 3. Exception detail. For exceptions, capture the exception class name and subtype in addition to the existing description text, and capture the exception stack trace via requirement 1.
-4. Argument fidelity. For non-primitive console arguments, capture a representation that preserves meaning: the RemoteObject description and, where present, a shallow property preview. Primitive arguments keep their current value rendering.
-5. Log domain. Enable the Log domain for the relevant session(s) and capture Log.entryAdded entries into the console stream, preserving source, level, text, url, line, stack trace, network request id, and worker id. Preserve the network request id verbatim so a consumer can correlate the entry to the network buffer.
-6. Schema. Extend `ConsoleEntry` and its JSON with the new fields, named clearly, using omitempty for fields that are frequently absent so ordinary entries stay compact.
-7. Backward compatibility. The existing fields keep their current meaning. All new data is additive.
+4. Argument fidelity. Represent each console argument as a structured value mirroring the CDP RemoteObject: its type and subtype, the verbatim value for primitives, and for non-primitives the RemoteObject description plus a shallow property preview. Replace the string-based `Args []string` with a slice of this struct; do not stringify arguments. Derive the existing `Text` from the first argument's rendering (its value or description) so a message string remains available.
+5. Log domain. Enable the Log domain for the relevant session(s) and capture Log.entryAdded entries into the console stream. Map the entry's `level` onto the shared `Type` field (verbose maps to debug; info, warning, and error pass through) so `--type` filtering and level display work uniformly across both event streams, and record the Log `source` (security, network, deprecation, ...) as a new field that distinguishes these entries. Preserve text, url, line, stack trace, network request id, and worker id, keeping the network request id verbatim so a consumer can correlate the entry to the network buffer.
+6. Schema. Redesign `ConsoleEntry` and its JSON around the captured detail: a structured argument slice, a call-frame slice, exception class and subtype, and the Log-domain fields. Name fields clearly and use omitempty for fields that are frequently absent so ordinary entries stay compact.
+7. Schema redesign, not additive. There is no on-the-wire compatibility requirement; existing field types and shapes may change. Where an existing field is retained (`Text`, top-level `URL`/`Line`/`Column`), it is kept as a derived convenience for summary display, not for compatibility. Preserve only `seq`, which project 03 owns.
 
 ## Constraints
 
@@ -63,9 +63,9 @@ Two losses are notable. First, a deep error stack is reduced to a single locatio
 
 1. Extend the parseConsoleEvent parameter struct to read all call frames including function name. Build a slice of frames on the entry, and keep the first frame populating the existing URL, Line, and Column.
 2. Extend parseExceptionEvent to read `exceptionDetails.stackTrace.callFrames` and `exception.className` and subtype.
-3. Extend argument parsing so a non-primitive RemoteObject contributes its description and shallow preview rather than a null value.
-4. Add a Log domain enable alongside the existing domain enables, and add a Log.entryAdded handler that builds console entries carrying source, level, network request id, and the other Log fields, pushing them to consoleBuf.
-5. Add the new fields to `ConsoleEntry` with JSON tags.
+3. Replace `Args []string` with a structured argument slice. For each argument capture the RemoteObject type and subtype, the verbatim value for primitives, and the description plus shallow preview for non-primitives. Derive `Text` from the first argument's rendering.
+4. Add a Log domain enable alongside the existing domain enables, and add a Log.entryAdded handler that builds console entries carrying source, the severity mapped onto Type, network request id, and the other Log fields, pushing them to consoleBuf.
+5. Redefine the `ConsoleEntry` fields (structured Args, call-frame slice, exception class and subtype, Log fields) with JSON tags, preserving `seq`.
 6. Add tests covering: a captured stack deeper than one frame; function names captured; an exception class captured; an object argument yielding a non-empty representation; a Log.entryAdded entry captured with its source and network request id.
 
 ## Implementation Guidance
@@ -84,5 +84,5 @@ Keep object-argument capture shallow. The goal is to stop recording null for an 
 - console.trace produces a multi-frame stack in the captured entry.
 - An uncaught exception entry includes the exception class name (for example TypeError).
 - console.log of an object records a non-empty representation rather than null.
-- Messages surfaced through the Log domain (for example a deprecation or CSP violation) appear as console entries with a source, and network-related ones carry the network request id.
-- The new fields appear in console JSON; the pre-existing fields are unchanged.
+- Messages surfaced through the Log domain (for example a deprecation or CSP violation) appear as console entries with a source and a severity in `Type` (so `console --type error` selects an error-level Log entry), and network-related ones carry the network request id.
+- The enriched fields appear in console JSON, arguments serialize as structured values (not strings), and `seq` is preserved.
