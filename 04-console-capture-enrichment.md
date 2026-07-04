@@ -8,7 +8,7 @@ Capture the console diagnostic detail that Chrome DevTools Protocol exposes but 
 
 In scope:
 
-- Capture the full stack trace (all call frames with function name, url, line, column) for console API calls and for exceptions, replacing the current top-frame-only capture.
+- Capture the full stack trace (all call frames with function name, url, line, column) for console API calls and for exceptions, replacing the current top-frame-only capture. Include the asynchronous continuation: enable async stack depth so CDP attaches the `StackTrace.parent` chain, and capture that chain so the logical call path through promises, timers, and event handlers survives.
 - Capture the exception class and subtype for thrown exceptions.
 - Capture argument fidelity: represent each console argument as a structured value (type, subtype, primitive value, non-primitive description, shallow preview) instead of a string, so non-primitives no longer collapse to null.
 - Enable the Log domain and capture its entries (source, severity mapped onto the shared `Type`, text, url, line, stack trace, network request id, worker id).
@@ -43,34 +43,36 @@ Two losses are notable. First, a deep error stack is reduced to a single locatio
 
 ## Requirements
 
-1. Full stack trace. For both console API calls and exceptions, capture every call frame in the order CDP provides, each with function name, url, line, and column. Keep populating the top-level URL, Line, and Column (from the first frame) as a convenience summary locator, and add the full frame list as a new field.
+1. Full stack trace. For both console API calls and exceptions, capture every call frame in the order CDP provides, each with function name, url, line, and column. Capture the asynchronous ancestry too: CDP delivers it on the nested `StackTrace.parent` chain, and only when async stack depth is enabled (see requirement 8), so an error thrown inside a promise, timer, or event handler retains its logical call chain rather than the shallow microtask stack. Walk the parent chain and represent the frames as a single ordered slice, marking each async boundary with the parent group's description (for example `Promise.then`) so the transition between synchronous and asynchronous frames is not lost. Keep populating the top-level URL, Line, and Column (from the first frame) as a convenience summary locator, and add the full frame list as a new field.
 2. Function name. Capture the function name for each frame. An anonymous frame (empty function name) is represented as such, not dropped.
 3. Exception detail. For exceptions, capture the exception class name and subtype in addition to the existing description text, and capture the exception stack trace via requirement 1.
 4. Argument fidelity. Represent each console argument as a structured value mirroring the CDP RemoteObject: its type and subtype, the verbatim value for primitives, and for non-primitives the RemoteObject description plus a shallow property preview. Replace the string-based `Args []string` with a slice of this struct; do not stringify arguments. Derive the existing `Text` from the first argument's rendering (its value or description) so a message string remains available.
 5. Log domain. Enable the Log domain for the relevant session(s) and capture Log.entryAdded entries into the console stream. Map the entry's `level` onto the shared `Type` field (verbose maps to debug; info, warning, and error pass through) so `--type` filtering and level display work uniformly across both event streams, and record the Log `source` (security, network, deprecation, ...) as a new field that distinguishes these entries. Preserve text, url, line, stack trace, network request id, and worker id, keeping the network request id verbatim so a consumer can correlate the entry to the network buffer.
 6. Schema. Redesign `ConsoleEntry` and its JSON around the captured detail: a structured argument slice, a call-frame slice, exception class and subtype, and the Log-domain fields. Name fields clearly and use omitempty for fields that are frequently absent so ordinary entries stay compact.
 7. Schema redesign, not additive. There is no on-the-wire compatibility requirement; existing field types and shapes may change. Where an existing field is retained (`Text`, top-level `URL`/`Line`/`Column`), it is kept as a derived convenience for summary display, not for compatibility. Preserve only `seq`, which project 03 owns.
+8. Async stack depth. Enable `Runtime.setAsyncCallStackDepth` (depth 32) per session through the same domain-enable path used for Runtime, Page, and DOM, so CDP populates the `StackTrace.parent` chain that requirement 1 captures. This is a one-time per-session enable, not a per-event round trip, so it does not violate the off-the-critical-path constraint.
 
 ## Constraints
 
 - Pure Go, no cgo, no new dependencies. gofmt and go vet clean.
-- Enable the Log domain through the same domain-enable path the daemon already uses for Runtime, Page, and DOM. Do not invent a separate enabling mechanism.
+- Enable the Log domain and async stack depth through the same domain-enable path the daemon already uses for Runtime, Page, and DOM. Do not invent a separate enabling mechanism.
 - Do not perform per-argument round trips (for example Runtime.getProperties) to expand objects. Use the description and preview that CDP already delivers inline, so capture stays off the critical path.
 - Capture runs in the daemon event loop. Keep parsing allocations modest and do not block the read loop on extra CDP calls; mirror the existing handler patterns.
 - Entries are stored by value in the ring buffer. New fields, including the frame list, travel by value with the entry.
 
 ## Implementation Plan
 
-1. Extend the parseConsoleEvent parameter struct to read all call frames including function name. Build a slice of frames on the entry, and keep the first frame populating the existing URL, Line, and Column.
-2. Extend parseExceptionEvent to read `exceptionDetails.stackTrace.callFrames` and `exception.className` and subtype.
-3. Replace `Args []string` with a structured argument slice. For each argument capture the RemoteObject type and subtype, the verbatim value for primitives, and the description plus shallow preview for non-primitives. Derive `Text` from the first argument's rendering.
-4. Add a Log domain enable alongside the existing domain enables, and add a Log.entryAdded handler that builds console entries carrying source, the severity mapped onto Type, network request id, and the other Log fields, pushing them to consoleBuf.
-5. Redefine the `ConsoleEntry` fields (structured Args, call-frame slice, exception class and subtype, Log fields) with JSON tags, preserving `seq`.
-6. Add tests covering: a captured stack deeper than one frame; function names captured; an exception class captured; an object argument yielding a non-empty representation; a Log.entryAdded entry captured with its source and network request id.
+1. Add `Runtime.setAsyncCallStackDepth` (depth 32) alongside the existing domain enables so CDP attaches the `StackTrace.parent` chain to console and exception events.
+2. Extend the parseConsoleEvent parameter struct to read all call frames including function name, plus the nested `parent` StackTrace and its `description`. Flatten the callFrames and their parent chain into a single ordered frame slice, tagging each async boundary with the parent description, and keep the first frame populating the existing URL, Line, and Column.
+3. Extend parseExceptionEvent to read `exceptionDetails.stackTrace.callFrames` and its `parent` chain (via the same frame-flattening helper as step 2), plus `exception.className` and subtype.
+4. Replace `Args []string` with a structured argument slice. For each argument capture the RemoteObject type and subtype, the verbatim value for primitives, and the description plus shallow preview for non-primitives. Derive `Text` from the first argument's rendering.
+5. Add a Log domain enable alongside the existing domain enables, and add a Log.entryAdded handler that builds console entries carrying source, the severity mapped onto Type, network request id, and the other Log fields, pushing them to consoleBuf.
+6. Redefine the `ConsoleEntry` fields (structured Args, call-frame slice, exception class and subtype, Log fields) with JSON tags, preserving `seq`.
+7. Add tests covering: a captured stack deeper than one frame; an async stack that carries frames from beyond the immediate microtask boundary; function names captured; an exception class captured; an object argument yielding a non-empty representation; a Log.entryAdded entry captured with its source and network request id.
 
 ## Implementation Guidance
 
-Represent a call frame as a small struct (function name, url, line, column) and store a slice of them on the entry. This mirrors what CDP returns; do not flatten the stack into a string.
+Represent a call frame as a small struct (function name, url, line, column) and store a slice of them on the entry. This mirrors what CDP returns; do not flatten the stack into a string. The async parent chain flattens into the same slice: walk `StackTrace.parent` after the immediate `callFrames`, and carry the parent group's description on the boundary frame (a dedicated field on the frame struct, left empty for synchronous frames) so the async transition is visible without a separate nested shape.
 
 Treat Log-domain entries as first-class console entries distinguished by a source label, not as a separate or lesser stream. The categories they carry (deprecation, CSP and security violations, blocked requests) are exactly what an agent debugging a page needs, and they never arrive through consoleAPICalled.
 
@@ -81,6 +83,7 @@ Keep object-argument capture shallow. The goal is to stop recording null for an 
 ## Acceptance Criteria
 
 - A thrown error's console entry carries the full call stack with function names, not just the top location.
+- An error thrown inside an async callback (promise, timer, or event handler) carries frames from beyond the immediate microtask boundary, with the async transition marked, rather than a shallow synchronous stack.
 - console.trace produces a multi-frame stack in the captured entry.
 - An uncaught exception entry includes the exception class name (for example TypeError).
 - console.log of an object records a non-empty representation rather than null.
