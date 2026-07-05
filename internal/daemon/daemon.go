@@ -464,6 +464,20 @@ func (d *Daemon) enableDomainsForSession(sessionID string) error {
 		return fmt.Errorf("failed to enable lifecycle events: %w", err)
 	}
 
+	// Console-capture enrichment, enabled after the load-bearing domains so a
+	// failure here cannot leave network or lifecycle capture disabled.
+	// Log.enable captures browser-generated messages (deprecations, CSP and
+	// security violations, blocked or failed resources) that never arrive
+	// through Runtime.consoleAPICalled. setAsyncCallStackDepth attaches the
+	// asynchronous StackTrace.parent chain to console and exception events; it
+	// is a one-time per-session enable, not a per-event round trip.
+	if _, err := d.cdp.SendToSession(context.Background(), sessionID, "Log.enable", nil); err != nil {
+		return fmt.Errorf("failed to enable Log: %w", err)
+	}
+	if _, err := d.cdp.SendToSession(context.Background(), sessionID, "Runtime.setAsyncCallStackDepth", map[string]any{"maxDepth": 32}); err != nil {
+		return fmt.Errorf("failed to set async call stack depth: %w", err)
+	}
+
 	// NOTE: We don't use waitForDebuggerOnStart with manual Target.attachToTarget,
 	// so no need to call Runtime.runIfWaitingForDebugger
 

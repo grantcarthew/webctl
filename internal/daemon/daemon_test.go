@@ -318,6 +318,173 @@ func TestDaemon_parseConsoleEvent(t *testing.T) {
 	if entry.Text != "Hello, World!" {
 		t.Errorf("Text = %q, want %q", entry.Text, "Hello, World!")
 	}
+
+	if len(entry.Args) != 1 || entry.Args[0].Type != "string" {
+		t.Fatalf("Args = %+v, want one string arg", entry.Args)
+	}
+	if string(entry.Args[0].Value) != `"Hello, World!"` {
+		t.Errorf("Args[0].Value = %s, want verbatim JSON string", entry.Args[0].Value)
+	}
+}
+
+func TestDaemon_parseConsoleEvent_StackAndObjectArg(t *testing.T) {
+	d := New(DefaultConfig())
+
+	// A multi-frame synchronous stack with an async parent, plus an object
+	// argument that carries no value (only description and preview).
+	params := map[string]any{
+		"type":      "error",
+		"timestamp": float64(1000),
+		"args": []map[string]any{
+			{
+				"type":        "object",
+				"description": "Object",
+				"preview": map[string]any{
+					"properties": []map[string]any{
+						{"name": "code", "type": "number", "value": "42"},
+					},
+				},
+			},
+		},
+		"stackTrace": map[string]any{
+			"callFrames": []map[string]any{
+				{"functionName": "inner", "url": "https://example.com/app.js", "lineNumber": 10, "columnNumber": 4},
+				{"functionName": "", "url": "https://example.com/app.js", "lineNumber": 20, "columnNumber": 2},
+			},
+			"parent": map[string]any{
+				"description": "Promise.then",
+				"callFrames": []map[string]any{
+					{"functionName": "onClick", "url": "https://example.com/app.js", "lineNumber": 30, "columnNumber": 0},
+				},
+			},
+		},
+	}
+	paramsJSON, _ := json.Marshal(params)
+	evt := cdp.Event{Method: "Runtime.consoleAPICalled", Params: json.RawMessage(paramsJSON)}
+
+	entry, ok := d.parseConsoleEvent(evt)
+	if !ok {
+		t.Fatal("parseConsoleEvent returned false")
+	}
+
+	// Full stack: two synchronous frames then the async continuation.
+	if len(entry.Stack) != 3 {
+		t.Fatalf("Stack length = %d, want 3: %+v", len(entry.Stack), entry.Stack)
+	}
+	if entry.Stack[0].Function != "inner" {
+		t.Errorf("Stack[0].Function = %q, want 'inner'", entry.Stack[0].Function)
+	}
+	// Anonymous frame is represented, not dropped.
+	if entry.Stack[1].Function != "" {
+		t.Errorf("Stack[1].Function = %q, want empty (anonymous)", entry.Stack[1].Function)
+	}
+	// The async boundary frame carries the parent group's description.
+	if entry.Stack[2].Function != "onClick" || entry.Stack[2].Async != "Promise.then" {
+		t.Errorf("Stack[2] = %+v, want onClick tagged Promise.then", entry.Stack[2])
+	}
+	// Synchronous frames are not tagged.
+	if entry.Stack[0].Async != "" {
+		t.Errorf("Stack[0].Async = %q, want empty", entry.Stack[0].Async)
+	}
+	// Summary locator comes from the first frame.
+	if entry.URL != "https://example.com/app.js" || entry.Line != 10 || entry.Column != 4 {
+		t.Errorf("summary locator = %s:%d:%d, want app.js:10:4", entry.URL, entry.Line, entry.Column)
+	}
+
+	// Object argument yields a non-empty representation, not null.
+	if len(entry.Args) != 1 {
+		t.Fatalf("Args length = %d, want 1", len(entry.Args))
+	}
+	arg := entry.Args[0]
+	if arg.Type != "object" || arg.Description != "Object" {
+		t.Errorf("arg = %+v, want object with description", arg)
+	}
+	if len(arg.Value) != 0 {
+		t.Errorf("object arg should carry no primitive value, got %s", arg.Value)
+	}
+	if len(arg.Preview) != 1 || arg.Preview[0].Name != "code" || arg.Preview[0].Value != "42" {
+		t.Errorf("arg preview = %+v, want one 'code'=42 property", arg.Preview)
+	}
+	if entry.Text != "Object" {
+		t.Errorf("Text = %q, want 'Object' derived from description", entry.Text)
+	}
+}
+
+func TestDaemon_parseLogEvent(t *testing.T) {
+	d := New(DefaultConfig())
+
+	params := map[string]any{
+		"entry": map[string]any{
+			"source":           "network",
+			"level":            "error",
+			"text":             "Failed to load resource: 404",
+			"timestamp":        float64(2000),
+			"url":              "https://example.com/missing.png",
+			"lineNumber":       0,
+			"networkRequestId": "req-789",
+		},
+	}
+	paramsJSON, _ := json.Marshal(params)
+	evt := cdp.Event{Method: "Log.entryAdded", Params: json.RawMessage(paramsJSON)}
+
+	entry, ok := d.parseLogEvent(evt)
+	if !ok {
+		t.Fatal("parseLogEvent returned false")
+	}
+
+	if entry.Source != "network" {
+		t.Errorf("Source = %q, want 'network'", entry.Source)
+	}
+	// error level passes through so --type error selects it.
+	if entry.Type != ipc.ConsoleTypeError {
+		t.Errorf("Type = %q, want 'error'", entry.Type)
+	}
+	if entry.NetworkRequestID != "req-789" {
+		t.Errorf("NetworkRequestID = %q, want 'req-789'", entry.NetworkRequestID)
+	}
+	if entry.Text != "Failed to load resource: 404" {
+		t.Errorf("Text = %q, unexpected", entry.Text)
+	}
+	if entry.URL != "https://example.com/missing.png" {
+		t.Errorf("URL = %q, unexpected", entry.URL)
+	}
+}
+
+func TestLogLevelType(t *testing.T) {
+	tests := []struct {
+		level string
+		want  string
+	}{
+		{"verbose", ipc.ConsoleTypeDebug},
+		{"info", ipc.ConsoleTypeInfo},
+		{"warning", ipc.ConsoleTypeWarning},
+		{"error", ipc.ConsoleTypeError},
+	}
+	for _, tt := range tests {
+		if got := logLevelType(tt.level); got != tt.want {
+			t.Errorf("logLevelType(%q) = %q, want %q", tt.level, got, tt.want)
+		}
+	}
+}
+
+func TestRenderArgText(t *testing.T) {
+	tests := []struct {
+		name string
+		arg  ipc.ConsoleArg
+		want string
+	}{
+		{"string unquoted", ipc.ConsoleArg{Type: "string", Value: json.RawMessage(`"hello"`)}, "hello"},
+		{"number verbatim", ipc.ConsoleArg{Type: "number", Value: json.RawMessage(`42`)}, "42"},
+		{"boolean verbatim", ipc.ConsoleArg{Type: "boolean", Value: json.RawMessage(`true`)}, "true"},
+		{"null does not collapse", ipc.ConsoleArg{Type: "object", Subtype: "null", Value: json.RawMessage(`null`)}, "null"},
+		{"non-primitive uses description", ipc.ConsoleArg{Type: "object", Description: "Object"}, "Object"},
+		{"undefined falls back to type", ipc.ConsoleArg{Type: "undefined"}, "undefined"},
+	}
+	for _, tt := range tests {
+		if got := renderArgText(tt.arg); got != tt.want {
+			t.Errorf("%s: renderArgText = %q, want %q", tt.name, got, tt.want)
+		}
+	}
 }
 
 func TestDaemon_Handler(t *testing.T) {
@@ -465,6 +632,50 @@ func TestDaemon_parseExceptionEvent(t *testing.T) {
 		}
 		if entry.Timestamp != int64(timestamp) {
 			t.Errorf("Timestamp = %d, want %d", entry.Timestamp, int64(timestamp))
+		}
+	})
+
+	t.Run("with class name and stack trace", func(t *testing.T) {
+		params := map[string]any{
+			"timestamp": float64(1000),
+			"exceptionDetails": map[string]any{
+				"text":         "Uncaught",
+				"url":          "https://example.com/script.js",
+				"lineNumber":   1,
+				"columnNumber": 1,
+				"exception": map[string]any{
+					"type":        "object",
+					"subtype":     "error",
+					"className":   "TypeError",
+					"description": "TypeError: x is not a function\n    at foo (script.js:5:9)",
+				},
+				"stackTrace": map[string]any{
+					"callFrames": []map[string]any{
+						{"functionName": "foo", "url": "https://example.com/script.js", "lineNumber": 5, "columnNumber": 9},
+						{"functionName": "bar", "url": "https://example.com/script.js", "lineNumber": 12, "columnNumber": 3},
+					},
+				},
+			},
+		}
+		paramsJSON, _ := json.Marshal(params)
+		evt := cdp.Event{Method: "Runtime.exceptionThrown", Params: json.RawMessage(paramsJSON)}
+
+		entry, ok := d.parseExceptionEvent(evt)
+		if !ok {
+			t.Fatal("parseExceptionEvent returned false")
+		}
+		if entry.ExceptionClass != "TypeError" {
+			t.Errorf("ExceptionClass = %q, want 'TypeError'", entry.ExceptionClass)
+		}
+		if entry.ExceptionSubtype != "error" {
+			t.Errorf("ExceptionSubtype = %q, want 'error'", entry.ExceptionSubtype)
+		}
+		if len(entry.Stack) != 2 || entry.Stack[0].Function != "foo" || entry.Stack[1].Function != "bar" {
+			t.Errorf("Stack = %+v, want two named frames", entry.Stack)
+		}
+		// Summary locator comes from the throw-site frame, not exceptionDetails.
+		if entry.Line != 5 || entry.Column != 9 {
+			t.Errorf("locator = %d:%d, want 5:9 from top frame", entry.Line, entry.Column)
 		}
 	})
 

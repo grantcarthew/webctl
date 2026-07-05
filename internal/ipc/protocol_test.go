@@ -102,18 +102,33 @@ func TestRequest_JSON(t *testing.T) {
 
 func TestConsoleEntry_JSON(t *testing.T) {
 	entry := ConsoleEntry{
-		Type:      "log",
-		Text:      "hello world",
-		Args:      []string{"hello", "world"},
+		Type: "log",
+		Text: "hello world",
+		Args: []ConsoleArg{
+			{Type: "string", Value: json.RawMessage(`"hello world"`)},
+			{Type: "object", Subtype: "array", Description: "Array(2)", Preview: []ConsolePreviewProp{
+				{Name: "0", Type: "number", Value: "1"},
+				{Name: "1", Type: "number", Value: "2"},
+			}},
+		},
 		Timestamp: 1234567890,
 		URL:       "https://example.com/script.js",
 		Line:      42,
 		Column:    10,
+		Stack: []ConsoleFrame{
+			{Function: "foo", URL: "https://example.com/script.js", Line: 42, Column: 10},
+			{Function: "onClick", URL: "https://example.com/app.js", Line: 7, Async: "Promise.then"},
+		},
 	}
 
 	data, err := json.Marshal(entry)
 	if err != nil {
 		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	// Arguments must serialize as structured values, not strings.
+	if !strings.Contains(string(data), `"description":"Array(2)"`) {
+		t.Errorf("expected structured object arg in JSON, got %s", data)
 	}
 
 	var got ConsoleEntry
@@ -123,6 +138,12 @@ func TestConsoleEntry_JSON(t *testing.T) {
 
 	if got.Type != entry.Type || got.Text != entry.Text || got.Line != entry.Line {
 		t.Errorf("round-trip mismatch: got %+v", got)
+	}
+	if len(got.Args) != 2 || got.Args[1].Description != "Array(2)" || len(got.Args[1].Preview) != 2 {
+		t.Errorf("args round-trip mismatch: got %+v", got.Args)
+	}
+	if len(got.Stack) != 2 || got.Stack[0].Function != "foo" || got.Stack[1].Async != "Promise.then" {
+		t.Errorf("stack round-trip mismatch: got %+v", got.Stack)
 	}
 }
 

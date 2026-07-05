@@ -46,6 +46,15 @@ func (d *Daemon) subscribeEvents() {
 		}
 	})
 
+	// Log-domain entries (deprecations, CSP/security violations, blocked or
+	// failed resources) fold into the same console stream, tagged by source.
+	d.cdp.Subscribe("Log.entryAdded", func(evt cdp.Event) {
+		if entry, ok := d.parseLogEvent(evt); ok {
+			entry.SessionID = evt.SessionID
+			d.consoleBuf.Push(entry)
+		}
+	})
+
 	// Network events (include sessionId)
 	d.cdp.Subscribe("Network.requestWillBeSent", func(evt cdp.Event) {
 		if entry, ok := d.parseRequestEvent(evt); ok {
@@ -155,23 +164,148 @@ func (d *Daemon) subscribeEvents() {
 	})
 }
 
+// cdpCallFrame mirrors a CDP Runtime.CallFrame.
+type cdpCallFrame struct {
+	FunctionName string `json:"functionName"`
+	URL          string `json:"url"`
+	LineNumber   int    `json:"lineNumber"`
+	ColumnNumber int    `json:"columnNumber"`
+}
+
+// cdpStackTrace mirrors the subset of CDP Runtime.StackTrace the console
+// capture consumes: the immediate frames plus the asynchronous parent chain
+// that Runtime.setAsyncCallStackDepth attaches. The cross-process ParentId
+// form is intentionally ignored, since resolving it would require an off-loop
+// round trip.
+type cdpStackTrace struct {
+	Description string         `json:"description"`
+	CallFrames  []cdpCallFrame `json:"callFrames"`
+	Parent      *cdpStackTrace `json:"parent"`
+}
+
+// cdpObjectPreview mirrors the shallow property preview CDP delivers inline on a
+// RemoteObject, so a non-primitive argument is recorded without a getProperties
+// round trip.
+type cdpObjectPreview struct {
+	Properties []struct {
+		Name    string `json:"name"`
+		Type    string `json:"type"`
+		Subtype string `json:"subtype"`
+		Value   string `json:"value"`
+	} `json:"properties"`
+}
+
+// cdpRemoteObject mirrors the subset of CDP Runtime.RemoteObject the console
+// capture reads inline. Value is kept as raw JSON so a primitive round-trips
+// verbatim; non-primitives carry Description and Preview instead of a value.
+type cdpRemoteObject struct {
+	Type        string            `json:"type"`
+	Subtype     string            `json:"subtype"`
+	ClassName   string            `json:"className"`
+	Value       json.RawMessage   `json:"value"`
+	Description string            `json:"description"`
+	Preview     *cdpObjectPreview `json:"preview"`
+}
+
+// flattenStack walks a CDP StackTrace and its parent chain into a single
+// ordered frame slice. The first frame of each asynchronous parent is tagged
+// with that parent's description (for example "Promise.then") so the transition
+// from synchronous to asynchronous frames survives as a flat list. Returns nil
+// for a nil stack.
+func flattenStack(st *cdpStackTrace) []ipc.ConsoleFrame {
+	if st == nil {
+		return nil
+	}
+	var frames []ipc.ConsoleFrame
+	async := ""
+	for cur := st; cur != nil; cur = cur.Parent {
+		for i, cf := range cur.CallFrames {
+			frame := ipc.ConsoleFrame{
+				Function: cf.FunctionName,
+				URL:      cf.URL,
+				Line:     cf.LineNumber,
+				Column:   cf.ColumnNumber,
+			}
+			if i == 0 {
+				frame.Async = async
+			}
+			frames = append(frames, frame)
+		}
+		if cur.Parent != nil {
+			async = cur.Parent.Description
+		}
+	}
+	return frames
+}
+
+// remoteObjectToArg converts a CDP RemoteObject into a structured ConsoleArg.
+// A primitive keeps its verbatim value; a non-primitive (which carries no
+// value) keeps its description and shallow preview so it no longer collapses
+// to null.
+func remoteObjectToArg(o cdpRemoteObject) ipc.ConsoleArg {
+	arg := ipc.ConsoleArg{Type: o.Type, Subtype: o.Subtype}
+	if len(o.Value) > 0 {
+		arg.Value = o.Value
+	} else {
+		arg.Description = o.Description
+	}
+	if o.Preview != nil {
+		for _, p := range o.Preview.Properties {
+			arg.Preview = append(arg.Preview, ipc.ConsolePreviewProp{
+				Name:    p.Name,
+				Type:    p.Type,
+				Subtype: p.Subtype,
+				Value:   p.Value,
+			})
+		}
+	}
+	return arg
+}
+
+// renderArgText derives a display string from an argument: the primitive value
+// (unquoted for a string) or, for a non-primitive, its description. A value with
+// neither (undefined) renders its type name so it is not a blank line and stays
+// distinct from an empty string.
+func renderArgText(arg ipc.ConsoleArg) string {
+	if len(arg.Value) > 0 {
+		// Only a JSON string is unquoted; every other primitive (number,
+		// boolean, null) renders verbatim, so null does not collapse to "".
+		if arg.Value[0] == '"' {
+			var s string
+			if err := json.Unmarshal(arg.Value, &s); err == nil {
+				return s
+			}
+		}
+		return string(arg.Value)
+	}
+	if arg.Description != "" {
+		return arg.Description
+	}
+	return arg.Type
+}
+
+// setSummaryLocator populates the convenience URL/Line/Column from the first
+// captured frame, falling back to a CDP-provided location when no stack was
+// captured.
+func setSummaryLocator(entry *ipc.ConsoleEntry, fallbackURL string, fallbackLine int) {
+	if len(entry.Stack) > 0 {
+		entry.URL = entry.Stack[0].URL
+		entry.Line = entry.Stack[0].Line
+		entry.Column = entry.Stack[0].Column
+		return
+	}
+	entry.URL = fallbackURL
+	entry.Line = fallbackLine
+}
+
 // parseConsoleEvent parses a Runtime.consoleAPICalled event.
 // Returns the entry and true on success, or zero value and false on parse error.
 func (d *Daemon) parseConsoleEvent(evt cdp.Event) (ipc.ConsoleEntry, bool) {
 	var params struct {
-		Type      string  `json:"type"`
-		Timestamp float64 `json:"timestamp"`
-		Args      []struct {
-			Type  string `json:"type"`
-			Value any    `json:"value"`
-		} `json:"args"`
-		StackTrace *struct {
-			CallFrames []struct {
-				URL          string `json:"url"`
-				LineNumber   int    `json:"lineNumber"`
-				ColumnNumber int    `json:"columnNumber"`
-			} `json:"callFrames"`
-		} `json:"stackTrace"`
+		Type       string            `json:"type"`
+		Timestamp  float64           `json:"timestamp"`
+		Args       []cdpRemoteObject `json:"args"`
+		StackTrace *cdpStackTrace    `json:"stackTrace"`
 	}
 	if err := json.Unmarshal(evt.Params, &params); err != nil {
 		return ipc.ConsoleEntry{}, false
@@ -180,30 +314,18 @@ func (d *Daemon) parseConsoleEvent(evt cdp.Event) (ipc.ConsoleEntry, bool) {
 	entry := ipc.ConsoleEntry{
 		Type:      params.Type,
 		Timestamp: int64(params.Timestamp),
+		Stack:     flattenStack(params.StackTrace),
 	}
 
-	// Extract text from args
-	var args []string
-	for _, arg := range params.Args {
-		if s, ok := arg.Value.(string); ok {
-			args = append(args, s)
-		} else {
-			data, _ := json.Marshal(arg.Value)
-			args = append(args, string(data))
+	if len(params.Args) > 0 {
+		entry.Args = make([]ipc.ConsoleArg, len(params.Args))
+		for i, arg := range params.Args {
+			entry.Args[i] = remoteObjectToArg(arg)
 		}
-	}
-	if len(args) > 0 {
-		entry.Text = args[0]
-		entry.Args = args
+		entry.Text = renderArgText(entry.Args[0])
 	}
 
-	// Extract stack trace info
-	if params.StackTrace != nil && len(params.StackTrace.CallFrames) > 0 {
-		frame := params.StackTrace.CallFrames[0]
-		entry.URL = frame.URL
-		entry.Line = frame.LineNumber
-		entry.Column = frame.ColumnNumber
-	}
+	setSummaryLocator(&entry, "", 0)
 
 	return entry, true
 }
@@ -214,32 +336,90 @@ func (d *Daemon) parseExceptionEvent(evt cdp.Event) (ipc.ConsoleEntry, bool) {
 	var params struct {
 		Timestamp        float64 `json:"timestamp"`
 		ExceptionDetails struct {
-			Text      string `json:"text"`
-			URL       string `json:"url"`
-			Line      int    `json:"lineNumber"`
-			Column    int    `json:"columnNumber"`
-			Exception *struct {
-				Description string `json:"description"`
-			} `json:"exception"`
+			Text       string           `json:"text"`
+			URL        string           `json:"url"`
+			Line       int              `json:"lineNumber"`
+			Column     int              `json:"columnNumber"`
+			StackTrace *cdpStackTrace   `json:"stackTrace"`
+			Exception  *cdpRemoteObject `json:"exception"`
 		} `json:"exceptionDetails"`
 	}
 	if err := json.Unmarshal(evt.Params, &params); err != nil {
 		return ipc.ConsoleEntry{}, false
 	}
 
-	text := params.ExceptionDetails.Text
-	if params.ExceptionDetails.Exception != nil && params.ExceptionDetails.Exception.Description != "" {
-		text = params.ExceptionDetails.Exception.Description
+	ed := params.ExceptionDetails
+	entry := ipc.ConsoleEntry{
+		Type:      ipc.ConsoleTypeError,
+		Text:      ed.Text,
+		Timestamp: int64(params.Timestamp),
+		Stack:     flattenStack(ed.StackTrace),
 	}
 
-	return ipc.ConsoleEntry{
-		Type:      "error",
-		Text:      text,
-		Timestamp: int64(params.Timestamp),
-		URL:       params.ExceptionDetails.URL,
-		Line:      params.ExceptionDetails.Line,
-		Column:    params.ExceptionDetails.Column,
-	}, true
+	if ed.Exception != nil {
+		if ed.Exception.Description != "" {
+			entry.Text = ed.Exception.Description
+		}
+		entry.ExceptionClass = ed.Exception.ClassName
+		entry.ExceptionSubtype = ed.Exception.Subtype
+	}
+
+	// The stack's first frame is the throw site; fall back to the top-level
+	// exceptionDetails location when no stack was captured.
+	setSummaryLocator(&entry, ed.URL, ed.Line)
+	if len(entry.Stack) == 0 {
+		entry.Column = ed.Column
+	}
+
+	return entry, true
+}
+
+// logLevelType maps a CDP Log.LogEntry level onto the shared console Type set:
+// verbose becomes debug; info, warning, and error pass through unchanged, so
+// --type filtering and level display work uniformly across both event streams.
+func logLevelType(level string) string {
+	if level == "verbose" {
+		return ipc.ConsoleTypeDebug
+	}
+	return level
+}
+
+// parseLogEvent parses a Log.entryAdded event into a console entry. These carry
+// browser-generated diagnostics (deprecations, CSP and security violations,
+// blocked resources) that Runtime.consoleAPICalled never delivers.
+// Returns the entry and true on success, or zero value and false on parse error.
+func (d *Daemon) parseLogEvent(evt cdp.Event) (ipc.ConsoleEntry, bool) {
+	var params struct {
+		Entry struct {
+			Source           string         `json:"source"`
+			Level            string         `json:"level"`
+			Text             string         `json:"text"`
+			Timestamp        float64        `json:"timestamp"`
+			URL              string         `json:"url"`
+			LineNumber       int            `json:"lineNumber"`
+			StackTrace       *cdpStackTrace `json:"stackTrace"`
+			NetworkRequestID string         `json:"networkRequestId"`
+			WorkerID         string         `json:"workerId"`
+		} `json:"entry"`
+	}
+	if err := json.Unmarshal(evt.Params, &params); err != nil {
+		return ipc.ConsoleEntry{}, false
+	}
+
+	le := params.Entry
+	entry := ipc.ConsoleEntry{
+		Type:             logLevelType(le.Level),
+		Text:             le.Text,
+		Source:           le.Source,
+		Timestamp:        int64(le.Timestamp),
+		Stack:            flattenStack(le.StackTrace),
+		NetworkRequestID: le.NetworkRequestID,
+		WorkerID:         le.WorkerID,
+	}
+
+	setSummaryLocator(&entry, le.URL, le.LineNumber)
+
+	return entry, true
 }
 
 // networkMaxPostDataSize caps the request-body bytes Chrome includes inline in

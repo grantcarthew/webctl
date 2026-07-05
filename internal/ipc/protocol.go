@@ -38,20 +38,88 @@ type StatusData struct {
 	Sessions      []PageSession `json:"sessions,omitempty"`
 }
 
-// ConsoleEntry represents a console log entry.
+// ConsoleFrame is a single call frame from a captured stack trace. It mirrors
+// a CDP Runtime.CallFrame and adds Async to mark the frames that begin an
+// asynchronous continuation.
+type ConsoleFrame struct {
+	// Function is the frame's function name. Empty for an anonymous function,
+	// which is represented as such rather than dropped.
+	Function string `json:"function,omitempty"`
+	URL      string `json:"url,omitempty"`
+	Line     int    `json:"line,omitempty"`
+	Column   int    `json:"column,omitempty"`
+	// Async carries the parent group's description (for example "Promise.then")
+	// on the first frame of an asynchronous continuation, marking the boundary
+	// between synchronous and asynchronous frames. Empty for synchronous frames.
+	Async string `json:"async,omitempty"`
+}
+
+// ConsolePreviewProp is one property from a RemoteObject's shallow preview. The
+// values are the strings CDP delivers inline, so no per-property round trip is
+// needed to record a non-primitive argument.
+type ConsolePreviewProp struct {
+	Name    string `json:"name"`
+	Type    string `json:"type,omitempty"`
+	Subtype string `json:"subtype,omitempty"`
+	Value   string `json:"value,omitempty"`
+}
+
+// ConsoleArg is a structured console argument mirroring a CDP RemoteObject. It
+// preserves an argument's type and value instead of stringifying it, so a
+// non-primitive (an object, array, function) records its description and a
+// shallow preview rather than collapsing to null.
+type ConsoleArg struct {
+	// Type is the RemoteObject type (string, number, boolean, object, ...).
+	Type string `json:"type,omitempty"`
+	// Subtype refines an object-typed value (array, null, error, regexp, ...).
+	Subtype string `json:"subtype,omitempty"`
+	// Value is the verbatim primitive value as CDP delivered it. Absent for
+	// non-primitives, which carry Description and Preview instead.
+	Value json.RawMessage `json:"value,omitempty"`
+	// Description is the RemoteObject description for a non-primitive.
+	Description string `json:"description,omitempty"`
+	// Preview is a shallow property preview for a non-primitive.
+	Preview []ConsolePreviewProp `json:"preview,omitempty"`
+}
+
+// ConsoleEntry represents a console log entry. It carries entries from both
+// Runtime (consoleAPICalled, exceptionThrown) and the Log domain (entryAdded),
+// distinguished by Source.
 type ConsoleEntry struct {
 	// Seq is the buffer-assigned sequence number, a stable identifier for the
 	// entry across daemon round-trips. Always present in JSON (0 means the
 	// entry was never buffered) because agents address entries by it.
-	Seq       uint64   `json:"seq"`
-	SessionID string   `json:"sessionId,omitempty"`
-	Type      string   `json:"type"`
-	Text      string   `json:"text"`
-	Args      []string `json:"args,omitempty"`
-	Timestamp int64    `json:"timestamp"`
-	URL       string   `json:"url,omitempty"`
-	Line      int      `json:"line,omitempty"`
-	Column    int      `json:"column,omitempty"`
+	Seq       uint64 `json:"seq"`
+	SessionID string `json:"sessionId,omitempty"`
+	// Type is the severity level. Runtime console types pass through; Log-domain
+	// levels are mapped onto the same set (verbose maps to debug) so --type
+	// filtering works uniformly across both streams.
+	Type string `json:"type"`
+	Text string `json:"text"`
+	// Source labels a Log-domain entry's origin (security, network, deprecation,
+	// ...). Empty for Runtime console and exception entries.
+	Source string `json:"source,omitempty"`
+	// Args holds the structured console arguments. Absent for exception and
+	// Log-domain entries.
+	Args      []ConsoleArg `json:"args,omitempty"`
+	Timestamp int64        `json:"timestamp"`
+	// URL, Line, and Column summarize the first captured frame as a convenience
+	// locator; Stack holds the full call chain.
+	URL    string `json:"url,omitempty"`
+	Line   int    `json:"line,omitempty"`
+	Column int    `json:"column,omitempty"`
+	// Stack is the full ordered call stack, including the asynchronous parent
+	// chain, for console API calls and exceptions.
+	Stack []ConsoleFrame `json:"stack,omitempty"`
+	// ExceptionClass is the thrown value's class name (for example TypeError).
+	ExceptionClass string `json:"exceptionClass,omitempty"`
+	// ExceptionSubtype refines the thrown value (error, ...).
+	ExceptionSubtype string `json:"exceptionSubtype,omitempty"`
+	// NetworkRequestID links a Log-domain entry to a network buffer entry. Kept
+	// verbatim so a consumer can correlate it to the network stream.
+	NetworkRequestID string `json:"networkRequestId,omitempty"`
+	// WorkerID identifies the worker that produced a Log-domain entry, if any.
+	WorkerID string `json:"workerId,omitempty"`
 }
 
 // Console type constants matching CDP Runtime.consoleAPICalled types.

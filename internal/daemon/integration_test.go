@@ -3,6 +3,7 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -2389,6 +2390,185 @@ func TestTab_Integration(t *testing.T) {
 		if err != nil && err != context.Canceled {
 			t.Errorf("daemon exited with error: %v", err)
 		}
+	case <-time.After(10 * time.Second):
+		t.Error("daemon did not shut down in time")
+	}
+}
+
+// TestConsoleEnrichment_Integration verifies the enriched console capture end
+// to end against a real browser: full stack traces with function names, the
+// asynchronous parent chain with its boundary marked, exception class names,
+// structured non-primitive arguments, and Log-domain entries with network
+// correlation. Run with: go test -run Integration ./...
+func TestConsoleEnrichment_Integration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	tmpDir := t.TempDir()
+	socketPath := filepath.Join(tmpDir, "webctl.sock")
+	pidPath := filepath.Join(tmpDir, "webctl.pid")
+
+	cfg := Config{Headless: true, Port: 0, SocketPath: socketPath, PIDPath: pidPath, BufferSize: 200}
+	d := New(cfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() { errCh <- d.Run(ctx) }()
+
+	if !waitForSocket(socketPath, 30*time.Second) {
+		t.Fatal("daemon did not start in time")
+	}
+	client, err := ipc.DialPath(socketPath)
+	if err != nil {
+		t.Fatalf("failed to connect to daemon: %v", err)
+	}
+	defer func() { _ = client.Close() }()
+
+	// Each snippet lives in its own <script> so an uncaught error does not abort
+	// the others. The trailing <img> targets an unresolvable host so Chrome emits
+	// a Log-domain network entry.
+	html := `<html><body>
+<script>function l3(){console.trace("trace-marker");} function l2(){l3();} function l1(){l2();} l1();</script>
+<script>console.log({alpha:1,beta:"two"});</script>
+<script>function boom(){throw new TypeError("sync-type-error-marker");} boom();</script>
+<script>function asyncThrow(){setTimeout(function timerCb(){throw new RangeError("async-range-error-marker");},0);} asyncThrow();</script>
+<img src="https://nonexistent.invalid/missing.png">
+</body></html>`
+	url := "data:text/html;base64," + base64.StdEncoding.EncodeToString([]byte(html))
+
+	navParams, _ := json.Marshal(map[string]any{"url": url})
+	resp, err := client.Send(ipc.Request{Cmd: "cdp", Target: "Page.navigate", Params: navParams})
+	if err != nil || !resp.OK {
+		t.Fatalf("navigate failed: err=%v resp=%+v", err, resp)
+	}
+
+	// Allow the scripts, the async timer throw, and the failed image load to run.
+	time.Sleep(2500 * time.Millisecond)
+
+	resp, err = client.SendCmd("console")
+	if err != nil || !resp.OK {
+		t.Fatalf("console command failed: err=%v resp=%+v", err, resp)
+	}
+	var data ipc.ConsoleData
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		t.Fatalf("failed to parse console data: %v", err)
+	}
+
+	findByText := func(marker string) *ipc.ConsoleEntry {
+		for i := range data.Entries {
+			if strings.Contains(data.Entries[i].Text, marker) {
+				return &data.Entries[i]
+			}
+		}
+		return nil
+	}
+	frameFuncs := func(e *ipc.ConsoleEntry) []string {
+		names := make([]string, 0, len(e.Stack))
+		for _, f := range e.Stack {
+			names = append(names, f.Function)
+		}
+		return names
+	}
+
+	t.Run("console_trace_multiframe_with_functions", func(t *testing.T) {
+		e := findByText("trace-marker")
+		if e == nil {
+			t.Fatalf("trace entry not captured; entries: %+v", data.Entries)
+		}
+		if len(e.Stack) < 3 {
+			t.Fatalf("expected a multi-frame stack, got %d frames: %+v", len(e.Stack), e.Stack)
+		}
+		funcs := frameFuncs(e)
+		for _, want := range []string{"l3", "l2", "l1"} {
+			if !contains(strings.Join(funcs, ","), want) {
+				t.Errorf("stack missing function %q; got %v", want, funcs)
+			}
+		}
+	})
+
+	t.Run("object_argument_non_empty", func(t *testing.T) {
+		e := findByText("Object")
+		if e == nil {
+			t.Fatalf("object-log entry not captured; entries: %+v", data.Entries)
+		}
+		if len(e.Args) != 1 {
+			t.Fatalf("expected one argument, got %+v", e.Args)
+		}
+		arg := e.Args[0]
+		if arg.Type != "object" || arg.Description == "" {
+			t.Errorf("object arg should carry a description, got %+v", arg)
+		}
+		if len(arg.Value) != 0 {
+			t.Errorf("object arg should not carry a primitive value, got %s", arg.Value)
+		}
+		if len(arg.Preview) == 0 {
+			t.Errorf("object arg should carry a shallow preview, got %+v", arg)
+		}
+		if e.Text == "" || e.Text == "null" {
+			t.Errorf("object log should render a non-empty text, got %q", e.Text)
+		}
+	})
+
+	t.Run("sync_exception_class", func(t *testing.T) {
+		e := findByText("sync-type-error-marker")
+		if e == nil {
+			t.Fatalf("sync exception not captured; entries: %+v", data.Entries)
+		}
+		if e.ExceptionClass != "TypeError" {
+			t.Errorf("ExceptionClass = %q, want 'TypeError'", e.ExceptionClass)
+		}
+		if !contains(strings.Join(frameFuncs(e), ","), "boom") {
+			t.Errorf("stack should include throw-site function 'boom', got %v", frameFuncs(e))
+		}
+	})
+
+	t.Run("async_exception_stack_marked", func(t *testing.T) {
+		e := findByText("async-range-error-marker")
+		if e == nil {
+			t.Fatalf("async exception not captured; entries: %+v", data.Entries)
+		}
+		if e.ExceptionClass != "RangeError" {
+			t.Errorf("ExceptionClass = %q, want 'RangeError'", e.ExceptionClass)
+		}
+		marked := false
+		for _, f := range e.Stack {
+			if f.Async != "" {
+				marked = true
+			}
+		}
+		if !marked {
+			t.Errorf("async stack should mark a boundary frame; got %+v", e.Stack)
+		}
+	})
+
+	t.Run("log_domain_network_entry", func(t *testing.T) {
+		var logEntry *ipc.ConsoleEntry
+		for i := range data.Entries {
+			if data.Entries[i].Source != "" {
+				logEntry = &data.Entries[i]
+				break
+			}
+		}
+		if logEntry == nil {
+			t.Fatalf("no Log-domain entry captured; entries: %+v", data.Entries)
+		}
+		if logEntry.Source != "network" {
+			t.Errorf("Source = %q, want 'network'", logEntry.Source)
+		}
+		if logEntry.Type != ipc.ConsoleTypeError {
+			t.Errorf("Type = %q, want 'error'", logEntry.Type)
+		}
+		if logEntry.NetworkRequestID == "" {
+			t.Errorf("expected a network request id linking the entry to the network buffer")
+		}
+	})
+
+	_ = client.Close()
+	cancel()
+	select {
+	case <-errCh:
 	case <-time.After(10 * time.Second):
 		t.Error("daemon did not shut down in time")
 	}
