@@ -378,10 +378,49 @@ run_test "trigger POST with body" "${WEBCTL_BINARY}" eval "fetch('/api/echo', {m
 assert_success "${TEST_EXIT_CODE}" "POST request triggered"
 sleep 2
 
-# --find matches the request body by its payload.
-run_test "network --find request body" "${WEBCTL_BINARY}" network --find "obo-reqbody"
+# --find still matches the request body, but the default list renders no bodies:
+# it narrows to the entry, and the payload is seen by drilling in. This is the
+# intended two-step flow after the network output redesign.
+run_test "network --find lists the request-body entry" "${WEBCTL_BINARY}" network --find "obo-reqbody"
 assert_success "${TEST_EXIT_CODE}" "network --find matches request body"
-assert_contains "${TEST_STDOUT}" "obo-reqbody" "Output contains the request body payload"
+assert_contains "${TEST_STDOUT}" "/api/echo" "Matched entry is listed by its main line"
+assert_not_contains "${TEST_STDOUT}" "obo-reqbody" "Default list does not render the body payload"
+
+# Drill into the matched entry by its seq to see the payload. The main line is
+# prefixed with the zero-padded seq, so the first integer token is the address.
+REQBODY_SEQ=$(printf '%s\n' "${TEST_STDOUT}" | grep -oE '^[0-9]+' | head -n1)
+run_test "network drill-down shows the request body" "${WEBCTL_BINARY}" network "${REQBODY_SEQ}"
+assert_success "${TEST_EXIT_CODE}" "network drill-down returns success"
+assert_contains "${TEST_STDOUT}" "obo-reqbody" "Drill-down shows the request body payload"
+
+# --detail full renders the body in the list without drilling in.
+run_test "network --detail full renders the body" "${WEBCTL_BINARY}" network --find "obo-reqbody" --detail full
+assert_success "${TEST_EXIT_CODE}" "network --detail full returns success"
+assert_contains "${TEST_STDOUT}" "obo-reqbody" "Full detail list renders the request body payload"
+
+test_section "Network Command - Drill-down and Schema"
+
+# --detail summary is one line per entry: no transport block, no bodies.
+run_test "network --detail summary" "${WEBCTL_BINARY}" network --detail summary
+assert_success "${TEST_EXIT_CODE}" "network --detail summary returns success"
+assert_not_contains "${TEST_STDOUT}" "remote:" "Summary shows no transport block"
+
+# Drilling into a seq the active session does not hold errors with an
+# eviction-aware message and a non-zero exit.
+run_test "network drill-down miss" "${WEBCTL_BINARY}" network 999999
+assert_failure "${TEST_EXIT_CODE}" "drill-down to an absent seq fails"
+assert_contains "${TEST_STDOUT}${TEST_STDERR}" "not in buffer" "Miss names the empty/held-seq orientation"
+
+# --schema wraps the response body in the standard envelope on stdout with exit 0.
+# The captured /api/echo response is a non-JSON 404 page, so schema is null with a
+# notice; both share one envelope, one stream, and one exit code.
+run_test "network drill-down schema" "${WEBCTL_BINARY}" network "${REQBODY_SEQ}" --schema
+assert_success "${TEST_EXIT_CODE}" "network --schema returns success (exit 0)"
+assert_contains "${TEST_STDOUT}" "\"schema\"" "Schema envelope carries a schema field"
+
+# --schema without an index is an error directing the user to supply one.
+run_test "network --schema without index" "${WEBCTL_BINARY}" network --schema
+assert_failure "${TEST_EXIT_CODE}" "network --schema without an index fails"
 
 # network save output includes the request body (requirement 8).
 TEMP_REQBODY_FILE=$(create_temp_file ".json")

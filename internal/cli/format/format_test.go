@@ -166,10 +166,16 @@ func TestConsole(t *testing.T) {
 	}
 }
 
+// netStd and netFull build the standard and full detail options the network
+// text tests exercise, keeping color off for stable string assertions.
+func netStd() OutputOptions  { return OutputOptions{UseColor: false, Detail: DetailStandard} }
+func netFull() OutputOptions { return OutputOptions{UseColor: false, Detail: DetailFull} }
+
 func TestNetwork(t *testing.T) {
 	entries := []ipc.NetworkEntry{
-		{Method: "GET", URL: "https://api.example.com", Status: 200, Duration: 0.123},
+		{Seq: 1, Method: "GET", URL: "https://api.example.com", Status: 200, Duration: 0.123},
 		{
+			Seq:          2,
 			Method:       "POST",
 			URL:          "https://api.example.com",
 			Status:       404,
@@ -180,24 +186,91 @@ func TestNetwork(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	opts := OutputOptions{UseColor: false}
-	err := Network(&buf, entries, opts)
+	err := Network(&buf, entries, netFull())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "GET https://api.example.com 200 123ms") {
-		t.Error("output should contain GET request")
+	if !strings.Contains(output, "01 GET https://api.example.com 200 123ms") {
+		t.Errorf("output should contain the seq-prefixed GET request:\n%s", output)
 	}
-	if !strings.Contains(output, "POST https://api.example.com 404 456ms") {
-		t.Error("output should contain POST request")
+	if !strings.Contains(output, "02 POST https://api.example.com 404 456ms") {
+		t.Errorf("output should contain the seq-prefixed POST request:\n%s", output)
 	}
-	if !strings.Contains(output, `  request: {"user":"grant"}`) {
-		t.Errorf("output should label the request body:\n%s", output)
+	if !strings.Contains(output, `       request: {"user":"grant"}`) {
+		t.Errorf("output should label the request body at seven-space indent:\n%s", output)
 	}
-	if !strings.Contains(output, `  response: {"key":"value"}`) {
-		t.Errorf("output should label the response body:\n%s", output)
+	if !strings.Contains(output, `       response: {"key":"value"}`) {
+		t.Errorf("output should label the response body at seven-space indent:\n%s", output)
+	}
+}
+
+func TestNetwork_SeqPrefixZeroPadded(t *testing.T) {
+	// The seq prefix is zero-padded to a minimum of two digits and grows naturally
+	// beyond, with no surrounding brackets, so input and output match.
+	entries := []ipc.NetworkEntry{
+		{Seq: 9, Method: "GET", URL: "https://example.com/a", Status: 200},
+		{Seq: 100, Method: "GET", URL: "https://example.com/b", Status: 200},
+	}
+
+	var buf bytes.Buffer
+	if err := Network(&buf, entries, OutputOptions{UseColor: false, Detail: DetailSummary}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "09 GET https://example.com/a") {
+		t.Errorf("single-digit seq should zero-pad to two digits:\n%s", output)
+	}
+	if !strings.Contains(output, "100 GET https://example.com/b") {
+		t.Errorf("a three-digit seq should render its full width:\n%s", output)
+	}
+	if strings.Contains(output, "[") || strings.Contains(output, "]") {
+		t.Errorf("the seq prefix must carry no brackets:\n%s", output)
+	}
+}
+
+func TestNetwork_DetailLevels(t *testing.T) {
+	entry := ipc.NetworkEntry{
+		Seq: 5, Method: "GET", URL: "https://example.com/", Status: 200, Duration: 0.045,
+		RemoteIPAddress: "93.184.216.34", RemotePort: 443, Protocol: "h2",
+		RequestBody: `{"q":"x"}`, ResponseBody: `{"ok":true}`,
+	}
+
+	render := func(d DetailLevel) string {
+		var buf bytes.Buffer
+		if err := Network(&buf, []ipc.NetworkEntry{entry}, OutputOptions{UseColor: false, Detail: d}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		return buf.String()
+	}
+
+	// Summary: main line only.
+	summary := render(DetailSummary)
+	if !strings.Contains(summary, "05 GET https://example.com/ 200 45ms") {
+		t.Errorf("summary should show the main line:\n%s", summary)
+	}
+	if strings.Contains(summary, "remote:") || strings.Contains(summary, "response:") {
+		t.Errorf("summary must show no transport block and no bodies:\n%s", summary)
+	}
+
+	// Standard: main line plus transport block, no bodies.
+	standard := render(DetailStandard)
+	if !strings.Contains(standard, "       remote: 93.184.216.34:443 h2") {
+		t.Errorf("standard should show the transport block:\n%s", standard)
+	}
+	if strings.Contains(standard, "response:") || strings.Contains(standard, "request:") {
+		t.Errorf("standard must not show bodies:\n%s", standard)
+	}
+
+	// Full: transport block plus bodies.
+	full := render(DetailFull)
+	if !strings.Contains(full, "       remote: 93.184.216.34:443 h2") {
+		t.Errorf("full should show the transport block:\n%s", full)
+	}
+	if !strings.Contains(full, `       request: {"q":"x"}`) || !strings.Contains(full, `       response: {"ok":true}`) {
+		t.Errorf("full should show request and response bodies:\n%s", full)
 	}
 }
 
@@ -213,15 +286,15 @@ func TestNetwork_HeadersShownWhenEnabled(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false, ShowHeaders: true}); err != nil {
+	if err := Network(&buf, entries, OutputOptions{UseColor: false, ShowHeaders: true, Detail: DetailStandard}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "  request-headers:\n    accept: application/json\n    authorization: Bearer x\n") {
+	if !strings.Contains(output, "       request-headers:\n         accept: application/json\n         authorization: Bearer x\n") {
 		t.Errorf("request headers should render sorted under a label:\n%s", output)
 	}
-	if !strings.Contains(output, "  response-headers:\n    cache-control: no-store\n    content-type: application/json\n") {
+	if !strings.Contains(output, "       response-headers:\n         cache-control: no-store\n         content-type: application/json\n") {
 		t.Errorf("response headers should render sorted under a label:\n%s", output)
 	}
 }
@@ -237,13 +310,13 @@ func TestNetwork_HeadersHiddenByDefault(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netStd()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
 	if strings.Contains(output, "headers:") || strings.Contains(output, "authorization") {
-		t.Errorf("headers must not appear in the default text view:\n%s", output)
+		t.Errorf("headers must not appear without --headers:\n%s", output)
 	}
 }
 
@@ -298,15 +371,15 @@ func TestNetwork_RemoteLineShown(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netStd()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "  remote: 93.184.216.34:443 h2 conn:1186\n") {
+	if !strings.Contains(output, "       remote: 93.184.216.34:443 h2 conn:1186\n") {
 		t.Errorf("remote line should show endpoint, protocol, and connection id:\n%s", output)
 	}
-	if strings.Contains(output, "/bare 200 10ms\n  remote:") {
+	if strings.Contains(output, "/bare 200 10ms\n       remote:") {
 		t.Errorf("an entry without transport data should omit the remote line:\n%s", output)
 	}
 }
@@ -322,7 +395,7 @@ func TestNetwork_SecurityStateShownOnlyWhenNotSecure(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netStd()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -343,11 +416,11 @@ func TestNetwork_RemoteLineOmitsPortWhenAbsent(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netStd()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if out := buf.String(); !strings.Contains(out, "  remote: 93.184.216.34 h2\n") {
+	if out := buf.String(); !strings.Contains(out, "       remote: 93.184.216.34 h2\n") {
 		t.Errorf("remote line should omit a zero port:\n%s", out)
 	}
 }
@@ -395,12 +468,12 @@ func TestNetwork_TimingLine(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netStd()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "  timing: dns 122ms connect 420ms tls 213ms wait 207ms\n") {
+	if !strings.Contains(output, "       timing: dns 122ms connect 420ms tls 213ms wait 207ms\n") {
 		t.Errorf("timing line should list present phases as integer ms, dropping sub-ms send:\n%s", output)
 	}
 }
@@ -416,12 +489,12 @@ func TestNetwork_InitiatorLine(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netStd()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "  initiator: parser https://example.com/:5\n") {
+	if !strings.Contains(output, "       initiator: parser https://example.com/:5\n") {
 		t.Errorf("initiator line should render type and location:\n%s", output)
 	}
 	if strings.Contains(output, "initiator: other") {
@@ -439,12 +512,12 @@ func TestNetwork_InitiatorLineOmitsZeroLine(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netStd()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "  initiator: parser https://example.com/\n") {
+	if !strings.Contains(output, "       initiator: parser https://example.com/\n") {
 		t.Errorf("line-0 initiator should render the URL without a line suffix:\n%s", output)
 	}
 	if strings.Contains(output, "https://example.com/:0") {
@@ -459,7 +532,7 @@ func TestNetwork_TimingLineOmittedWhenAbsent(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netStd()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -495,7 +568,7 @@ func TestNetwork_FailedRequestShowsReason(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netStd()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -503,11 +576,11 @@ func TestNetwork_FailedRequestShowsReason(t *testing.T) {
 	if !strings.Contains(output, "GET https://example.com/x FAILED 12ms document") {
 		t.Errorf("failed request should show a FAILED token and resource type, not a bare status:\n%s", output)
 	}
-	if !strings.Contains(output, "  error: net::ERR_NAME_NOT_RESOLVED") {
+	if !strings.Contains(output, "       error: net::ERR_NAME_NOT_RESOLVED") {
 		t.Errorf("failed request should show its reason on an indented error line:\n%s", output)
 	}
 	// The error reason leads the detail block, before any initiator metadata.
-	if errIdx, initIdx := strings.Index(output, "  error:"), strings.Index(output, "  initiator:"); errIdx == -1 || initIdx == -1 || errIdx > initIdx {
+	if errIdx, initIdx := strings.Index(output, "       error:"), strings.Index(output, "       initiator:"); errIdx == -1 || initIdx == -1 || errIdx > initIdx {
 		t.Errorf("error line should precede the initiator line on a failed entry:\n%s", output)
 	}
 }
@@ -520,13 +593,13 @@ func TestNetwork_FailedRequestShowsRequestBody(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netFull()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, `  request: {"user":"grant"}`) {
-		t.Errorf("a failed request should still show its request body:\n%s", output)
+	if !strings.Contains(output, `       request: {"user":"grant"}`) {
+		t.Errorf("a failed request should still show its request body at full:\n%s", output)
 	}
 }
 
@@ -543,12 +616,12 @@ func TestNetwork_FailedRequestShowsRequestHeaders(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false, ShowHeaders: true}); err != nil {
+	if err := Network(&buf, entries, OutputOptions{UseColor: false, ShowHeaders: true, Detail: DetailStandard}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "  request-headers:\n    accept: application/json\n") {
+	if !strings.Contains(output, "       request-headers:\n         accept: application/json\n") {
 		t.Errorf("a failed request should render its request headers under --headers:\n%s", output)
 	}
 	if strings.Contains(output, "response-headers:") {
@@ -606,7 +679,7 @@ func TestNetwork_GETResponseBodyPrints(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netFull()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -614,7 +687,7 @@ func TestNetwork_GETResponseBodyPrints(t *testing.T) {
 	if strings.Contains(output, "request:") {
 		t.Error("a GET with no request body should not print a request line")
 	}
-	if !strings.Contains(output, `  response: {"ok":true}`) {
+	if !strings.Contains(output, `       response: {"ok":true}`) {
 		t.Errorf("GET response body should print:\n%s", output)
 	}
 }
@@ -625,17 +698,17 @@ func TestNetwork_MultiLineBody(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netFull()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
-	// Multi-line body: bare label line, then each line indented four spaces.
-	if !strings.Contains(output, "  request:\n") {
+	// Multi-line body: bare label line at seven spaces, each line nested at nine.
+	if !strings.Contains(output, "       request:\n") {
 		t.Errorf("multi-line body should print a bare label line:\n%s", output)
 	}
-	if !strings.Contains(output, "    line1\n") || !strings.Contains(output, "    line2\n") {
-		t.Errorf("multi-line body lines should be indented four spaces:\n%s", output)
+	if !strings.Contains(output, "         line1\n") || !strings.Contains(output, "         line2\n") {
+		t.Errorf("multi-line body lines should be nested nine spaces:\n%s", output)
 	}
 }
 
@@ -656,7 +729,7 @@ func TestNetwork_TruncatedBodyMarker(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netFull()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -672,7 +745,7 @@ func TestNetwork_NoMarkerWhenNotTruncated(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netFull()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -694,12 +767,12 @@ func TestNetwork_BinaryBodyPathPrints(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netFull()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, "  response: [binary saved to /tmp/webctl/image.png]\n") {
+	if !strings.Contains(output, "       response: [binary saved to /tmp/webctl/image.png]\n") {
 		t.Errorf("binary response body should print its saved path:\n%s", output)
 	}
 	if strings.Count(output, "response:") != 1 {
@@ -722,12 +795,12 @@ func TestNetwork_TextBodySuppressesBinaryPath(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := Network(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+	if err := Network(&buf, entries, netFull()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	output := buf.String()
-	if !strings.Contains(output, `  response: {"ok":true}`) {
+	if !strings.Contains(output, `       response: {"ok":true}`) {
 		t.Errorf("a text response body should print its payload:\n%s", output)
 	}
 	if strings.Contains(output, "binary saved to") {

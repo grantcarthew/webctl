@@ -1537,12 +1537,14 @@ func TestMatchesStringSlice(t *testing.T) {
 }
 
 func TestApplyNetworkLimiting(t *testing.T) {
+	// Seq mirrors RequestID here so range assertions read naturally; --range is
+	// now inclusive seq membership, while --head/--tail remain entry counts.
 	entries := []ipc.NetworkEntry{
-		{RequestID: "1", URL: "https://example.com/1"},
-		{RequestID: "2", URL: "https://example.com/2"},
-		{RequestID: "3", URL: "https://example.com/3"},
-		{RequestID: "4", URL: "https://example.com/4"},
-		{RequestID: "5", URL: "https://example.com/5"},
+		{Seq: 1, RequestID: "1", URL: "https://example.com/1"},
+		{Seq: 2, RequestID: "2", URL: "https://example.com/2"},
+		{Seq: 3, RequestID: "3", URL: "https://example.com/3"},
+		{Seq: 4, RequestID: "4", URL: "https://example.com/4"},
+		{Seq: 5, RequestID: "5", URL: "https://example.com/5"},
 	}
 
 	tests := []struct {
@@ -1560,9 +1562,11 @@ func TestApplyNetworkLimiting(t *testing.T) {
 		{"head exceeds length", 10, 0, "", 5, "1", "5", false},
 		{"tail 2", 0, 2, "", 2, "4", "5", false},
 		{"tail exceeds length", 0, 10, "", 5, "1", "5", false},
-		{"range 1-3", 0, 0, "1-3", 2, "2", "3", false},
-		{"range 0-5", 0, 0, "0-5", 5, "1", "5", false},
-		{"range start >= end", 0, 0, "3-2", 0, "", "", false},
+		{"range seq 2-4 inclusive", 0, 0, "2-4", 3, "2", "4", false},
+		{"range spans all seqs", 0, 0, "1-5", 5, "1", "5", false},
+		{"range wider than held seqs", 0, 0, "0-99", 5, "1", "5", false},
+		{"range holds nothing", 0, 0, "6-9", 0, "", "", false},
+		{"range start after end", 0, 0, "3-2", 0, "", "", false},
 		{"invalid range format", 0, 0, "abc", 0, "", "", true},
 	}
 

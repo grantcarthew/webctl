@@ -146,11 +146,16 @@ func NormalizeConsoleType(t string) string {
 }
 
 // DefaultMaxBodySize is the default byte budget for network bodies. The CLI uses
-// it as the --max-body-size truncation default; the daemon uses it as the
-// Network.enable maxPostDataSize inline cap. They are deliberately equal so a
-// request body that survives truncation also arrives inline without a fallback
-// fetch.
+// it as the --max-body-size truncation default for the --detail full text list;
+// the daemon uses it as the Network.enable maxPostDataSize inline cap. They are
+// deliberately equal so a request body that survives truncation also arrives
+// inline without a fallback fetch.
 const DefaultMaxBodySize = 102400
+
+// MaxBodySizeUnlimited is the --max-body-size sentinel that disables truncation
+// entirely, leaving bodies at full fidelity. It is the unset default for JSON,
+// text drill-down, and save, where a complete payload is the point.
+const MaxBodySizeUnlimited = -1
 
 // NetworkEntry represents a network request/response entry.
 type NetworkEntry struct {

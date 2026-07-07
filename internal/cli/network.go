@@ -22,15 +22,32 @@ var networkCmd = &cobra.Command{
 	Long: `Extracts network requests from the current page with flexible output modes.
 
 Default behavior (no subcommand):
-  Outputs network requests to stdout for piping or inspection
+  Lists network requests to stdout: one indexed line per entry plus the transport
+  detail block, no bodies. Each line is prefixed with the entry's seq (its
+  drill-down address). Use "network <n>" to see one entry's bodies.
 
 Subcommands:
   save [path]       Save network requests to file (temp dir if no path given)
 
-Universal flags (work with all modes):
-  --find, -f        Search for text within URLs and bodies
-  --headers         Show request and response headers (text mode)
-  --json            Output in JSON format (global flag)
+Drill-down:
+  network <n>       Show the single entry with seq n, rendered with its bodies
+                    (unbounded by default). Ignores the filter and range flags.
+  network <n> --schema
+                    Preview entry n's JSON response body as a key skeleton with
+                    type-name leaves, without pulling the full body.
+
+Detail dial (text only; ignored in JSON and by --schema):
+  --detail summary  One line per entry (main line only).
+  --detail standard Main line plus the transport detail block (remote, timing,
+                    initiator). No bodies. This is the default.
+  --detail full     Standard plus request and response bodies, bounded by
+                    --max-body-size (default 102400 at this level).
+
+Universal flags:
+  --find, -f        Search for text within URLs and bodies (narrows the list;
+                    the matched body is seen by drilling into the entry)
+  --headers         Show request and response headers (standard and full levels)
+  --json            Output in JSON format, always full fidelity (global flag)
 
 Network-specific filter flags:
   --type            CDP resource type: xhr, fetch, document, script, stylesheet, image,
@@ -42,20 +59,27 @@ Network-specific filter flags:
   --min-duration    Minimum request duration: 1s, 500ms, 100ms
   --min-size        Minimum response size in bytes
   --failed          Show only failed requests (network errors, CORS, etc.)
-  --head N          Return first N entries
-  --tail N          Return last N entries
-  --range N-M       Return entries N through M
+  --head N          Return first N entries (count over the seq-ordered list)
+  --tail N          Return last N entries (count over the seq-ordered list)
+  --range START-END Keep entries whose seq is in [START, END] inclusive
 
 All filters are AND-combined. StringSlice flags support CSV (--status 4xx,5xx)
 and repeatable (--status 4xx --status 5xx) syntax.
 
 Examples:
 
-Default mode (stdout):
-  network                                  # All requests to stdout
-  network --status 4xx                     # Only 4xx to stdout
-  network --find "api"                     # Search and show matches
+List mode (stdout):
+  network                                  # Indexed list, transport block, no bodies
+  network --detail summary                 # One line per entry
+  network --detail full                    # List with bodies
+  network --status 4xx                     # Only 4xx
+  network --find "api"                     # Narrow to entries matching "api"
   network --tail 20                        # Last 20 entries
+  network --range 318-425                  # Entries with seq in [318, 425]
+
+Drill-down mode (stdout):
+  network 42                               # Entry 42 with its bodies
+  network 42 --schema                      # JSON shape of entry 42's response body
 
 Save mode (file):
   network save                             # Save to temp with auto-filename
@@ -64,14 +88,21 @@ Save mode (file):
   network save --status 5xx --tail 50
 
 Response formats:
-  Default:  GET https://example.com 200 45ms xhr 3.4KB (to stdout)
-            resource type and size append when captured; a failed request shows
-            FAILED plus its reason instead of a status; --headers adds headers
+  List:     01 GET https://example.com 200 45ms xhr 3.4KB (to stdout)
+            seq prefix, then the main line; resource type and size append when
+            captured; a failed request shows FAILED plus its reason; the
+            transport block follows on indented lines
+  Drill:    the single entry with its request and response bodies
   Save:     /tmp/webctl-network/25-12-28-143052-123-network.json
 
 Error cases:
   - "No matches found" - find text not in requests
+  - "entry <n> not in buffer" - drill-down seq the active session does not hold
   - "daemon not running" - start daemon first with: webctl start`,
+	// At most one positional argument: the bare-integer drill-down address. A
+	// stray extra token is a usage error rather than a silently discarded arg.
+	// `save` dispatches as a subcommand before this constraint applies.
+	Args: cobra.MaximumNArgs(1),
 	RunE: runNetworkDefault,
 }
 
@@ -106,12 +137,19 @@ func init() {
 	networkCmd.PersistentFlags().Duration("min-duration", 0, "Filter by minimum request duration")
 	networkCmd.PersistentFlags().Int64("min-size", 0, "Filter by minimum response size in bytes")
 	networkCmd.PersistentFlags().Bool("failed", false, "Show only failed requests")
-	networkCmd.PersistentFlags().Bool("headers", false, "Show request and response headers (text mode)")
-	networkCmd.PersistentFlags().Int("max-body-size", ipc.DefaultMaxBodySize, "Maximum body size in bytes before truncation (default 100KB; 0 suppresses all body content)")
-	networkCmd.PersistentFlags().Int("head", 0, "Return first N entries")
-	networkCmd.PersistentFlags().Int("tail", 0, "Return last N entries")
-	networkCmd.PersistentFlags().String("range", "", "Return entries in range (format: START-END)")
+	networkCmd.PersistentFlags().Bool("headers", false, "Show request and response headers (standard and full detail levels)")
+	// Registered default is 0 so pflag omits a misleading "(default N)": the real
+	// unset default is mode-dependent and resolved via Changed, not this value.
+	networkCmd.PersistentFlags().Int("max-body-size", 0, "Max body size in bytes: 102400 for the --detail full text list, unlimited for JSON/drill-down/save, 0 suppresses, -1 unlimited")
+	networkCmd.PersistentFlags().Int("head", 0, "Return first N entries (count over the seq-ordered list)")
+	networkCmd.PersistentFlags().Int("tail", 0, "Return last N entries (count over the seq-ordered list)")
+	networkCmd.PersistentFlags().String("range", "", "Keep entries whose seq is in [START, END] inclusive (format: START-END)")
 	networkCmd.MarkFlagsMutuallyExclusive("head", "tail", "range")
+
+	// Text-only flags for the default (list/drill-down) command. Local rather than
+	// persistent so `save` (a full-fidelity JSON archive) does not inherit them.
+	networkCmd.Flags().String("detail", "standard", "Text detail level: summary, standard, or full")
+	networkCmd.Flags().Bool("schema", false, "Preview an entry's JSON response body as a key skeleton (requires an entry index)")
 
 	// Add all subcommands
 	networkCmd.AddCommand(networkSaveCmd)
@@ -119,21 +157,53 @@ func init() {
 	rootCmd.AddCommand(networkCmd)
 }
 
-// runNetworkDefault handles default behavior: output to stdout
+// runNetworkDefault handles the default command: list all entries, drill into a
+// single entry by seq (network <n>), or preview an entry's response-body schema
+// (network <n> --schema).
 func runNetworkDefault(cmd *cobra.Command, args []string) error {
 	t := startTimer("network")
 	defer t.log()
 
-	// Validate that no arguments were provided (catches unknown subcommands)
+	schema, _ := cmd.Flags().GetBool("schema")
+
+	// A bare integer positional argument is a drill-down address. A non-integer
+	// argument keeps the unknown-command error; `save` is dispatched by cobra as a
+	// subcommand and never reaches here. Presence is tracked separately from the
+	// value so a negative address is not mistaken for "no argument".
+	var drillSeq int
+	hasDrill := false
 	if len(args) > 0 {
-		return outputError(fmt.Sprintf("unknown command %q for \"webctl network\"", args[0]))
+		n, err := strconv.Atoi(args[0])
+		if err != nil {
+			return outputError(fmt.Sprintf("unknown command %q for \"webctl network\"", args[0]))
+		}
+		drillSeq = n
+		hasDrill = true
+	}
+
+	// --schema is a drill-down preview; it requires an entry index.
+	if schema && !hasDrill {
+		return outputError("network --schema requires an entry index (for example: network 42 --schema)")
+	}
+
+	// Validate --detail up front so a malformed value is a deterministic usage
+	// error in every mode, before any daemon round-trip. The resolved level only
+	// shapes the text list below: drill-down forces full and JSON ignores it, but
+	// a bad value is still rejected there rather than silently accepted.
+	detail, err := resolveDetailLevel(cmd)
+	if err != nil {
+		return outputError(err.Error())
 	}
 
 	if !execFactory.IsDaemonRunning() {
 		return outputError("daemon not running. Start with: webctl start")
 	}
 
-	// Get network entries from daemon
+	if hasDrill {
+		return runNetworkDrilldown(cmd, drillSeq, schema)
+	}
+
+	// List mode. Fetch, filter, and limit the active session's entries.
 	entries, err := getNetworkFromDaemon(cmd)
 	if err != nil {
 		if errors.Is(err, ErrNoMatches) {
@@ -142,17 +212,119 @@ func runNetworkDefault(cmd *cobra.Command, args []string) error {
 		return outputError(err.Error())
 	}
 
-	// JSON mode: output JSON
+	// JSON is always full fidelity: unlimited bodies unless --max-body-size is set.
 	if JSONOutput {
-		return outputNetworkJSON(entries, resolveMaxBodySize(cmd))
+		return outputNetworkJSON(entries, resolveMaxBodySize(cmd, ipc.MaxBodySizeUnlimited))
 	}
 
-	// Text mode: bound bodies to --max-body-size before rendering, then format.
+	// Bodies render only at the full level, where the unset default is 102400.
 	// The formatter prints the already-bounded text and does not truncate itself.
-	applyBodyTruncation(entries, resolveMaxBodySize(cmd))
+	if detail == format.DetailFull {
+		applyBodyTruncation(entries, resolveMaxBodySize(cmd, ipc.DefaultMaxBodySize))
+	}
+
 	opts := format.NewOutputOptions(JSONOutput, NoColor)
 	opts.ShowHeaders = resolveHeadersFlag(cmd)
+	opts.Detail = detail
 	return format.Network(os.Stdout, entries, opts)
+}
+
+// runNetworkDrilldown resolves a single entry by exact seq membership over the
+// active session's full unfiltered set and renders it (or its schema). It ignores
+// the filter and head/tail/range flags so a live entry is never hidden by a
+// narrowing flag, and derives its miss-error bounds from that same set.
+func runNetworkDrilldown(cmd *cobra.Command, n int, schema bool) error {
+	entries, err := fetchNetworkEntries()
+	if err != nil {
+		return outputError(err.Error())
+	}
+
+	entry, found := findNetworkEntryBySeq(entries, n)
+	if !found {
+		return outputError(networkDrilldownMissMessage(n, entries))
+	}
+
+	if schema {
+		return outputNetworkSchema(*entry)
+	}
+
+	// The payload view is complete by default: bodies are unbounded unless the
+	// caller sets an explicit --max-body-size cap.
+	maxBodySize := resolveMaxBodySize(cmd, ipc.MaxBodySizeUnlimited)
+	single := []ipc.NetworkEntry{*entry}
+
+	if JSONOutput {
+		return outputNetworkJSON(single, maxBodySize)
+	}
+
+	// Drilling in is the explicit request to see the payload, so bodies render
+	// regardless of --detail.
+	applyBodyTruncation(single, maxBodySize)
+	opts := format.NewOutputOptions(JSONOutput, NoColor)
+	opts.ShowHeaders = resolveHeadersFlag(cmd)
+	opts.Detail = format.DetailFull
+	return format.Network(os.Stdout, single, opts)
+}
+
+// findNetworkEntryBySeq returns the entry whose seq exactly equals n. The held
+// seqs may be sparse, so this is a membership test, not a range check: n falling
+// between the lowest and highest held seq does not imply it is present.
+func findNetworkEntryBySeq(entries []ipc.NetworkEntry, n int) (*ipc.NetworkEntry, bool) {
+	if n < 0 {
+		return nil, false
+	}
+	target := uint64(n)
+	for i := range entries {
+		if entries[i].Seq == target {
+			return &entries[i], true
+		}
+	}
+	return nil, false
+}
+
+// networkSeqBounds returns the lowest and highest seq held in entries. ok is
+// false when entries is empty, meaning there is no bound to name.
+func networkSeqBounds(entries []ipc.NetworkEntry) (lo, hi uint64, ok bool) {
+	if len(entries) == 0 {
+		return 0, 0, false
+	}
+	lo, hi = entries[0].Seq, entries[0].Seq
+	for _, e := range entries {
+		if e.Seq < lo {
+			lo = e.Seq
+		}
+		if e.Seq > hi {
+			hi = e.Seq
+		}
+	}
+	return lo, hi, true
+}
+
+// networkDrilldownMissMessage builds the eviction-aware error for a drill-down
+// to a seq the active session does not hold. The named bounds are orientation
+// only; they do not promise every value between them is present.
+func networkDrilldownMissMessage(n int, entries []ipc.NetworkEntry) string {
+	lo, hi, ok := networkSeqBounds(entries)
+	if !ok {
+		return fmt.Sprintf("entry %d not in buffer (buffer empty)", n)
+	}
+	return fmt.Sprintf("entry %d not in buffer (holds seq %d-%d; run network to list)", n, lo, hi)
+}
+
+// resolveDetailLevel reads and validates the --detail flag. It is a local flag on
+// the default command, so no parent fallback is needed.
+func resolveDetailLevel(cmd *cobra.Command) (format.DetailLevel, error) {
+	detail, _ := cmd.Flags().GetString("detail")
+	switch detail {
+	case "summary":
+		return format.DetailSummary, nil
+	case "standard", "":
+		return format.DetailStandard, nil
+	case "full":
+		return format.DetailFull, nil
+	default:
+		return format.DetailStandard, fmt.Errorf("invalid --detail %q: use summary, standard, or full", detail)
+	}
 }
 
 // runNetworkSave handles save subcommand: save to file
@@ -174,7 +346,9 @@ func networkSaveContent(cmd *cobra.Command) (string, error) {
 		return "", err
 	}
 
-	applyBodyTruncation(entries, resolveMaxBodySize(cmd))
+	// A saved file is a full-fidelity archive, so bodies are unbounded unless the
+	// caller sets an explicit --max-body-size cap.
+	applyBodyTruncation(entries, resolveMaxBodySize(cmd, ipc.MaxBodySizeUnlimited))
 
 	return marshalSaveEnvelope(map[string]any{
 		"ok":      true,
@@ -184,10 +358,12 @@ func networkSaveContent(cmd *cobra.Command) (string, error) {
 }
 
 // resolveMaxBodySize reads the --max-body-size flag, falling back to the parent
-// command's persistent flag and finally the default. It distinguishes an unset
-// flag from an explicit value via Changed, so a deliberate --max-body-size 0
-// (suppress all body content) is honoured rather than coalesced to the default.
-func resolveMaxBodySize(cmd *cobra.Command) int {
+// command's persistent flag and finally defaultWhenUnset. It distinguishes an
+// unset flag from an explicit value via Changed, so a deliberate --max-body-size 0
+// (suppress) or -1 (unlimited) is honoured rather than coalesced to the default.
+// The unset default is mode-dependent (102400 for the --detail full text list,
+// unlimited for JSON, drill-down, and save), so the caller supplies it.
+func resolveMaxBodySize(cmd *cobra.Command, defaultWhenUnset int) int {
 	if cmd.Flags().Changed("max-body-size") {
 		maxBodySize, _ := cmd.Flags().GetInt("max-body-size")
 		return maxBodySize
@@ -196,7 +372,7 @@ func resolveMaxBodySize(cmd *cobra.Command) int {
 		maxBodySize, _ := cmd.Parent().PersistentFlags().GetInt("max-body-size")
 		return maxBodySize
 	}
-	return ipc.DefaultMaxBodySize
+	return defaultWhenUnset
 }
 
 // resolveHeadersFlag reads the --headers flag, falling back to the parent
@@ -207,6 +383,38 @@ func resolveHeadersFlag(cmd *cobra.Command) bool {
 		headers, _ = cmd.Parent().PersistentFlags().GetBool("headers")
 	}
 	return headers
+}
+
+// fetchNetworkEntries returns the active session's full unfiltered entry set from
+// the daemon, in buffer order. Both the filtered list path and the unfiltered
+// drill-down path build on it, so drill-down addresses the same scope the list
+// derives its bounds from.
+func fetchNetworkEntries() ([]ipc.NetworkEntry, error) {
+	exec, err := execFactory.NewExecutor()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = exec.Close() }()
+
+	debugRequest("network", "")
+	ipcStart := time.Now()
+
+	resp, err := exec.Execute(ipc.Request{Cmd: "network"})
+
+	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
+
+	if err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return nil, fmt.Errorf("%s", resp.Error)
+	}
+
+	var data ipc.NetworkData
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return nil, err
+	}
+	return data.Entries, nil
 }
 
 // getNetworkFromDaemon fetches network entries from daemon, applying filters
@@ -290,35 +498,10 @@ func getNetworkFromDaemon(cmd *cobra.Command) ([]ipc.NetworkEntry, error) {
 
 	debugParam("find=%q types=%v methods=%v statuses=%v urlPattern=%q failed=%v", find, types, methods, statuses, urlPattern, failed)
 
-	exec, err := execFactory.NewExecutor()
+	entries, err := fetchNetworkEntries()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = exec.Close() }()
-
-	debugRequest("network", "")
-	ipcStart := time.Now()
-
-	// Execute network request
-	resp, err := exec.Execute(ipc.Request{Cmd: "network"})
-
-	debugResponse(err == nil && resp.OK, len(resp.Data), time.Since(ipcStart))
-
-	if err != nil {
-		return nil, err
-	}
-
-	if !resp.OK {
-		return nil, fmt.Errorf("%s", resp.Error)
-	}
-
-	// Parse network data
-	var data ipc.NetworkData
-	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return nil, err
-	}
-
-	entries := data.Entries
 
 	// Build filter options
 	filterOpts := networkFilterOptions{
@@ -567,31 +750,40 @@ func applyNetworkLimiting(entries []ipc.NetworkEntry, head, tail int, rangeStr s
 	}
 
 	if rangeStr != "" {
-		parts := strings.Split(rangeStr, "-")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid range format: use START-END (e.g., 100-200)")
-		}
-		start, err := strconv.Atoi(parts[0])
+		start, end, err := parseSeqRange(rangeStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid range format: use START-END (e.g., 100-200)")
+			return nil, err
 		}
-		end, err := strconv.Atoi(parts[1])
-		if err != nil {
-			return nil, fmt.Errorf("invalid range format: use START-END (e.g., 100-200)")
+		// Inclusive seq membership, AND-combined with the other filters. The held
+		// seqs are sparse, so the endpoints need not be present; return whatever
+		// held seqs fall inside [start, end], empty when none do.
+		var matched []ipc.NetworkEntry
+		for _, e := range entries {
+			if e.Seq >= start && e.Seq <= end {
+				matched = append(matched, e)
+			}
 		}
-		if start < 0 {
-			start = 0
-		}
-		if end > len(entries) {
-			end = len(entries)
-		}
-		if start >= end {
-			return []ipc.NetworkEntry{}, nil
-		}
-		return entries[start:end], nil
+		return matched, nil
 	}
 
 	return entries, nil
+}
+
+// parseSeqRange parses a "START-END" range into inclusive seq bounds.
+func parseSeqRange(rangeStr string) (start, end uint64, err error) {
+	parts := strings.Split(rangeStr, "-")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid range format: use START-END (e.g., 318-425)")
+	}
+	start, err = strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid range format: use START-END (e.g., 318-425)")
+	}
+	end, err = strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid range format: use START-END (e.g., 318-425)")
+	}
+	return start, end, nil
 }
 
 // truncateBody cuts body to at most maxBytes bytes on a UTF-8 rune boundary
@@ -613,8 +805,13 @@ func truncateBody(body string, maxBytes int) (string, bool) {
 
 // applyBodyTruncation bounds the request and response body of every entry to
 // maxBodySize, setting each entry's own truncation flag. Shared by the JSON,
-// save, and text output paths so the byte-budget logic lives in one place.
+// save, and text output paths so the byte-budget logic lives in one place. A
+// negative maxBodySize (the unlimited sentinel) skips truncation entirely,
+// leaving bodies at full fidelity; 0 suppresses all body content.
 func applyBodyTruncation(entries []ipc.NetworkEntry, maxBodySize int) {
+	if maxBodySize < 0 {
+		return
+	}
 	for i := range entries {
 		if truncated, did := truncateBody(entries[i].RequestBody, maxBodySize); did {
 			entries[i].RequestBody = truncated
@@ -637,4 +834,113 @@ func outputNetworkJSON(entries []ipc.NetworkEntry, maxBodySize int) error {
 		"count":   len(entries),
 	}
 	return outputJSON(os.Stdout, result)
+}
+
+// outputNetworkSchema emits a token-efficient key skeleton of an entry's JSON
+// response body. It reads the full stored body (a truncated body is not
+// parseable JSON) and wraps the result in the standard envelope on stdout with
+// exit 0. Both a parsed body and a non-JSON body share one envelope, one stream,
+// and one exit code so a single parser branches on the schema field: a null
+// schema means see the notice.
+func outputNetworkSchema(entry ipc.NetworkEntry) error {
+	var parsed any
+	if strings.TrimSpace(entry.ResponseBody) == "" || json.Unmarshal([]byte(entry.ResponseBody), &parsed) != nil {
+		notice := "response body is not JSON"
+		if entry.MimeType != "" {
+			notice = fmt.Sprintf("response body is not JSON (%s)", entry.MimeType)
+		}
+		return outputJSON(os.Stdout, map[string]any{
+			"ok":     true,
+			"schema": nil,
+			"notice": notice,
+		})
+	}
+
+	return outputJSON(os.Stdout, map[string]any{
+		"ok":     true,
+		"schema": buildSchema(parsed),
+	})
+}
+
+// buildSchema mirrors a parsed JSON value's structure, replacing each leaf with
+// its JSON type name. Objects keep their keys; arrays collapse to a single
+// representative element that unions the shapes of every element, so a
+// heterogeneous array does not hide fields.
+func buildSchema(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		m := make(map[string]any, len(t))
+		for k, val := range t {
+			m[k] = buildSchema(val)
+		}
+		return m
+	case []any:
+		if len(t) == 0 {
+			return []any{}
+		}
+		schemas := make([]any, len(t))
+		for i, el := range t {
+			schemas[i] = buildSchema(el)
+		}
+		return []any{mergeSchemas(schemas)}
+	case string:
+		return "string"
+	case float64:
+		return "number"
+	case bool:
+		return "boolean"
+	case nil:
+		return "null"
+	default:
+		return "unknown"
+	}
+}
+
+// mergeSchemas unions a list of schema values into one representative. Object
+// schemas merge key by key (recursively), array schemas merge their inner
+// representatives, and a scalar falls through. Composite shapes win over scalars
+// when a heterogeneous array mixes them, so no object key is lost.
+func mergeSchemas(schemas []any) any {
+	var maps []map[string]any
+	var arrays [][]any
+	var scalar any
+	for _, s := range schemas {
+		switch t := s.(type) {
+		case map[string]any:
+			maps = append(maps, t)
+		case []any:
+			arrays = append(arrays, t)
+		default:
+			if scalar == nil {
+				scalar = t
+			}
+		}
+	}
+
+	if len(maps) > 0 {
+		merged := make(map[string]any)
+		for _, m := range maps {
+			for k, v := range m {
+				if existing, ok := merged[k]; ok {
+					merged[k] = mergeSchemas([]any{existing, v})
+				} else {
+					merged[k] = v
+				}
+			}
+		}
+		return merged
+	}
+
+	if len(arrays) > 0 {
+		var inner []any
+		for _, a := range arrays {
+			inner = append(inner, a...)
+		}
+		if len(inner) == 0 {
+			return []any{}
+		}
+		return []any{mergeSchemas(inner)}
+	}
+
+	return scalar
 }

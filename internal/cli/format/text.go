@@ -23,11 +23,34 @@ func colorFprintf(w io.Writer, c color.Attribute, format string, args ...interfa
 	_, _ = color.New(c).Fprintf(w, format, args...)
 }
 
+// DetailLevel controls how much of each network entry the text formatter renders.
+type DetailLevel int
+
+const (
+	// DetailSummary renders only the main line per entry (no transport block, no
+	// headers, no bodies). A failed entry still shows its failure reason.
+	DetailSummary DetailLevel = iota
+	// DetailStandard adds the transport detail block (remote, timing, initiator)
+	// and, when ShowHeaders is set, the header blocks. This is the default.
+	DetailStandard
+	// DetailFull adds the request and response bodies, bounded by --max-body-size.
+	DetailFull
+)
+
 // OutputOptions controls text formatting behavior.
 type OutputOptions struct {
-	UseColor    bool // Enable ANSI color codes
-	ShowHeaders bool // Render request/response headers (network text mode)
+	UseColor    bool        // Enable ANSI color codes
+	ShowHeaders bool        // Render request/response headers (network text mode)
+	Detail      DetailLevel // Network detail level (summary/standard/full)
 }
+
+// Network subordinate-line indentation. Detail lines read as children of their
+// seq-prefixed entry; nested lines (header entries, multi-line body content) sit
+// one level deeper.
+const (
+	netIndent  = "       "   // 7 spaces: subordinate detail lines
+	netIndent2 = "         " // 9 spaces: nested lines under a detail label
+)
 
 // NewOutputOptions returns output options based on flags and environment.
 // Priority: jsonOutput > noColorFlag > NO_COLOR env > TTY detection.
@@ -307,6 +330,10 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 		// Format duration
 		durationMs := int(e.Duration * 1000)
 
+		// Each entry line is prefixed with its own seq (the drill-down address),
+		// zero-padded to a minimum of two digits and growing naturally beyond.
+		_, _ = fmt.Fprintf(w, "%02d ", e.Seq)
+
 		// A failed request (loadingFailed) carries no status, so render a distinct
 		// FAILED token plus the captured reason instead of a bare status of 0. The
 		// branch keys on Failed, not status == 0, so a genuine zero-status success
@@ -324,17 +351,24 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 				_, _ = fmt.Fprintf(w, " %s", e.Type)
 			}
 			_, _ = fmt.Fprintln(w)
-			// The failure reason leads the detail block: it is the point of a
-			// failed entry, so it comes before the transport/initiator metadata.
+			// The failure reason is the point of a failed entry, so it renders at
+			// every detail level, before the transport/initiator metadata.
 			if e.Error != "" {
-				_, _ = fmt.Fprintf(w, "  error: %s\n", e.Error)
+				_, _ = fmt.Fprintf(w, "%serror: %s\n", netIndent, e.Error)
 			}
-			printNetworkRemote(w, e)
-			printNetworkTiming(w, e)
-			printNetworkInitiator(w, e)
-			// A failed request has no response, but its request side is still
-			// captured and diagnostic, so render it as the success path does.
-			printNetworkRequestSide(w, e, opts)
+			if opts.Detail >= DetailStandard {
+				printNetworkRemote(w, e)
+				printNetworkTiming(w, e)
+				printNetworkInitiator(w, e)
+				if opts.ShowHeaders {
+					printNetworkHeaders(w, "request-headers:", e.RequestHeaders)
+				}
+			}
+			// A failed request has no response, but its request body is still
+			// captured and diagnostic, so it renders with the bodies at full.
+			if opts.Detail >= DetailFull {
+				printNetworkBody(w, "request:", e.RequestBody, e.RequestBodyTruncated)
+			}
 			continue
 		}
 
@@ -353,24 +387,33 @@ func Network(w io.Writer, entries []ipc.NetworkEntry, opts OutputOptions) error 
 			_, _ = fmt.Fprintf(w, " (%s)", tok)
 		}
 		_, _ = fmt.Fprintln(w)
-		printNetworkRemote(w, e)
-		printNetworkTiming(w, e)
-		printNetworkInitiator(w, e)
 
-		// Subordinate detail: the request side (headers when --headers, then body)
-		// followed by the response side, each part printed only when present.
-		// Bodies arrive already bounded to --max-body-size, so they render verbatim
-		// and a trailing marker flags any that were cut. A binary response body is
-		// filed rather than stored on ResponseBody, so its saved path prints in
-		// place of the payload.
-		printNetworkRequestSide(w, e, opts)
-		if opts.ShowHeaders {
+		// Transport detail block: shown at standard and full, hidden at summary.
+		if opts.Detail >= DetailStandard {
+			printNetworkRemote(w, e)
+			printNetworkTiming(w, e)
+			printNetworkInitiator(w, e)
+			if opts.ShowHeaders {
+				printNetworkHeaders(w, "request-headers:", e.RequestHeaders)
+			}
+		}
+
+		// Bodies: shown only at full. They arrive already bounded to
+		// --max-body-size, so they render verbatim and a trailing marker flags any
+		// that were cut. A binary response body is filed rather than stored on
+		// ResponseBody, so its saved path prints in place of the payload.
+		if opts.Detail >= DetailFull {
+			printNetworkBody(w, "request:", e.RequestBody, e.RequestBodyTruncated)
+		}
+		if opts.Detail >= DetailStandard && opts.ShowHeaders {
 			printNetworkHeaders(w, "response-headers:", e.ResponseHeaders)
 		}
-		if e.ResponseBody != "" {
-			printNetworkBody(w, "response:", e.ResponseBody, e.ResponseBodyTruncated)
-		} else if e.ResponseBodyPath != "" {
-			_, _ = fmt.Fprintf(w, "  response: [binary saved to %s]\n", e.ResponseBodyPath)
+		if opts.Detail >= DetailFull {
+			if e.ResponseBody != "" {
+				printNetworkBody(w, "response:", e.ResponseBody, e.ResponseBodyTruncated)
+			} else if e.ResponseBodyPath != "" {
+				_, _ = fmt.Fprintf(w, "%sresponse: [binary saved to %s]\n", netIndent, e.ResponseBodyPath)
+			}
 		}
 	}
 	return nil
@@ -420,7 +463,7 @@ func printNetworkRemote(w io.Writer, e ipc.NetworkEntry) {
 	if e.SecurityState != "" && e.SecurityState != "secure" {
 		parts = append(parts, e.SecurityState)
 	}
-	_, _ = fmt.Fprintf(w, "  remote: %s\n", strings.Join(parts, " "))
+	_, _ = fmt.Fprintf(w, "%sremote: %s\n", netIndent, strings.Join(parts, " "))
 }
 
 // printNetworkTiming renders the per-phase latency line for an entry. Phases are
@@ -451,7 +494,7 @@ func printNetworkTiming(w io.Writer, e ipc.NetworkEntry) {
 	if len(parts) == 0 {
 		return
 	}
-	_, _ = fmt.Fprintf(w, "  timing: %s\n", strings.Join(parts, " "))
+	_, _ = fmt.Fprintf(w, "%stiming: %s\n", netIndent, strings.Join(parts, " "))
 }
 
 // printNetworkInitiator renders what triggered the request as a subordinate
@@ -466,20 +509,10 @@ func printNetworkInitiator(w io.Writer, e ipc.NetworkEntry) {
 	// Mirror the console formatter: append the line only when it is meaningful,
 	// since CDP line numbers are 0-based and line 0 would render a bare ":0".
 	if e.Initiator.Line > 0 {
-		_, _ = fmt.Fprintf(w, "  initiator: %s %s:%d\n", e.Initiator.Type, e.Initiator.URL, e.Initiator.Line)
+		_, _ = fmt.Fprintf(w, "%sinitiator: %s %s:%d\n", netIndent, e.Initiator.Type, e.Initiator.URL, e.Initiator.Line)
 	} else {
-		_, _ = fmt.Fprintf(w, "  initiator: %s %s\n", e.Initiator.Type, e.Initiator.URL)
+		_, _ = fmt.Fprintf(w, "%sinitiator: %s %s\n", netIndent, e.Initiator.Type, e.Initiator.URL)
 	}
-}
-
-// printNetworkRequestSide renders the request half of an entry — headers when
-// opts.ShowHeaders, then the request body — so the failed and success paths emit
-// an identical request section. Each part prints only when present.
-func printNetworkRequestSide(w io.Writer, e ipc.NetworkEntry, opts OutputOptions) {
-	if opts.ShowHeaders {
-		printNetworkHeaders(w, "request-headers:", e.RequestHeaders)
-	}
-	printNetworkBody(w, "request:", e.RequestBody, e.RequestBodyTruncated)
 }
 
 // printNetworkHeaders renders a labeled header map as indented subordinate
@@ -493,9 +526,9 @@ func printNetworkHeaders(w io.Writer, label string, headers map[string]string) {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	_, _ = fmt.Fprintf(w, "  %s\n", label)
+	_, _ = fmt.Fprintf(w, "%s%s\n", netIndent, label)
 	for _, k := range keys {
-		_, _ = fmt.Fprintf(w, "    %s: %s\n", k, headers[k])
+		_, _ = fmt.Fprintf(w, "%s%s: %s\n", netIndent2, k, headers[k])
 	}
 }
 
@@ -511,15 +544,15 @@ func printNetworkBody(w io.Writer, label, body string, truncated bool) {
 	}
 	lines := strings.Split(body, "\n")
 	if len(lines) == 1 {
-		_, _ = fmt.Fprintf(w, "  %s %s\n", label, lines[0])
+		_, _ = fmt.Fprintf(w, "%s%s %s\n", netIndent, label, lines[0])
 	} else {
-		_, _ = fmt.Fprintf(w, "  %s\n", label)
+		_, _ = fmt.Fprintf(w, "%s%s\n", netIndent, label)
 		for _, line := range lines {
-			_, _ = fmt.Fprintf(w, "    %s\n", line)
+			_, _ = fmt.Fprintf(w, "%s%s\n", netIndent2, line)
 		}
 	}
 	if truncated {
-		_, _ = fmt.Fprintf(w, "    … [truncated]\n")
+		_, _ = fmt.Fprintf(w, "%s… [truncated]\n", netIndent2)
 	}
 }
 
