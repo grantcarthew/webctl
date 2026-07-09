@@ -84,6 +84,24 @@ func setMockFactory(f ExecutorFactory) func() {
 	}
 }
 
+// stringSliceReplacer is the pflag slice Value method that overwrites the slice.
+// FlagSet.Set on a StringSlice appends; tests must Replace to set or clear.
+type stringSliceReplacer interface {
+	Replace([]string) error
+}
+
+// setConsoleStringSlice replaces consoleCmd's named StringSlice persistent flag.
+// Pass nil or empty values to clear it. Prefer this over FlagSet.Set for slices.
+func setConsoleStringSlice(name string, values []string) {
+	f := consoleCmd.PersistentFlags().Lookup(name)
+	if f == nil {
+		return
+	}
+	if r, ok := f.Value.(stringSliceReplacer); ok {
+		_ = r.Replace(values)
+	}
+}
+
 func TestOutputSuccess(t *testing.T) {
 	enableJSONOutput(t)
 
@@ -595,13 +613,13 @@ func TestRunConsole_Success(t *testing.T) {
 		t.Errorf("expected count=2, got %v", result["count"])
 	}
 
-	logs, ok := result["logs"].([]any)
+	entries, ok := result["entries"].([]any)
 	if !ok {
-		t.Fatalf("expected logs to be array, got %T", result["logs"])
+		t.Fatalf("expected entries to be array, got %T", result["entries"])
 	}
 
-	if len(logs) != 2 {
-		t.Errorf("expected 2 logs, got %d", len(logs))
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(entries))
 	}
 
 	if !exec.closed {
@@ -688,12 +706,14 @@ func TestFilterConsoleByType(t *testing.T) {
 }
 
 func TestApplyConsoleLimiting(t *testing.T) {
+	// Seq mirrors Text here so range assertions read naturally; --range is now
+	// inclusive seq membership, while --head/--tail remain entry counts. Held seqs
+	// are non-contiguous (318, 320, 421, 425) to prove sparse membership.
 	entries := []ipc.ConsoleEntry{
-		{Type: "log", Text: "0"},
-		{Type: "log", Text: "1"},
-		{Type: "log", Text: "2"},
-		{Type: "log", Text: "3"},
-		{Type: "log", Text: "4"},
+		{Seq: 318, Type: "log", Text: "318"},
+		{Seq: 320, Type: "log", Text: "320"},
+		{Seq: 421, Type: "log", Text: "421"},
+		{Seq: 425, Type: "log", Text: "425"},
 	}
 
 	tests := []struct {
@@ -706,18 +726,17 @@ func TestApplyConsoleLimiting(t *testing.T) {
 		lastText    string
 		expectError bool
 	}{
-		{"no limit", 0, 0, "", 5, "0", "4", false},
-		{"head 2", 2, 0, "", 2, "0", "1", false},
-		{"head exceeds length", 10, 0, "", 5, "0", "4", false},
-		{"tail 2", 0, 2, "", 2, "3", "4", false},
-		{"tail exceeds length", 0, 10, "", 5, "0", "4", false},
-		// Range is 1-indexed and inclusive: --range 1-3 returns entries 1, 2, 3
-		{"range 1-3", 0, 0, "1-3", 3, "0", "2", false},
-		{"range 2-4", 0, 0, "2-4", 3, "1", "3", false},
-		{"range 1-5", 0, 0, "1-5", 5, "0", "4", false},
-		{"range exceeds length", 0, 0, "1-100", 5, "0", "4", false},
-		{"range 0 start clamps to 1", 0, 0, "0-3", 3, "0", "2", false},
-		{"range start > end", 0, 0, "3-2", 0, "", "", false},
+		{"no limit", 0, 0, "", 4, "318", "425", false},
+		{"head 2", 2, 0, "", 2, "318", "320", false},
+		{"head exceeds length", 10, 0, "", 4, "318", "425", false},
+		{"tail 2", 0, 2, "", 2, "421", "425", false},
+		{"tail exceeds length", 0, 10, "", 4, "318", "425", false},
+		// Inclusive seq membership: absent endpoints (319, 422) do not matter.
+		{"range spans all", 0, 0, "318-425", 4, "318", "425", false},
+		{"range interior membership", 0, 0, "319-422", 2, "320", "421", false},
+		{"range wider than held", 0, 0, "0-99999", 4, "318", "425", false},
+		{"range holds nothing", 0, 0, "321-420", 0, "", "", false},
+		{"range start after end", 0, 0, "425-318", 0, "", "", false},
 		{"invalid range format", 0, 0, "abc", 0, "", "", true},
 		{"invalid range no dash", 0, 0, "12", 0, "", "", true},
 	}
@@ -833,18 +852,18 @@ func TestRunConsoleDefault_Success(t *testing.T) {
 		t.Errorf("expected ok=true, got %v", result["ok"])
 	}
 
-	// Default mode now outputs to stdout, so we should have logs and count (not path)
+	// Default mode now outputs to stdout, so we should have entries and count (not path)
 	if result["count"] != float64(1) {
 		t.Errorf("expected count=1, got %v", result["count"])
 	}
 
-	logs, ok := result["logs"].([]any)
+	entries, ok := result["entries"].([]any)
 	if !ok {
-		t.Fatalf("expected logs to be array, got %T", result["logs"])
+		t.Fatalf("expected entries to be array, got %T", result["entries"])
 	}
 
-	if len(logs) != 1 {
-		t.Errorf("expected 1 log, got %d", len(logs))
+	if len(entries) != 1 {
+		t.Errorf("expected 1 entry, got %d", len(entries))
 	}
 
 	if !exec.closed {
@@ -946,13 +965,13 @@ func TestRunConsoleSave_CustomFilePath(t *testing.T) {
 		t.Error("saved file should contain ok=true")
 	}
 
-	logs, ok := savedData["logs"].([]any)
+	entries, ok := savedData["entries"].([]any)
 	if !ok {
-		t.Fatalf("saved file should contain logs array, got %T", savedData["logs"])
+		t.Fatalf("saved file should contain entries array, got %T", savedData["entries"])
 	}
 
-	if len(logs) != 1 {
-		t.Errorf("expected 1 log entry, got %d", len(logs))
+	if len(entries) != 1 {
+		t.Errorf("expected 1 entry, got %d", len(entries))
 	}
 
 	if !exec.closed {
@@ -1071,11 +1090,12 @@ func TestRunConsoleShow_CombinedFilters(t *testing.T) {
 	defer restore()
 
 	// Set combined filters on the parent command: --type error --find "TypeError" --tail 2
-	_ = consoleCmd.PersistentFlags().Set("type", "error")
+	// StringSlice flags must be Replace'd (Set appends and cannot clear).
+	setConsoleStringSlice("type", []string{"error"})
 	_ = consoleCmd.PersistentFlags().Set("find", "TypeError")
 	_ = consoleCmd.PersistentFlags().Set("tail", "2")
 	t.Cleanup(func() {
-		_ = consoleCmd.PersistentFlags().Set("type", "")
+		setConsoleStringSlice("type", nil)
 		_ = consoleCmd.PersistentFlags().Set("find", "")
 		_ = consoleCmd.PersistentFlags().Set("tail", "0")
 	})
@@ -1102,15 +1122,15 @@ func TestRunConsoleShow_CombinedFilters(t *testing.T) {
 		t.Fatalf("failed to parse output: %v", err)
 	}
 
-	logs, ok := result["logs"].([]any)
+	entries, ok := result["entries"].([]any)
 	if !ok {
-		t.Fatalf("expected logs to be array, got %T", result["logs"])
+		t.Fatalf("expected entries to be array, got %T", result["entries"])
 	}
 
 	// Should get 2 TypeError entries (filtered by type=error, find=TypeError, tail=2)
 	// But we only have 2 TypeError entries total, so should get both
-	if len(logs) != 2 {
-		t.Errorf("expected 2 logs after combined filters, got %d", len(logs))
+	if len(entries) != 2 {
+		t.Errorf("expected 2 entries after combined filters, got %d", len(entries))
 	}
 
 	if !exec.closed {
@@ -1166,10 +1186,13 @@ func TestRunConsoleShow_TextOutput(t *testing.T) {
 	JSONOutput = false
 	defer func() { JSONOutput = oldJSON }()
 
+	// Ensure no leftover --type filter from other tests narrows the list.
+	setConsoleStringSlice("type", nil)
+
 	consoleData := ipc.ConsoleData{
 		Entries: []ipc.ConsoleEntry{
-			{Type: "log", Text: "Application started", Timestamp: 1702000000000},
-			{Type: "error", Text: "Fatal error occurred", Timestamp: 1702000001000, URL: "https://example.com/app.js", Line: 42},
+			{Seq: 1, Type: "log", Text: "Application started", Timestamp: 1702000000000},
+			{Seq: 2, Type: "error", Text: "Fatal error occurred", Timestamp: 1702000001000, URL: "https://example.com/app.js", Line: 42},
 		},
 		Count: 2,
 	}
@@ -1205,23 +1228,15 @@ func TestRunConsoleShow_TextOutput(t *testing.T) {
 	_, _ = buf.ReadFrom(r)
 	output := buf.String()
 
-	// Verify text format output
-	// Format is: [HH:MM:SS] LEVEL Message
-	// Should contain formatted log entries with timestamps and messages
-	if len(output) == 0 {
-		t.Error("expected non-empty output")
+	// Indexed list: SEQ [HH:MM:SS] LEVEL frame? message — one physical line per entry.
+	if !strings.Contains(output, "01 [") || !strings.Contains(output, "LOG") || !strings.Contains(output, "Application started") {
+		t.Errorf("expected seq-prefixed log summary line, got:\n%s", output)
 	}
-
-	// Check for timestamp format [HH:MM:SS]
-	if !strings.Contains(output, "[") || !strings.Contains(output, "]") {
-		t.Errorf("expected output to contain timestamp format, got: %s", output)
+	if !strings.Contains(output, "02 [") || !strings.Contains(output, "ERROR") || !strings.Contains(output, "Fatal error occurred") {
+		t.Errorf("expected seq-prefixed error summary line, got:\n%s", output)
 	}
-
-	// At least one message should be present
-	hasLog := strings.Contains(output, "Application started")
-	hasError := strings.Contains(output, "Fatal error occurred")
-	if !hasLog && !hasError {
-		t.Errorf("expected output to contain at least one log message, got: %s", output)
+	if !strings.Contains(output, "https://example.com/app.js:42") {
+		t.Errorf("error summary should carry the url:line locator, got:\n%s", output)
 	}
 
 	if !exec.closed {

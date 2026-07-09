@@ -53,11 +53,19 @@ webctl console --type warn
 webctl console --find "undefined"
 webctl console --head 10
 webctl console --tail 20
-webctl console --range 5-15
+webctl console --range 318-425
+webctl console <n>
 webctl console save
 webctl console save ./logs.json
 webctl console save ./output/
 ```
+
+Default text is an indexed list: one summary line per entry, prefixed with seq.
+Drill-down: webctl console <n> returns the single entry with that seq, full stack,
+args, and exception or Log-domain detail. Ignores --find/--type/--head/--tail/--range.
+--range START-END is inclusive seq membership (not position); empty range is exit 0.
+JSON envelope keys the array entries (not logs) with count. Drill-down is one entry
+in the same envelope.
 
 ## network
 
@@ -78,11 +86,18 @@ webctl network --headers
 webctl network --find "error"
 webctl network --head 10
 webctl network --tail 20
-webctl network --range 5-15
+webctl network --range 318-425
+webctl network <n>
 webctl network save
 webctl network save ./requests.json
 webctl network save ./output/
 ```
+
+Default text is an indexed list: one summary line per entry, prefixed with seq.
+Drill-down: webctl network <n> returns the single entry with that seq (full
+bodies). Ignores list filters and --head/--tail/--range.
+--range START-END is inclusive seq membership (not position); empty range is exit 0.
+JSON envelope keys the array entries with count.
 
 Request and response bodies. Each entry carries the outgoing request body as
 requestBody and the response payload as responseBody when the request sent one

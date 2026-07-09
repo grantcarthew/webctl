@@ -405,12 +405,12 @@ Commands (unique prefixes accepted: h=html, k=key, ba=back, na=navigate, ne=netw
 
   Observation:
     status              Show daemon status
-    console [flags]     Show console log entries
+    console [<n>]       Indexed console list, or drill into seq n
       --type <type>       Filter by entry type (repeatable)
-      --head <n>          Return first N entries
-      --tail <n>          Return last N entries
-      --range <start-end> Return entries in range
-    network             Show network requests
+      --head <n>          First N entries (count over seq-ordered list)
+      --tail <n>          Last N entries (count over seq-ordered list)
+      --range <start-end> Keep entries whose seq is in [START, END]
+    network [<n>]       Indexed network list, or drill into seq n
     screenshot          Capture screenshot of current page
     html [selector]     Extract HTML from current page
     markdown [selector] Extract current page as Markdown

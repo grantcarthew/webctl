@@ -82,8 +82,6 @@ func saveSentinelNotice(err error) (error, bool) {
 		return outputNotice("No elements found"), true
 	case errors.Is(err, ErrNoRules):
 		return outputNotice("No rules found"), true
-	case errors.Is(err, ErrNoEntriesInRange):
-		return outputNotice("No entries in range"), true
 	}
 	return nil, false
 }

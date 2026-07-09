@@ -259,9 +259,26 @@ assert_success "${TEST_EXIT_CODE}" "Navigate to console page succeeded"
 # Wait for page to load and trigger console messages
 sleep 3
 
-# Test: Basic console output
+# Test: Basic console output (indexed list: SEQ [HH:MM:SS] LEVEL ...)
 run_test "console basic output" "${WEBCTL_BINARY}" console
 assert_success "${TEST_EXIT_CODE}" "console command returns success"
+assert_matches '^[0-9]+ \[' "${TEST_STDOUT}" "Console list lines are seq-prefixed"
+
+test_section "Console Command - Drill-down"
+
+# The main line is prefixed with the zero-padded seq; the first integer token is
+# the drill-down address. Full stack/args/exception live only on drill-down.
+CONSOLE_SEQ=$(printf '%s\n' "${TEST_STDOUT}" | grep -oE '^[0-9]+' | head -n1)
+assert_not_equals "" "${CONSOLE_SEQ}" "parsed a console seq from the indexed list"
+run_test "console drill-down shows full entry" "${WEBCTL_BINARY}" console "${CONSOLE_SEQ}"
+assert_success "${TEST_EXIT_CODE}" "console drill-down returns success"
+assert_matches "^0*${CONSOLE_SEQ} \[" "${TEST_STDOUT}" "Drill-down summary carries the same seq"
+
+# Drilling into a seq the active session does not hold errors with an
+# eviction-aware message and a non-zero exit.
+run_test "console drill-down miss" "${WEBCTL_BINARY}" console 999999
+assert_failure "${TEST_EXIT_CODE}" "drill-down to an absent seq fails"
+assert_contains "${TEST_STDOUT}${TEST_STDERR}" "not in buffer" "Miss names the empty/held-seq orientation"
 
 test_section "Console Command - Type Filtering"
 
@@ -291,6 +308,10 @@ TEMP_CONSOLE_FILE=$(create_temp_file ".txt")
 run_test "console save to custom file" "${WEBCTL_BINARY}" console save "${TEMP_CONSOLE_FILE}"
 assert_success "${TEST_EXIT_CODE}" "console save to file returns success"
 assert_file_exists "${TEMP_CONSOLE_FILE}" "Custom console file created"
+# Breaking change guard: envelope keys entries (not logs) with count.
+assert_json_field_exists "$(cat "${TEMP_CONSOLE_FILE}")" ".entries" "Saved envelope has entries array"
+assert_json_field_exists "$(cat "${TEMP_CONSOLE_FILE}")" ".count" "Saved envelope has count"
+assert_json_field "$(cat "${TEMP_CONSOLE_FILE}")" ".ok" "true" "Saved envelope ok is true"
 
 # Test: Save console to directory
 TEMP_CONSOLE_DIR=$(create_temp_dir)
@@ -646,9 +667,20 @@ assert_success "${TEST_EXIT_CODE}" "console --head returns success"
 run_test "console --tail 2" "${WEBCTL_BINARY}" console --tail 2
 assert_success "${TEST_EXIT_CODE}" "console --tail returns success"
 
-# Test: Console with --range
-run_test "console --range 1-2" "${WEBCTL_BINARY}" console --range "1-2"
+# --range is inclusive seq membership. Parse a held seq from the list so the
+# range is non-empty regardless of how high the buffer counter has climbed.
+run_test "console list for seq range" "${WEBCTL_BINARY}" console --tail 5
+assert_success "${TEST_EXIT_CODE}" "console list for range setup succeeds"
+RANGE_SEQ=$(printf '%s\n' "${TEST_STDOUT}" | grep -oE '^[0-9]+' | head -n1)
+assert_not_equals "" "${RANGE_SEQ}" "parsed a console seq for --range"
+run_test "console --range by seq" "${WEBCTL_BINARY}" console --range "${RANGE_SEQ}-${RANGE_SEQ}"
 assert_success "${TEST_EXIT_CODE}" "console --range returns success"
+assert_matches "^0*${RANGE_SEQ} \[" "${TEST_STDOUT}" "Range keeps the held seq"
+
+# An empty seq range is a routine empty list with exit 0, not a notice.
+run_test "console --range empty is exit 0" "${WEBCTL_BINARY}" console --range "999990-999999"
+assert_success "${TEST_EXIT_CODE}" "empty seq range returns success"
+assert_equals "" "${TEST_STDOUT}" "empty seq range yields no list rows"
 
 # Test: Mutually exclusive flags should fail
 run_test "console --head and --tail together" "${WEBCTL_BINARY}" console --head 2 --tail 2

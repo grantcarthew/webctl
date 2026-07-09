@@ -198,45 +198,223 @@ func Status(w io.Writer, data ipc.StatusData, opts OutputOptions) error {
 	return nil
 }
 
-// Console outputs console entries in text format.
+// Console renders the indexed console list: one summary line per entry, prefixed
+// with the entry's seq (its drill-down address). The line carries the wall-clock
+// timestamp, the level, the top stack frame, and the first line of the message.
+// The enriched payload (full multi-line text, complete stack, all arguments, and
+// exception or Log-domain detail) is reserved for drill-down (ConsoleDetail).
 func Console(w io.Writer, entries []ipc.ConsoleEntry, opts OutputOptions) error {
 	for _, e := range entries {
-		ts := time.UnixMilli(e.Timestamp).Local()
-		timestamp := ts.Format("15:04:05")
-		level := strings.ToUpper(e.Type)
-
-		// Format: [HH:MM:SS] LEVEL Message
-		if opts.UseColor {
-			_, _ = fmt.Fprint(w, "[")
-			colorFprint(w, color.Faint, timestamp)
-			_, _ = fmt.Fprint(w, "] ")
-
-			// Color the level based on type
-			switch ipc.NormalizeConsoleType(e.Type) {
-			case ipc.ConsoleTypeError:
-				colorFprint(w, color.FgRed, level)
-			case ipc.ConsoleTypeWarning:
-				colorFprint(w, color.FgYellow, level)
-			case ipc.ConsoleTypeInfo:
-				colorFprint(w, color.FgCyan, level)
-			default:
-				_, _ = fmt.Fprint(w, level)
-			}
-			_, _ = fmt.Fprintf(w, " %s\n", e.Text)
-		} else {
-			_, _ = fmt.Fprintf(w, "[%s] %s %s\n", timestamp, level, e.Text)
-		}
-
-		// Source URL and line number indented below
-		if e.URL != "" {
-			if e.Line > 0 {
-				_, _ = fmt.Fprintf(w, "  %s:%d\n", e.URL, e.Line)
-			} else {
-				_, _ = fmt.Fprintf(w, "  %s\n", e.URL)
-			}
-		}
+		writeConsoleSummaryLine(w, e, opts)
 	}
 	return nil
+}
+
+// ConsoleDetail renders a single console entry in full for drill-down: the
+// summary line, then the complete multi-line message, stack, arguments, and any
+// exception or Log-domain correlation on seven-space subordinate lines, matching
+// the network drill-down layout.
+func ConsoleDetail(w io.Writer, e ipc.ConsoleEntry, opts OutputOptions) error {
+	writeConsoleSummaryLine(w, e, opts)
+
+	// The summary line already carries the first line of Text; a multi-line
+	// message repeats in full here so nothing is lost off the index. Strip
+	// trailing newlines first so a terminal newline (common on exception
+	// descriptions) does not invent an empty subordinate line; a sole trailing
+	// newline then leaves no second line at all and the block stays closed.
+	// Internal blank lines are preserved.
+	text := strings.TrimRight(e.Text, "\r\n")
+	if i := strings.IndexByte(text, '\n'); i >= 0 {
+		_, _ = fmt.Fprintf(w, "%smessage:\n", netIndent)
+		for _, line := range strings.Split(text, "\n") {
+			_, _ = fmt.Fprintf(w, "%s%s\n", netIndent2, strings.TrimRight(line, "\r"))
+		}
+	}
+
+	printConsoleStack(w, e.Stack)
+	printConsoleArgs(w, e.Args)
+
+	if e.ExceptionClass != "" {
+		if e.ExceptionSubtype != "" {
+			_, _ = fmt.Fprintf(w, "%sexception: %s (%s)\n", netIndent, e.ExceptionClass, e.ExceptionSubtype)
+		} else {
+			_, _ = fmt.Fprintf(w, "%sexception: %s\n", netIndent, e.ExceptionClass)
+		}
+	}
+
+	// Log-domain correlation: the entry's origin, and the network request id that
+	// ties a network-source log to its network buffer entry.
+	if e.Source != "" {
+		_, _ = fmt.Fprintf(w, "%ssource: %s\n", netIndent, e.Source)
+	}
+	if e.NetworkRequestID != "" {
+		_, _ = fmt.Fprintf(w, "%snetwork-request: %s\n", netIndent, e.NetworkRequestID)
+	}
+	if e.WorkerID != "" {
+		_, _ = fmt.Fprintf(w, "%sworker: %s\n", netIndent, e.WorkerID)
+	}
+	return nil
+}
+
+// writeConsoleSummaryLine writes the one-line index entry shared by the list and
+// the drill-down header: "SEQ [HH:MM:SS] LEVEL frame message", where frame is the
+// top stack locator and message is the first line of Text. Absent components are
+// omitted rather than padded.
+func writeConsoleSummaryLine(w io.Writer, e ipc.ConsoleEntry, opts OutputOptions) {
+	ts := time.UnixMilli(e.Timestamp).Local().Format("15:04:05")
+	level := strings.ToUpper(e.Type)
+	frame := consoleTopFrame(e)
+	msg := firstLine(e.Text)
+
+	// Seq prefix, zero-padded to a minimum of two digits and growing naturally
+	// beyond, with no surrounding brackets, so it matches the drill-down integer.
+	_, _ = fmt.Fprintf(w, "%02d ", e.Seq)
+
+	if opts.UseColor {
+		_, _ = fmt.Fprint(w, "[")
+		colorFprint(w, color.Faint, ts)
+		_, _ = fmt.Fprint(w, "] ")
+		printConsoleLevel(w, e.Type, level)
+	} else {
+		_, _ = fmt.Fprintf(w, "[%s] %s", ts, level)
+	}
+
+	if frame != "" {
+		_, _ = fmt.Fprintf(w, " %s", frame)
+	}
+	if msg != "" {
+		_, _ = fmt.Fprintf(w, " %s", msg)
+	}
+	_, _ = fmt.Fprintln(w)
+}
+
+// printConsoleLevel writes the severity level, colourised by type on a TTY.
+func printConsoleLevel(w io.Writer, rawType, level string) {
+	switch ipc.NormalizeConsoleType(rawType) {
+	case ipc.ConsoleTypeError:
+		colorFprint(w, color.FgRed, level)
+	case ipc.ConsoleTypeWarning:
+		colorFprint(w, color.FgYellow, level)
+	case ipc.ConsoleTypeInfo:
+		colorFprint(w, color.FgCyan, level)
+	default:
+		_, _ = fmt.Fprint(w, level)
+	}
+}
+
+// consoleTopFrame returns the summary locator for an entry: the top stack frame's
+// function name and location, falling back to the convenience url:line:column
+// when no stack was captured. Empty when the entry carries no location at all
+// (exceptions and Log-domain entries frequently do).
+func consoleTopFrame(e ipc.ConsoleEntry) string {
+	function := ""
+	url, line, column := e.URL, e.Line, e.Column
+	if len(e.Stack) > 0 {
+		top := e.Stack[0]
+		function, url, line, column = top.Function, top.URL, top.Line, top.Column
+	}
+	loc := consoleLocation(url, line, column)
+	switch {
+	case function != "" && loc != "":
+		return function + " " + loc
+	case function != "":
+		return function
+	default:
+		return loc
+	}
+}
+
+// consoleLocation formats a url:line:column locator. CDP lines and columns are
+// both 0-based, so 0 is a real first-line / first-column position and must render
+// rather than being treated as "absent". Returns empty when no URL was captured;
+// never returns a bare URL without line and column.
+func consoleLocation(url string, line, column int) string {
+	if url == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s:%d:%d", url, line, column)
+}
+
+// printConsoleStack renders the full call stack, one frame per line as function
+// then location, at nine-space indent under a "stack:" label. An asynchronous
+// continuation boundary prints its parent group description on its own line so
+// the sync/async split stays legible. Nothing prints for an empty stack.
+func printConsoleStack(w io.Writer, stack []ipc.ConsoleFrame) {
+	if len(stack) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "%sstack:\n", netIndent)
+	for _, f := range stack {
+		if f.Async != "" {
+			_, _ = fmt.Fprintf(w, "%sasync %s\n", netIndent2, f.Async)
+		}
+		function := f.Function
+		if function == "" {
+			function = "<anonymous>"
+		}
+		if loc := consoleLocation(f.URL, f.Line, f.Column); loc != "" {
+			_, _ = fmt.Fprintf(w, "%s%s %s\n", netIndent2, function, loc)
+		} else {
+			_, _ = fmt.Fprintf(w, "%s%s\n", netIndent2, function)
+		}
+	}
+}
+
+// printConsoleArgs renders every captured console argument at nine-space indent
+// under an "args:" label. A primitive shows its type and verbatim value; a
+// non-primitive shows its type, description, and shallow property preview.
+// Nothing prints when no arguments were captured (exceptions and Log-domain
+// entries carry none).
+func printConsoleArgs(w io.Writer, args []ipc.ConsoleArg) {
+	if len(args) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "%sargs:\n", netIndent)
+	for i, a := range args {
+		_, _ = fmt.Fprintf(w, "%s[%d] %s\n", netIndent2, i, formatConsoleArg(a))
+	}
+}
+
+// formatConsoleArg renders one argument as a single line. A primitive is its type
+// followed by the verbatim JSON value; a non-primitive is its type (refined by
+// subtype), its description, and a brace-wrapped preview of its shallow
+// properties when one was captured.
+func formatConsoleArg(a ipc.ConsoleArg) string {
+	typ := a.Type
+	if a.Subtype != "" {
+		typ = a.Type + "/" + a.Subtype
+	}
+
+	if len(a.Value) > 0 {
+		return strings.TrimSpace(fmt.Sprintf("%s %s", typ, string(a.Value)))
+	}
+
+	parts := []string{typ}
+	if a.Description != "" {
+		parts = append(parts, a.Description)
+	}
+	if len(a.Preview) > 0 {
+		props := make([]string, 0, len(a.Preview))
+		for _, p := range a.Preview {
+			if p.Value != "" {
+				props = append(props, fmt.Sprintf("%s: %s", p.Name, p.Value))
+			} else {
+				props = append(props, p.Name)
+			}
+		}
+		parts = append(parts, "{ "+strings.Join(props, ", ")+" }")
+	}
+	return strings.TrimSpace(strings.Join(parts, " "))
+}
+
+// firstLine returns the first physical line of s with any trailing carriage
+// return stripped, so a multi-line message contributes only one line to the
+// index.
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	return strings.TrimRight(s, "\r")
 }
 
 // formatBytes renders a byte count in human-readable form (B, KB, MB, GB, ...)

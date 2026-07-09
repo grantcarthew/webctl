@@ -71,13 +71,13 @@ This function fetches response bodies via CDP, which requires a connected CDP cl
 | `matchesNetworkFilters` | 0% | Core filtering logic |
 | `outputNetworkText` | 0% | TTY output mode |
 
-#### `internal/cli/console.go` - Text output
+#### `internal/cli/format` - Console text output
 
 | Function | Coverage |
 |----------|----------|
-| `outputConsoleText` | 0% |
+| `Console` / `ConsoleDetail` | Exercised by unit tests in `format_test.go` and `console_test.go` |
 
-**Note**: Text output modes are only used when stdout is a TTY. These are lower priority since JSON output is the primary interface for AI agents.
+**Note**: Text formatters write to any `io.Writer` and are unit-tested without a TTY. JSON output remains the primary interface for AI agents; text is the human default when `--json` is unset.
 
 ### Priority 3: Low Value (Thin Wrappers)
 

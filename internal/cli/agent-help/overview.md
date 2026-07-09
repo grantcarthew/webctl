@@ -32,8 +32,10 @@ webctl css computed <selector>
 webctl css get <selector> <property>
 webctl css inline <selector>
 webctl css matched <selector>
-webctl console [save [path]]
-webctl network [save [path]]
+webctl console [<n>]
+webctl console save [path]
+webctl network [<n>]
+webctl network save [path]
 webctl cookies [save [path]]
 webctl cookies set <name> <value>
 webctl cookies delete <name>

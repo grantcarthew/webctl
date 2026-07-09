@@ -64,9 +64,15 @@ Solution: --find text not present, adjust search term
 ```
 
 ```
-Error: No entries in range
-Solution: Range exceeds available entries
-webctl console --tail 10  # Check entry count first
+Error: entry <n> not in buffer (holds seq N-M; run console to list)
+Solution: Seq not held (evicted or never captured). Re-list and use a displayed seq.
+webctl console
+webctl console <n>
+```
+
+```
+Error: entry <n> not in buffer (buffer empty)
+Solution: No console entries in the active session yet
 ```
 
 ```

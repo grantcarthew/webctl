@@ -2,6 +2,7 @@ package format
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -142,8 +143,8 @@ func TestStatus(t *testing.T) {
 
 func TestConsole(t *testing.T) {
 	entries := []ipc.ConsoleEntry{
-		{Type: "log", Text: "test message", Timestamp: 1609459200000, URL: "http://example.com", Line: 42},
-		{Type: "error", Text: "error message", Timestamp: 1609459200000},
+		{Seq: 1, Type: "log", Text: "test message", Timestamp: 1609459200000, URL: "http://example.com", Line: 42, Column: 7},
+		{Seq: 2, Type: "error", Text: "error message", Timestamp: 1609459200000},
 	}
 
 	var buf bytes.Buffer
@@ -154,15 +155,233 @@ func TestConsole(t *testing.T) {
 	}
 
 	output := buf.String()
-	// Check that output contains expected elements
-	if !strings.Contains(output, "LOG test message") {
-		t.Error("output should contain log message")
+	// Each entry is one seq-prefixed summary line: SEQ [HH:MM:SS] LEVEL frame msg.
+	if !strings.Contains(output, "01 [") || !strings.Contains(output, "LOG http://example.com:42:7 test message") {
+		t.Errorf("output should contain the indexed log summary line:\n%s", output)
 	}
-	if !strings.Contains(output, "ERROR error message") {
-		t.Error("output should contain error message")
+	if !strings.Contains(output, "02 [") || !strings.Contains(output, "ERROR error message") {
+		t.Errorf("output should contain the indexed error summary line:\n%s", output)
 	}
-	if !strings.Contains(output, "http://example.com:42") {
-		t.Error("output should contain URL and line number")
+}
+
+func TestConsole_ColumnZeroRenders(t *testing.T) {
+	// CDP columns are 0-based; column 0 is the first column and must appear on
+	// the locator rather than being treated as "absent".
+	entries := []ipc.ConsoleEntry{
+		{
+			Seq: 1, Type: "error", Text: "boom", Timestamp: 1609459200000,
+			Stack: []ipc.ConsoleFrame{
+				{Function: "onClick", URL: "app.js", Line: 30, Column: 0},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := Console(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "onClick app.js:30:0") {
+		t.Errorf("column 0 must render on the locator:\n%s", output)
+	}
+}
+
+func TestConsole_LineZeroRenders(t *testing.T) {
+	// CDP lines are 0-based; line 0 is the first line (and the only line on a
+	// minified one-liner). Dropping it would hide the column that locates the
+	// call site on bundled scripts.
+	entries := []ipc.ConsoleEntry{
+		{
+			Seq: 1, Type: "error", Text: "boom", Timestamp: 1609459200000,
+			Stack: []ipc.ConsoleFrame{
+				{Function: "bundle", URL: "app.min.js", Line: 0, Column: 1234},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := Console(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "bundle app.min.js:0:1234") {
+		t.Errorf("line 0 must render on the locator with its column:\n%s", output)
+	}
+}
+
+func TestConsole_SeqPrefixZeroPadded(t *testing.T) {
+	// The seq prefix is zero-padded to a minimum of two digits and grows naturally
+	// beyond, with no surrounding brackets, so input and output match.
+	entries := []ipc.ConsoleEntry{
+		{Seq: 9, Type: "log", Text: "a", Timestamp: 1609459200000},
+		{Seq: 100, Type: "log", Text: "b", Timestamp: 1609459200000},
+	}
+
+	var buf bytes.Buffer
+	if err := Console(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "09 [") {
+		t.Errorf("single-digit seq should zero-pad to two digits:\n%s", output)
+	}
+	if !strings.Contains(output, "100 [") {
+		t.Errorf("a three-digit seq should render its full width:\n%s", output)
+	}
+}
+
+func TestConsole_MultiLineTextCondensedToFirstLine(t *testing.T) {
+	// A multi-line message contributes only its first line to the index, so each
+	// entry stays exactly one physical line.
+	entries := []ipc.ConsoleEntry{
+		{Seq: 1, Type: "error", Text: "TypeError: boom\n    at foo (app.js:42:10)\n    at bar (app.js:9:3)", Timestamp: 1609459200000},
+	}
+
+	var buf bytes.Buffer
+	if err := Console(&buf, entries, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if strings.Count(output, "\n") != 1 {
+		t.Errorf("a multi-line message must render as one physical line:\n%s", output)
+	}
+	if !strings.Contains(output, "TypeError: boom") || strings.Contains(output, "at foo") {
+		t.Errorf("only the first line of Text belongs on the summary line:\n%s", output)
+	}
+}
+
+func TestConsoleDetail_RendersFullEntry(t *testing.T) {
+	// Drill-down renders the summary line plus the full stack, arguments,
+	// exception, and Log-domain correlation on seven-space subordinate lines.
+	entry := ipc.ConsoleEntry{
+		Seq: 7, Type: "error", Text: "TypeError: boom\n    at foo",
+		Timestamp: 1609459200000,
+		Stack: []ipc.ConsoleFrame{
+			{Function: "foo", URL: "app.js", Line: 42, Column: 10},
+			{Function: "bar", URL: "app.js", Line: 9, Column: 3},
+		},
+		Args: []ipc.ConsoleArg{
+			{Type: "string", Value: json.RawMessage(`"hello"`)},
+			{Type: "object", Subtype: "array", Description: "Array(2)", Preview: []ipc.ConsolePreviewProp{{Name: "0", Value: "1"}, {Name: "1", Value: "2"}}},
+		},
+		ExceptionClass: "TypeError", ExceptionSubtype: "error",
+	}
+
+	var buf bytes.Buffer
+	if err := ConsoleDetail(&buf, entry, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	checks := []string{
+		"07 [",
+		"       message:\n         TypeError: boom\n",
+		"       stack:\n         foo app.js:42:10\n         bar app.js:9:3\n",
+		"       args:\n         [0] string \"hello\"\n         [1] object/array Array(2) { 0: 1, 1: 2 }\n",
+		"       exception: TypeError (error)\n",
+	}
+	for _, want := range checks {
+		if !strings.Contains(output, want) {
+			t.Errorf("drill-down output missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestConsoleDetail_TrailingNewlineOnlySkipsMessageBlock(t *testing.T) {
+	// A sole trailing newline is not multi-line content; the message block would
+	// only restate the summary line and print an empty indented line.
+	entry := ipc.ConsoleEntry{
+		Seq: 1, Type: "error", Text: "TypeError: boom\n", Timestamp: 1609459200000,
+	}
+
+	var buf bytes.Buffer
+	if err := ConsoleDetail(&buf, entry, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if strings.Contains(output, "message:") {
+		t.Errorf("trailing-only newline must not open a message block:\n%s", output)
+	}
+	if !strings.Contains(output, "TypeError: boom") {
+		t.Errorf("summary line should still carry the first line of Text:\n%s", output)
+	}
+}
+
+func TestConsoleDetail_MultiLineTrailingNewlineNoBlankRow(t *testing.T) {
+	// Exception descriptions often end with a trailing newline. After content
+	// lines that is not multi-line substance — strip it so the message block
+	// does not close with an empty nine-space row.
+	entry := ipc.ConsoleEntry{
+		Seq: 1, Type: "error", Text: "TypeError: boom\n    at foo\n", Timestamp: 1609459200000,
+	}
+
+	var buf bytes.Buffer
+	if err := ConsoleDetail(&buf, entry, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	want := "       message:\n         TypeError: boom\n             at foo\n"
+	if !strings.Contains(output, want) {
+		t.Errorf("message block missing expected lines:\n%s", output)
+	}
+	// No blank subordinate line between the last message line and whatever
+	// follows (or end of output). The message block must end at "at foo".
+	if strings.Contains(output, "at foo\n         \n") || strings.Contains(output, "at foo\n"+netIndent2+"\n") {
+		t.Errorf("trailing newline must not invent an empty message row:\n%s", output)
+	}
+}
+
+func TestConsoleDetail_LogDomainCorrelation(t *testing.T) {
+	// A Log-domain entry surfaces its source, network request id, and worker id
+	// on drill-down so agents can correlate across buffers and workers.
+	entry := ipc.ConsoleEntry{
+		Seq: 3, Type: "error", Text: "Failed to load resource", Timestamp: 1609459200000,
+		Source: "network", NetworkRequestID: "1234.5", WorkerID: "worker.1",
+	}
+
+	var buf bytes.Buffer
+	if err := ConsoleDetail(&buf, entry, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "       source: network\n") {
+		t.Errorf("Log-domain source should render:\n%s", output)
+	}
+	if !strings.Contains(output, "       network-request: 1234.5\n") {
+		t.Errorf("network request id should render as the correlating identity:\n%s", output)
+	}
+	if !strings.Contains(output, "       worker: worker.1\n") {
+		t.Errorf("worker id should render when present:\n%s", output)
+	}
+}
+
+func TestConsoleDetail_AsyncStackBoundary(t *testing.T) {
+	// An asynchronous continuation boundary prints its parent group description
+	// on its own line so the sync/async split stays legible in the stack block.
+	entry := ipc.ConsoleEntry{
+		Seq: 4, Type: "error", Text: "boom", Timestamp: 1609459200000,
+		Stack: []ipc.ConsoleFrame{
+			{Function: "handler", URL: "app.js", Line: 10, Column: 2},
+			{Function: "then", URL: "app.js", Line: 20, Column: 4, Async: "Promise.then"},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := ConsoleDetail(&buf, entry, OutputOptions{UseColor: false}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	output := buf.String()
+	want := "       stack:\n         handler app.js:10:2\n         async Promise.then\n         then app.js:20:4\n"
+	if !strings.Contains(output, want) {
+		t.Errorf("async boundary missing or mis-ordered in stack block:\n%s", output)
 	}
 }
 

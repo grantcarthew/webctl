@@ -45,9 +45,6 @@ var ErrNoElements = errors.New("no elements found")
 // ErrNoRules indicates no CSS rules matched the selector pattern (informational, not an error).
 var ErrNoRules = errors.New("no rules found")
 
-// ErrNoEntriesInRange indicates the specified range has no entries (informational, not an error).
-var ErrNoEntriesInRange = errors.New("no entries in range")
-
 // isNoElementsError checks if an error message indicates no elements were found.
 func isNoElementsError(msg string) bool {
 	return strings.Contains(msg, "matched no elements") || strings.Contains(msg, "element not found")
@@ -310,8 +307,16 @@ func ExecuteArgs(args []string) (recognized bool, err error) {
 	// we reset AFTER execution so the next call starts fresh.
 	resetFlags := func(flags *pflag.FlagSet) {
 		flags.VisitAll(func(f *pflag.Flag) {
-			// For slice types with DefValue "[]", use empty string to properly reset.
-			// Using Set("[]") would incorrectly create a slice containing "[]" as a literal.
+			// pflag StringSlice (and similar) implement Replace; Set does not clear the
+			// underlying slice (and appends when Changed is true). Prefer Replace so a
+			// prior --type/--method/--status does not stick across REPL invocations.
+			if r, ok := f.Value.(interface{ Replace([]string) error }); ok {
+				_ = r.Replace(nil)
+				f.Changed = false
+				return
+			}
+			// For other types whose DefValue is "[]", empty string avoids treating
+			// "[]" as a one-element slice of the literal "[]".
 			defVal := f.DefValue
 			if defVal == "[]" {
 				defVal = ""

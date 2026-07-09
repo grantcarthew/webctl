@@ -15,7 +15,7 @@ cmd() {
 
 clear
 title "webctl console Command Test Suite"
-echo "Tests console log extraction with filtering and range limiting"
+echo "Tests console log extraction with filtering, seq range, and drill-down"
 echo ""
 echo "Prerequisites:"
 echo "  - webctl must be built"
@@ -243,28 +243,62 @@ echo ""
 echo "Verify: Last 5 warning entries"
 read -p "Press Enter to continue..."
 
-# Range flag tests
+# Range flag tests (--range is inclusive seq membership, not position)
 title "Range Flag Tests"
 
-heading "Get entries 10-20"
-cmd "webctl console --range 10-20"
+heading "List entries to note their seq prefixes"
+cmd "webctl console"
 
 echo ""
-echo "Verify: Entries from index 10 to 20"
+echo "Verify: Each line starts with a zero-padded seq (01, 02, ... 100)"
+echo "Note two held seq values for the range test below (for example 318 and 425)"
 read -p "Press Enter to continue..."
 
-heading "Get first 10 entries via range"
-cmd "webctl console --range 0-10"
+heading "Keep entries whose seq falls in [START, END]"
+cmd "webctl console --range 318-425"
 
 echo ""
-echo "Verify: First 10 entries"
+echo "Verify: Only held seqs inside [318, 425] are listed (endpoints need not exist)"
+echo "Adjust START-END to match the seqs you noted above if the buffer differs"
+read -p "Press Enter to continue..."
+
+heading "Empty seq range is exit 0 with no rows"
+cmd "webctl console --range 999990-999999"
+
+echo ""
+echo "Verify: Empty list, success (sparse membership makes this routine)"
 read -p "Press Enter to continue..."
 
 heading "Range with type filter"
-cmd "webctl console --range 0-5 --type error"
+cmd "webctl console --range 318-425 --type error"
 
 echo ""
-echo "Verify: First 5 error entries"
+echo "Verify: Errors whose seq is inside the range only"
+read -p "Press Enter to continue..."
+
+# Drill-down tests
+title "Drill-down Tests"
+
+heading "List to pick a seq address"
+cmd "webctl console --type error --tail 5"
+
+echo ""
+echo "Verify: Indexed summary lines; note one seq number (first token)"
+read -p "Press Enter to continue..."
+
+heading "Drill into one entry by seq"
+cmd "webctl console 1"
+
+echo ""
+echo "Verify: Full entry — stack, args, exception or Log-domain detail under seven-space indent"
+echo "Replace 1 with a seq you actually hold if the buffer does not include seq 1"
+read -p "Press Enter to continue..."
+
+heading "Drill-down miss (seq not held)"
+cmd "webctl console 999999"
+
+echo ""
+echo "Verify: Error like 'entry 999999 not in buffer (holds seq N-M; run console to list)'"
 read -p "Press Enter to continue..."
 
 # Mutual exclusivity tests
@@ -278,14 +312,14 @@ echo "Verify: Error message about mutually exclusive flags"
 read -p "Press Enter to continue..."
 
 heading "Head and range together (should error)"
-cmd "webctl console --head 10 --range 0-10"
+cmd "webctl console --head 10 --range 318-425"
 
 echo ""
 echo "Verify: Error message about mutually exclusive flags"
 read -p "Press Enter to continue..."
 
 heading "Tail and range together (should error)"
-cmd "webctl console --tail 10 --range 0-10"
+cmd "webctl console --tail 10 --range 318-425"
 
 echo ""
 echo "Verify: Error message about mutually exclusive flags"
